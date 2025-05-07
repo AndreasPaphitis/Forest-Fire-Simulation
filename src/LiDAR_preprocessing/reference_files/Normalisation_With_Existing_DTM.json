@@ -1,0 +1,21 @@
+{
+    "pipeline": [
+        {
+            "type": "readers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/2nd covering IRC/PNOA_2016_CANAR-TF_338-3142_ORT-CLA-CIR.laz"
+        },
+        {
+            "type": "filters.hag_nn",
+            "allow_extrapolation": true
+        },
+        {
+            "type": "filters.ferry",
+            "dimensions": "HeightAboveGround=>Z"
+        },
+        {
+            "type": "writers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/Normalized_Points.laz",
+            "compression": "laszip"
+        }
+    ]
+}

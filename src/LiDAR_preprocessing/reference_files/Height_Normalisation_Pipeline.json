@@ -1,0 +1,38 @@
+{
+    "pipeline": [
+        {
+            "type": "readers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/2nd covering IRC/PNOA_2016_CANAR-TF_338-3142_ORT-CLA-CIR.laz"
+        },
+        {
+            "type": "filters.range",
+            "limits": "Classification[2:2]"
+        },
+        {
+            "type": "writers.gdal",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/DTM.tif",
+            "resolution": 5,
+            "radius": 22,
+            "output_type": "idw",
+            "nodata": -9999,
+            "gdaldriver": "GTiff"
+        },
+        {
+            "type": "readers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/2nd covering IRC/PNOA_2016_CANAR-TF_338-3142_ORT-CLA-CIR.laz"
+        },
+        {
+            "type": "filters.hag_dem",
+            "raster": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/DTM.tif"
+        },
+        {
+            "type": "filters.assign",
+            "assignment": "Z_normalized = HeightAboveGround"
+        },
+        {
+            "type": "writers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/Normalized_Points.laz",
+            "compression": "laszip"
+        }
+    ]
+}
