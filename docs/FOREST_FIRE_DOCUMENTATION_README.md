@@ -166,68 +166,15 @@ When referencing across documents:
 2. Update the "Last Modified" date when making significant changes
 3. Consider keeping an update log at the beginning of each document
 
-## Redundant Scripts and Cleanup
+## Notes on Redundant Scripts
 
-The following scripts are redundant and can be safely deleted:
+The following scripts are redundant and can be considered for removal/archiving:
 
-1. **`create_docs_website_combined.py`**: Already deleted, replaced by more specialized scripts
-2. **`create_docs_website_minimal.py`**: Redundant with `create_docs_website.py` which includes all features
-3. **`create_docs_website_fixed.py`**: Redundant with `create_docs_website.py` after bug fixes were incorporated
-4. **`create_docs_website_backup.py`**: Historical backup, functionality included in main script
-5. **`fix_script.py`**: Replaced by `fix_doc_links.py` which has more comprehensive link fixing
-
-### File Organization
-
-Files are now organized into the following structure:
-
-- **Documentation_Source/** - Main markdown files 
-- **Documentation_Scripts/** - Core documentation generation scripts
-- **Documentation_Helpers/** - Helper utilities and support files
-- **Redundant_Scripts/** - Archives of outdated scripts
-- **html_docs/** - Generated HTML output
-
-When adding new scripts, please place them in the appropriate directory to maintain organization.
-
-## Workflow Diagrams
-
-### Generating Workflow Diagrams
-
-To generate the workflow diagrams:
-
-1. Use `create_direct_workflow_diagrams.py` to generate the initial HTML
-2. Then use `fix_mermaid_diagrams.py` to fix and optimize the Mermaid diagrams
-
-```bash
-python create_direct_workflow_diagrams.py
-python fix_mermaid_diagrams.py
-```
-
-This creates several files:
-- `forest_fire_workflow_diagrams_static_fixed.html` - The main fixed version (recommended)
-- `forest_fire_workflow_diagrams_static_fixed_print.html` - Print-friendly version
-- Standalone diagrams in the `html_docs/standalone_diagrams/` directory
-
-### Troubleshooting Diagrams
-
-If diagrams aren't rendering correctly:
-
-1. Check the standalone diagrams to identify which specific diagrams have issues
-2. Try different Mermaid versions in the standalone diagrams 
-3. Use browser developer tools (F12) to check for JavaScript errors
-4. Make sure JavaScript is enabled in your browser
-
-### Fixing Cross-Document Links
-
-To fix broken links between documentation files:
-
-```bash
-python fix_doc_links.py
-```
-
-This script:
-- Fixes cross-document links between markdown files
-- Updates HTML files with corrected anchor links
-- Adds navigation links to workflow diagram HTML files
+- `create_workflow_diagrams.py` - Superseded by `create_direct_workflow_diagrams.py`  
+- `create_docs_website_fixed.py` - Redundant with `create_docs_website.py`
+- `create_docs_website_backup.py` - Backup version
+- `create_docs_website_minimal.py` - Simplified version
+- `md_to_pdf.py` - Replaced by newer PDF generation scripts
 
 ## Future Improvements
 

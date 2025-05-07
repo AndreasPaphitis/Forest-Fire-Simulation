@@ -12,12 +12,12 @@ Throughout this document, you'll see references to more technical aspects of the
 |------------------------------|----------------------------------------|
 | Memory Optimization Details  | [Memory Management (Section 2.2)](Forest_Fire_Simulation_Technical_Reference.md#22-memory-management) |
 | LiDAR Processing Pipeline    | [Forest Structure Representation (Section 2.1)](Forest_Fire_Simulation_Technical_Reference.md#21-forest-structure-representation) |
-| Fire Spread Algorithms       | [Method Interrelationships (Section 2.4)](Forest_Fire_Simulation_Technical_Reference.md#method-interrelationships) |
+| Fire Spread Algorithms       | [Method Interrelationships (Section 2.4)](Forest_Fire_Simulation_Technical_Reference.md#24-method-interrelationships) |
 | Performance Benchmarks       | [Performance Benchmarks (Section 4)](Forest_Fire_Simulation_Technical_Reference.md#4-performance-benchmarks) |
 | Framework Architecture       | [Technical Architecture Overview (Section 1)](Forest_Fire_Simulation_Technical_Reference.md#1-technical-architecture-overview) |
-| Configuration Reference      | [Simulation Parameters (Section 6.1)](Forest_Fire_Simulation_Technical_Reference.md#simulation-parameters) |
-| API Reference                | [API Reference (Section 6.4)](Forest_Fire_Simulation_Technical_Reference.md#api-reference) |
-| Environmental Data           | [Environmental Data Integration (Section 3.10)](Forest_Fire_Simulation_Technical_Reference.md#environmental-data-integration) |
+| Configuration Reference      | [Simulation Parameters (Section 6.1)](Forest_Fire_Simulation_Technical_Reference.md#61-simulation-parameters) |
+| API Reference                | [API Reference (Section 6.4)](Forest_Fire_Simulation_Technical_Reference.md#64-api-reference) |
+| Environmental Data           | [Environmental Data Integration (Section 3.10)](Forest_Fire_Simulation_Technical_Reference.md#310-environmental-data-integration) |
 | Error Handling               | [Error Handling Framework (Section 3.9)](Forest_Fire_Simulation_Technical_Reference.md#39-comprehensive-error-handling-framework) |
 | Validation Framework         | [Validation and Testing Framework (Section 6.6)](Forest_Fire_Simulation_Technical_Reference.md#66-validation-and-testing-framework) |
 
@@ -2092,7 +2092,7 @@ For very large simulations, layer grouping can be combined with horizontal tilin
 
 This approach allows processing arbitrarily large datasets while maintaining memory usage within the configured limits, making it possible to run simulations on standard desktop hardware that would otherwise require specialized HPC resources.
 
-> 🔍 **Technical Note**: For a detailed technical explanation of how the layer grouping methods interact, including method signatures, data flow diagrams, and error handling strategies, see [Method Interrelationships (Section 2.4)](Forest_Fire_Simulation_Technical_Reference.md#method-interrelationships) in the Technical Reference.
+> 🔍 **Technical Note**: For a detailed technical explanation of how the layer grouping methods interact, including method signatures, data flow diagrams, and error handling strategies, see [Method Interrelationships (Section 2.4)](Forest_Fire_Simulation_Technical_Reference.md#24-method-interrelationships) in the Technical Reference.
 
 ## 12. Technical Reference
 
@@ -3862,7 +3862,7 @@ This is particularly useful for simulating:
 - Changing weather conditions (rainfall, humidity changes)
 - Longer-duration fire events where conditions evolve
 
-> 🔍 **Technical Note**: For detailed implementation of the fuel moisture integration, including the full method signature, error handling, and interactions with other framework components, see [Environmental Data Integration (Section 3.10)](Forest_Fire_Simulation_Technical_Reference.md#environmental-data-integration) in the Technical Reference.
+> 🔍 **Technical Note**: For detailed implementation of the fuel moisture integration, including the full method signature, error handling, and interactions with other framework components, see [Environmental Data Integration (Section 3.10)](Forest_Fire_Simulation_Technical_Reference.md#310-environmental-data-integration) in the Technical Reference.
 
 ### 7.3 Vertical Connectivity
 

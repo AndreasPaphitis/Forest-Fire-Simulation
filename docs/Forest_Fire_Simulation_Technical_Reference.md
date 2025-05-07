@@ -1030,10 +1030,10 @@ def calculate_fire_spread(current_state, pad_values, wind_vector, slope_factor,
         time_step: Simulation time step in seconds
     
     Implementation notes:
-        - Uses Rothermel's fire spread equation for surface fire
-        - Implements Albini's crown fire transition model
-        - Employs Clark's wind field modification approach
-        - Uses parallel processing across independent cells
+        - Uses a probabilistic cellular automata model with sigmoid functions for fire spread calculation
+        - Implements basic crown fire effects through canopy layer multipliers
+        - Employs terrain-influenced wind field modeling for topographic effects
+        - Implements tile-based parallel processing for efficient computation across multiple CPU cores
     """
     # Algorithm implementation not shown for brevity
     # ...
@@ -3969,18 +3969,19 @@ This sigmoid function transforms the number of burning neighbors into a probabil
    - $k$ = steepness parameter
    - $t$ = threshold parameter
 
-2. **Key Parameters**:
-   - **k (Steepness)**: Controls how quickly probability rises with additional burning neighbors
-     - High values (e.g., 2.0+): Sharp transition from low to high probability
-     - Low values (e.g., 0.5): More gradual increase in probability
-   - **threshold**: The "critical mass" of burning neighbors where probability is 0.5
-     - Lower values increase overall fire spread rate
-     - Higher values create more fire-resistant conditions
+   This base probability from the sigmoid function is then modified by multiple factors:
+   - Final probability = base_prob × fuel_effect × (1 + wind_effect) × (1 - fuel_moisture)
+   - For diagonal neighbors, an additional diagonal penalty is applied
 
-3. **Implementation Details**:
+2. **Implementation Details**:
    - Used within the `update_horizontal_spread()` method of the `ForestModel` class
-   - Combined with other factors (fuel, wind, moisture) to determine final ignition probability
-   - Helps create realistic fire behavior including clustering and fire front formation
+   - First counts the number of burning neighbors for each unburned cell
+   - Calculates wind effect using the dot product of wind vector and direction to neighbor
+   - Applies fuel load as a multiplier (more fuel = higher probability)
+   - Applies fuel moisture as a reducing factor (wetter fuel = lower probability)
+   - Applies distance penalty for diagonal neighbors
+   - Final ignition occurs only if probability exceeds a threshold AND passes a random check
+   - This creates a partially deterministic, partially stochastic fire spread pattern
 
 This sigmoid approach creates a non-linear response that more accurately models the threshold behavior of real forest fires, where spread accelerates dramatically once a critical number of burning cells is reached.
 
@@ -5220,3 +5221,38 @@ The framework converts technical errors into user-friendly messages:
 
 ```python
 def get_user_friendly_error(error):
+```
+
+The fire simulation engine processes cells sequentially rather than in parallel:
+
+```python
+# Sequential processing of cells in the fire simulation
+def update_horizontal_spread(self):
+    """
+    Update fire spread horizontally within each layer.
+    
+    This method handles the spread of fire to neighboring cells within the same layer.
+    It calculates ignition probabilities based on fuel load, wind direction and speed,
+    and applies probabilistic ignition to unburned cells.
+    """
+    # Create a copy of the current state to avoid order effects
+    new_layers = [layer.copy() for layer in self.layers]
+    
+    # Process each layer
+    for z in range(self.num_layers):
+        # Skip layers with no burning cells
+        if not np.any(self.layers[z] == CellState.BURNING.value):
+            continue
+            
+        # Process each cell in the layer sequentially
+        for y in range(1, self.grid_size - 1):
+            for x in range(1, self.grid_size - 1):
+                # Skip cells that are not burning
+                if self.layers[z][y, x] != CellState.BURNING.value:
+                    continue
+                
+                # Process burning cell and its neighbors
+                # ...
+```
+
+While the current implementation processes cells sequentially, the architecture could potentially support parallelization in future versions by dividing the grid into independent regions or by processing layers in parallel.
