@@ -1,0 +1,257 @@
+# ===================================================================
+# FOREST FIRE SIMULATION FRAMEWORK - REQUIREMENTS
+# ===================================================================
+#
+# Comprehensive dependency specification for the Forest Fire Simulation Framework
+# 
+# Project: 3D Forest Fire Simulation with LiDAR Integration
+# Python: >=3.9,<4.0
+# Last Updated: January 2025
+# 
+# This file specifies all dependencies required for:
+# - Core fire simulation engine
+# - LiDAR data processing and integration
+# - 3D visualization and analysis
+# - HPC deployment and optimization
+# - Testing and development
+#
+# ===================================================================
+
+# ===================================================================
+# CORE SCIENTIFIC COMPUTING
+# ===================================================================
+
+# Essential numerical computing libraries
+numpy>=1.21.0,<2.0.0
+# Primary array processing, mathematical operations, random number generation
+# Used throughout for grid operations, fire spread calculations, and statistics
+
+scipy>=1.7.0,<2.0.0
+# Sparse matrices (lil_matrix, dok_matrix), image processing (ndimage)
+# Critical for memory optimization and topographic analysis
+
+# ===================================================================
+# GEOSPATIAL DATA PROCESSING
+# ===================================================================
+
+# GDAL - Primary geospatial library (CRITICAL DEPENDENCY)
+GDAL>=3.4.0,<4.0.0
+# Core dependency for all LiDAR data processing, raster I/O, coordinate transformations
+# Provides osgeo.gdal, osgeo.osr, osgeo.ogr modules
+# Installation notes:
+# - Linux: sudo apt-get install gdal-bin libgdal-dev
+# - macOS: brew install gdal  
+# - Windows: conda install -c conda-forge gdal
+# - HPC: module load GDAL
+
+# Complementary geospatial libraries
+rasterio>=1.3.0,<2.0.0
+# Alternative raster I/O interface, used in dtm_processor.py
+# Provides more Pythonic GDAL interface
+
+geopandas>=0.10.0,<1.0.0
+# Vector geospatial operations, used in DTM processing
+# Depends on shapely, fiona, pyproj
+
+shapely>=1.8.0,<3.0.0
+# Geometric operations (required by geopandas)
+
+fiona>=1.8.20,<2.0.0
+# Vector file I/O (required by geopandas)
+
+pyproj>=3.2.0,<4.0.0
+# Coordinate reference system transformations (required by geopandas)
+
+# ===================================================================
+# IMAGE PROCESSING AND COMPUTER VISION
+# ===================================================================
+
+scikit-image>=0.19.0,<1.0.0
+# Image transformations (resize, zoom) for LiDAR data resampling
+# Used in forest_model.py and vegetation_data_integration.py
+
+# ===================================================================
+# VISUALIZATION AND ANIMATION
+# ===================================================================
+
+matplotlib>=3.5.0,<4.0.0
+# Primary visualization library for fire spread plots, terrain visualization
+# Includes animation support (FuncAnimation) for fire spread animations
+
+imageio>=2.19.0,<3.0.0
+# Animation export for fire spread visualizations
+# Used in visualization.py for saving animations
+
+imageio-ffmpeg>=0.4.5,<1.0.0
+# FFmpeg wrapper for video encoding
+# Required for MP4 animation export
+
+# ===================================================================
+# SYSTEM MONITORING AND PERFORMANCE
+# ===================================================================
+
+psutil>=5.8.0,<6.0.0
+# System memory monitoring, CPU usage tracking
+# Critical for memory optimization and HPC resource management
+# Used in memory_manager.py, logging_utils.py, shared_utilities.py
+
+tqdm>=4.62.0,<5.0.0
+# Progress bars for long-running operations
+# Used in shared_utilities.py for data processing progress
+
+# ===================================================================
+# DATA ANALYSIS AND PROCESSING
+# ===================================================================
+
+pandas>=1.3.0,<3.0.0
+# Data manipulation and analysis
+# Used in PAD_calculation.py for statistical processing
+
+# ===================================================================
+# PARALLEL AND HIGH-PERFORMANCE COMPUTING
+# ===================================================================
+
+# Built-in modules (no installation required):
+# - concurrent.futures (ProcessPoolExecutor, as_completed)
+# - multiprocessing (cpu_count, Process, Queue)
+# - threading (Thread, Lock)
+
+# Optional HPC enhancement
+numba>=0.56.0,<1.0.0
+# Just-in-time compilation for performance optimization
+# Mentioned in production configurations for acceleration
+
+# ===================================================================
+# DEVELOPMENT AND TESTING
+# ===================================================================
+
+# Testing framework
+pytest>=6.2.0,<8.0.0
+# Unit testing and integration testing
+
+pytest-cov>=3.0.0,<5.0.0
+# Code coverage analysis
+
+# Code quality and formatting
+black>=21.0.0,<25.0.0
+# Code formatting
+
+flake8>=4.0.0,<7.0.0
+# Code linting and style checking
+
+# ===================================================================
+# MEMORY PROFILING AND OPTIMIZATION
+# ===================================================================
+
+memory-profiler>=0.60.0,<1.0.0
+# Detailed memory usage profiling for optimization
+# Used for performance analysis in large simulations
+
+# ===================================================================
+# OPTIONAL DEPENDENCIES FOR ADVANCED FEATURES
+# ===================================================================
+
+# Configuration management (if advanced validation needed)
+# pydantic>=1.8.0,<3.0.0
+# Currently using Python dataclasses, but Pydantic available for complex validation
+
+# Advanced distributed computing (for massive simulations)
+# dask>=2021.11.0,<2025.0.0
+# Distributed computing framework for very large datasets
+
+# MPI for HPC clusters
+# mpi4py>=3.1.0,<4.0.0
+# Message Passing Interface for distributed HPC computing
+
+# Scientific data formats (if needed for data exchange)
+# h5py>=3.6.0,<4.0.0
+# HDF5 file format support
+# netcdf4>=1.5.8,<2.0.0
+# NetCDF file format support
+# xarray>=0.20.0,<2025.0.0
+# N-dimensional labeled arrays
+
+# Machine learning (for advanced fire behavior modeling)
+# scikit-learn>=1.0.0,<2.0.0
+# Machine learning algorithms for predictive modeling
+
+# Enhanced command-line interfaces
+# click>=8.0.0,<9.0.0
+# Command-line interface creation
+# rich>=10.0.0,<14.0.0
+# Rich text and beautiful formatting for terminals
+
+# ===================================================================
+# PLATFORM-SPECIFIC DEPENDENCIES
+# ===================================================================
+
+# Windows-specific (uncomment if deploying on Windows)
+# pywin32>=227; sys_platform == "win32"
+# Windows API access
+
+# ===================================================================
+# VERSION CONSTRAINTS EXPLANATION
+# ===================================================================
+#
+# Version Pinning Strategy:
+# - Lower bounds: Minimum versions that support required features
+# - Upper bounds: Major version caps to prevent breaking changes
+# - Patch updates: Allowed for bug fixes and security updates
+#
+# Critical Dependencies (breaking changes avoided):
+# - numpy, scipy: Core mathematical operations
+# - GDAL: Geospatial data processing
+# - matplotlib: Visualization compatibility
+#
+# Flexible Dependencies (wider version ranges):
+# - Development tools: black, flake8, pytest
+# - Optional libraries: numba, memory-profiler
+#
+# ===================================================================
+
+# ===================================================================
+# INSTALLATION INSTRUCTIONS
+# ===================================================================
+#
+# Basic Installation:
+# pip install -r requirements.txt
+#
+# Development Installation:
+# pip install -r requirements.txt
+# pip install -e .  # If setup.py exists
+#
+# Conda Environment (Recommended for GDAL):
+# conda create -n fire-sim python=3.9
+# conda activate fire-sim
+# conda install -c conda-forge gdal>=3.4.0
+# pip install -r requirements.txt
+#
+# HPC Installation (Snellius/SURF):
+# module load Python/3.9.6-GCCcore-11.2.0
+# module load GDAL/3.5.0-foss-2022a
+# pip install --user -r requirements.txt
+#
+# Troubleshooting:
+# - GDAL issues: Ensure system GDAL is installed before pip install
+# - Memory errors: Reduce simulation grid size or enable disk storage
+# - Import errors: Check Python path and virtual environment activation
+#
+# ===================================================================
+
+# ===================================================================
+# PERFORMANCE OPTIMIZATION NOTES
+# ===================================================================
+#
+# For Large Simulations (>1000x1000 cells):
+# - Enable memory optimization in configuration
+# - Use disk storage for history data
+# - Consider tile-based processing
+# - Monitor memory usage with psutil integration
+#
+# For HPC Deployment:
+# - Use conda for consistent environments
+# - Enable numba JIT compilation
+# - Configure appropriate tile sizes for available memory
+# - Use MPI for multi-node scaling (if mpi4py installed)
+#
+# =================================================================== 

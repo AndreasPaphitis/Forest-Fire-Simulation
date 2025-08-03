@@ -1,0 +1,44 @@
+{
+  "config_name": "Custom_Output_Paths_Example",
+  "config_version": "1.3",
+  
+  "simulation_type": "standard",
+  "max_steps": 20,
+  "grid_size": [500, 500],
+  "num_layers": 5,
+  
+  "output": {
+    "output_dir": "/your/main/output/directory",
+    "results_output_dir": "/your/specific/results/directory",
+    "logs_output_dir": "/your/specific/logs/directory", 
+    "checkpoints_output_dir": "/your/specific/checkpoints/directory",
+    "monitoring_output_dir": "/your/specific/monitoring/directory",
+    "temp_storage_dir": "/your/fast/scratch/storage",
+    "store_full_states": false,
+    "use_disk_storage": true
+  },
+  
+  "hpc": {
+    "tile_size": 200,
+    "max_parallel_tiles": 4,
+    "memory_optimization_level": 2
+  },
+  
+  "terrain": {
+    "use_terrain": false
+  },
+  
+  "vegetation": {
+    "use_lidar": false,
+    "auto_size_from_lidar": false
+  },
+  
+  "wind_speed": 5.0,
+  "wind_direction": 90.0,
+  "spread_probability": 0.4,
+  "initial_fuel_load": 5.0,
+  
+  "ignition_points": [
+    {"x": 250, "y": 250, "z": 0}
+  ]
+} 

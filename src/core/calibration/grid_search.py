@@ -1,0 +1,504 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Grid Search Calibrator Module
+
+This module implements systematic grid search calibration for the forest fire simulation.
+It explores the parameter space using a grid of points and evaluates each combination
+against the specified objective function.
+
+Author: Forest Fire Simulation Team
+Date: 2025
+Version: 1.0
+"""
+
+import time
+import itertools
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple, Union
+from dataclasses import dataclass, field
+import numpy as np
+import json
+
+try:
+    from src.utils.logging_utils import get_logger
+    from src.core.fire_simulation_engine import FireSimulationEngine
+    from src.core.forest_model import create_forest_model
+except ImportError:
+    try:
+        from utils.logging_utils import get_logger
+        from core.fire_simulation_engine import FireSimulationEngine
+        from core.forest_model import create_forest_model
+    except ImportError:
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class GridSearchResult:
+    """Single result from grid search evaluation."""
+    parameter_values: Dict[str, float]
+    objective_value: float
+    objective_components: Dict[str, float]
+    simulation_stats: Dict[str, Any]
+    evaluation_time: float
+    is_valid: bool = True
+    error_message: str = ""
+
+
+@dataclass
+class GridSearchResults:
+    """Complete results from grid search calibration."""
+    results: List[GridSearchResult] = field(default_factory=list)
+    best_result: Optional[GridSearchResult] = None
+    parameter_space: Dict[str, List[float]] = field(default_factory=dict)
+    total_evaluations: int = 0
+    successful_evaluations: int = 0
+    total_time: float = 0.0
+    convergence_info: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Update statistics after initialization."""
+        self._update_statistics()
+    
+    def _update_statistics(self):
+        """Update derived statistics."""
+        self.total_evaluations = len(self.results)
+        self.successful_evaluations = sum(1 for r in self.results if r.is_valid)
+        self.total_time = sum(r.evaluation_time for r in self.results)
+        
+        # Find best result
+        valid_results = [r for r in self.results if r.is_valid]
+        if valid_results:
+            self.best_result = max(valid_results, key=lambda x: x.objective_value)
+    
+    def add_result(self, result: GridSearchResult):
+        """Add a new result and update statistics."""
+        self.results.append(result)
+        self._update_statistics()
+    
+    def get_best_parameters(self) -> Optional[Dict[str, float]]:
+        """Get the best parameter configuration."""
+        return self.best_result.parameter_values if self.best_result else None
+    
+    def get_best_objective_value(self) -> Optional[float]:
+        """Get the best objective value achieved."""
+        return self.best_result.objective_value if self.best_result else None
+    
+    def get_parameter_sensitivity(self) -> Dict[str, Dict[str, float]]:
+        """
+        Calculate parameter sensitivity based on grid search results.
+        
+        NOTE: This is a simplified correlation-based sensitivity analysis.
+        For comprehensive sensitivity analysis, use the dedicated SensitivityAnalyzer
+        from sensitivity_analysis.py which provides more sophisticated analysis.
+        
+        Returns:
+            Dictionary with sensitivity statistics for each parameter
+        """
+        if not self.results:
+            return {}
+        
+        valid_results = [r for r in self.results if r.is_valid]
+        if not valid_results:
+            return {}
+        
+        sensitivity = {}
+        
+        # Get all parameter names
+        param_names = list(valid_results[0].parameter_values.keys())
+        
+        for param_name in param_names:
+            param_values = [r.parameter_values[param_name] for r in valid_results]
+            objective_values = [r.objective_value for r in valid_results]
+            
+            # Calculate correlation between parameter and objective
+            correlation = np.corrcoef(param_values, objective_values)[0, 1]
+            if np.isnan(correlation):
+                correlation = 0.0
+            
+            # Calculate range of objective values for this parameter
+            param_range = max(param_values) - min(param_values)
+            obj_range = max(objective_values) - min(objective_values)
+            
+            sensitivity[param_name] = {
+                'correlation': correlation,
+                'parameter_range': param_range,
+                'objective_range': obj_range,
+                'sensitivity_score': abs(correlation) * obj_range / max(param_range, 1e-10)
+            }
+        
+        return sensitivity
+    
+    def save_results(self, filepath: Union[str, Path]) -> None:
+        """Save results to JSON file."""
+        filepath = Path(filepath)
+        
+        # Convert results to serializable format
+        results_data = {
+            'parameter_space': self.parameter_space,
+            'total_evaluations': self.total_evaluations,
+            'successful_evaluations': self.successful_evaluations,
+            'total_time': self.total_time,
+            'convergence_info': self.convergence_info,
+            'results': [
+                {
+                    'parameter_values': r.parameter_values,
+                    'objective_value': r.objective_value,
+                    'objective_components': r.objective_components,
+                    'simulation_stats': r.simulation_stats,
+                    'evaluation_time': r.evaluation_time,
+                    'is_valid': r.is_valid,
+                    'error_message': r.error_message
+                }
+                for r in self.results
+            ]
+        }
+        
+        if self.best_result:
+            results_data['best_result'] = {
+                'parameter_values': self.best_result.parameter_values,
+                'objective_value': self.best_result.objective_value,
+                'objective_components': self.best_result.objective_components
+            }
+        
+        with open(filepath, 'w') as f:
+            json.dump(results_data, f, indent=2)
+        
+        logger.info(f"Saved grid search results to {filepath}")
+    
+    @classmethod
+    def load_results(cls, filepath: Union[str, Path]) -> 'GridSearchResults':
+        """Load results from JSON file."""
+        filepath = Path(filepath)
+        
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        
+        # Reconstruct results
+        results = []
+        for r_data in data['results']:
+            result = GridSearchResult(**r_data)
+            results.append(result)
+        
+        # Create GridSearchResults instance
+        grid_results = cls(
+            results=results,
+            parameter_space=data['parameter_space'],
+            convergence_info=data.get('convergence_info', {})
+        )
+        
+        logger.info(f"Loaded grid search results from {filepath}")
+        return grid_results
+
+
+class GridSearchCalibrator:
+    """
+    Grid search calibrator for systematic parameter space exploration.
+    """
+    
+    def __init__(self, 
+                 calibration_config,
+                 parameter_bounds: Dict[str, Any],
+                 objective_function,
+                 parallel_execution: bool = True,
+                 max_workers: Optional[int] = None):
+        """
+        Initialize grid search calibrator.
+        
+        Args:
+            calibration_config: Calibration configuration
+            parameter_bounds: Dictionary of parameter bounds
+            objective_function: Objective function to optimize
+            parallel_execution: Whether to use parallel evaluation
+            max_workers: Maximum number of parallel workers
+        """
+        self.config = calibration_config
+        self.parameter_bounds = parameter_bounds
+        self.objective_function = objective_function
+        self.parallel_execution = parallel_execution
+        self.max_workers = max_workers or 4
+        
+        # Initialize parameter space
+        self.parameter_space = self._create_parameter_space()
+        self.total_combinations = self._calculate_total_combinations()
+        
+        logger.info(f"Initialized grid search with {self.total_combinations} parameter combinations")
+    
+    def _create_parameter_space(self) -> Dict[str, List[float]]:
+        """Create the parameter space grid."""
+        parameter_space = {}
+        
+        for param_name in self.config.get_calibration_parameter_names():
+            if param_name not in self.parameter_bounds:
+                logger.warning(f"No bounds defined for parameter {param_name}, skipping")
+                continue
+            
+            bounds = self.parameter_bounds[param_name]
+            
+            # Generate grid points for this parameter
+            grid_points = bounds.generate_grid_points(self.config.grid_search_points)
+            parameter_space[param_name] = grid_points
+            
+            logger.debug(f"Parameter {param_name}: {len(grid_points)} points from "
+                        f"{min(grid_points):.3f} to {max(grid_points):.3f}")
+        
+        return parameter_space
+    
+    def _calculate_total_combinations(self) -> int:
+        """Calculate total number of parameter combinations."""
+        if not self.parameter_space:
+            return 0
+        
+        total = 1
+        for param_values in self.parameter_space.values():
+            total *= len(param_values)
+        
+        return total
+    
+    def _generate_parameter_combinations(self):
+        """Generate all parameter combinations for grid search."""
+        param_names = list(self.parameter_space.keys())
+        param_value_lists = [self.parameter_space[name] for name in param_names]
+        
+        for combination in itertools.product(*param_value_lists):
+            yield dict(zip(param_names, combination))
+    
+    def _evaluate_single_combination(self, 
+                                   parameter_values: Dict[str, float],
+                                   target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
+        """Evaluate a single parameter combination."""
+        start_time = time.time()
+        
+        try:
+            # Create configuration with these parameter values
+            config = self.config.create_config_variant(parameter_values)
+            
+            # Create forest model and simulation engine
+            forest_model = create_forest_model(
+                model_type='standard',
+                config=config,
+                grid_size=config.grid_size,
+                num_layers=config.num_layers
+            )
+            
+            engine = FireSimulationEngine(forest_model=forest_model, config=config)
+            
+            # Set ignition point (use center of grid for consistency)
+            center_x, center_y = config.grid_size[0] // 2, config.grid_size[1] // 2
+            forest_model.set_ignition(center_x, center_y, 0)
+            
+            # Run simulation
+            simulation_result = engine.run_simulation(
+                max_steps=config.max_steps,
+                store_history=False,  # Don't store full history for calibration
+                stop_when_fire_extinguished=True
+            )
+            
+            # Evaluate objective function
+            objective_result = self.objective_function(simulation_result, target_data)
+            
+            evaluation_time = time.time() - start_time
+            
+            return GridSearchResult(
+                parameter_values=parameter_values.copy(),
+                objective_value=objective_result.value,
+                objective_components=objective_result.components.copy(),
+                simulation_stats=simulation_result['stats'].copy(),
+                evaluation_time=evaluation_time,
+                is_valid=objective_result.is_valid,
+                error_message=objective_result.error_message
+            )
+            
+        except Exception as e:
+            evaluation_time = time.time() - start_time
+            logger.warning(f"Evaluation failed for parameters {parameter_values}: {e}")
+            
+            return GridSearchResult(
+                parameter_values=parameter_values.copy(),
+                objective_value=0.0,
+                objective_components={},
+                simulation_stats={},
+                evaluation_time=evaluation_time,
+                is_valid=False,
+                error_message=str(e)
+            )
+    
+    def run_calibration(self, 
+                       target_data: Optional[Dict[str, Any]] = None,
+                       progress_callback: Optional[callable] = None) -> GridSearchResults:
+        """
+        Run the grid search calibration.
+        
+        Args:
+            target_data: Target data for objective function evaluation
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            GridSearchResults with all evaluation results
+        """
+        logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
+        start_time = time.time()
+        
+        results = GridSearchResults(parameter_space=self.parameter_space.copy())
+        
+        if self.parallel_execution and self.total_combinations > 1:
+            results = self._run_parallel_calibration(target_data, progress_callback, results)
+        else:
+            results = self._run_sequential_calibration(target_data, progress_callback, results)
+        
+        total_time = time.time() - start_time
+        logger.info(f"Grid search completed in {total_time:.2f} seconds")
+        logger.info(f"Best objective value: {results.get_best_objective_value():.4f}")
+        logger.info(f"Best parameters: {results.get_best_parameters()}")
+        
+        # Store convergence information
+        results.convergence_info = {
+            'converged': True,  # Grid search always completes
+            'total_time': total_time,
+            'evaluations_per_second': results.total_evaluations / max(total_time, 1e-6),
+            'success_rate': results.successful_evaluations / max(results.total_evaluations, 1)
+        }
+        
+        return results
+    
+    def _run_sequential_calibration(self, 
+                                  target_data: Optional[Dict[str, Any]],
+                                  progress_callback: Optional[callable],
+                                  results: GridSearchResults) -> GridSearchResults:
+        """Run calibration sequentially."""
+        for i, param_combination in enumerate(self._generate_parameter_combinations()):
+            result = self._evaluate_single_combination(param_combination, target_data)
+            results.add_result(result)
+            
+            # Progress callback
+            if progress_callback:
+                progress_callback(i + 1, self.total_combinations, result)
+            
+            # Periodic logging
+            if (i + 1) % max(1, self.total_combinations // 20) == 0:
+                progress = (i + 1) / self.total_combinations * 100
+                best_value = results.get_best_objective_value() or 0.0
+                logger.info(f"Progress: {progress:.1f}% ({i + 1}/{self.total_combinations}), "
+                           f"Best objective: {best_value:.4f}")
+        
+        return results
+    
+    def _run_parallel_calibration(self, 
+                                target_data: Optional[Dict[str, Any]],
+                                progress_callback: Optional[callable],
+                                results: GridSearchResults) -> GridSearchResults:
+        """Run calibration in parallel."""
+        logger.info(f"Running parallel calibration with {self.max_workers} workers")
+        
+        # Generate all combinations
+        combinations = list(self._generate_parameter_combinations())
+        
+        # Use ThreadPoolExecutor for I/O bound tasks, ProcessPoolExecutor for CPU bound
+        executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
+        
+        with executor_class(max_workers=self.max_workers) as executor:
+            # Submit all jobs
+            future_to_params = {
+                executor.submit(self._evaluate_single_combination, combo, target_data): combo
+                for combo in combinations
+            }
+            
+            # Collect results as they complete
+            completed = 0
+            for future in as_completed(future_to_params):
+                try:
+                    result = future.result(timeout=self.config.simulation_timeout_minutes * 60)
+                    results.add_result(result)
+                    completed += 1
+                    
+                    # Progress callback
+                    if progress_callback:
+                        progress_callback(completed, self.total_combinations, result)
+                    
+                    # Periodic logging
+                    if completed % max(1, self.total_combinations // 20) == 0:
+                        progress = completed / self.total_combinations * 100
+                        best_value = results.get_best_objective_value() or 0.0
+                        logger.info(f"Progress: {progress:.1f}% ({completed}/{self.total_combinations}), "
+                                   f"Best objective: {best_value:.4f}")
+                
+                except Exception as e:
+                    logger.error(f"Evaluation failed: {e}")
+                    # Create a failed result
+                    failed_result = GridSearchResult(
+                        parameter_values=future_to_params[future],
+                        objective_value=0.0,
+                        objective_components={},
+                        simulation_stats={},
+                        evaluation_time=0.0,
+                        is_valid=False,
+                        error_message=str(e)
+                    )
+                    results.add_result(failed_result)
+                    completed += 1
+        
+        return results
+    
+    def get_estimation_info(self) -> Dict[str, Any]:
+        """Get estimation information about the calibration."""
+        # Rough time estimation based on single evaluation
+        estimated_time_per_eval = 30.0  # seconds (conservative estimate)
+        estimated_total_time = self.total_combinations * estimated_time_per_eval
+        
+        if self.parallel_execution:
+            estimated_total_time /= min(self.max_workers, self.total_combinations)
+        
+        return {
+            'total_combinations': self.total_combinations,
+            'parameter_space': {name: len(values) for name, values in self.parameter_space.items()},
+            'estimated_time_seconds': estimated_total_time,
+            'estimated_time_hours': estimated_total_time / 3600,
+            'parallel_execution': self.parallel_execution,
+            'max_workers': self.max_workers if self.parallel_execution else 1
+        }
+
+
+def create_progress_callback(verbose: bool = True) -> callable:
+    """Create a progress callback function for grid search."""
+    def callback(completed: int, total: int, result: GridSearchResult):
+        if verbose and completed % max(1, total // 10) == 0:
+            progress = completed / total * 100
+            status = "SUCCESS" if result.is_valid else "FAILED"
+            obj_val = result.objective_value if result.is_valid else 0.0
+            
+            print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: "
+                  f"{status} (Objective: {obj_val:.4f})")
+    
+    return callback
+
+
+if __name__ == "__main__":
+    # Example usage (requires proper imports and setup)
+    print("Grid Search Calibrator Example")
+    print("=" * 50)
+    
+    # This would normally require proper calibration config and bounds
+    print("This is a demonstration of the GridSearchCalibrator interface.")
+    print("To use this module, you need to:")
+    print("1. Create a CalibrationConfig")
+    print("2. Define parameter bounds") 
+    print("3. Create an objective function")
+    print("4. Initialize and run the calibrator")
+    
+    example_estimation = {
+        'total_combinations': 3125,  # 5^5 for 5 parameters with 5 points each
+        'estimated_time_hours': 2.5,
+        'parallel_execution': True,
+        'max_workers': 4
+    }
+    
+    print(f"\nExample estimation for {example_estimation['total_combinations']} combinations:")
+    print(f"Estimated time: {example_estimation['estimated_time_hours']:.1f} hours")
+    print(f"Parallel execution: {example_estimation['parallel_execution']}")
+    print(f"Workers: {example_estimation['max_workers']}") 

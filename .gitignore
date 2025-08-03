@@ -1,0 +1,199 @@
+# =============================================================================
+# Git Ignore File for LiDAR Processing & Forest Fire Simulation Project
+# =============================================================================
+
+# Large Data Files and Directories
+# =============================================================================
+# LiDAR and GIS Data Files
+*.las
+*.laz
+*.tif
+*.tiff
+*.geotiff
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.qix
+*.gdb/
+*.mdb
+
+# HDF5 and NetCDF files
+*.h5
+*.hdf5
+*.nc
+*.nc4
+
+# Large CSV and data files (keep small config CSVs)
+**/data/*.csv
+**/results/**/*.csv
+**/output/**/*.csv
+data/raw/
+data/processed/
+data/interim/
+data/external/
+
+# Simulation and Analysis Results
+# =============================================================================
+calibration_results/
+hpc_sensitivity_results/
+test_output/
+results/
+output/
+outputs/
+simulation_output/
+analysis_results/
+
+# Temporary and Cache Files
+# =============================================================================
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and Temporary Files
+# =============================================================================
+*.log
+logs/
+log/
+*.tmp
+*.temp
+.cache/
+.pytest_cache/
+
+# Memory and Performance Files
+# =============================================================================
+*.pickle
+*.pkl
+*.joblib
+*.dill
+memory_profiler_output.txt
+
+# OS Generated Files
+# =============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+
+# QGIS specific
+*.qgs~
+*.qgz~
+
+# HPC and SLURM
+# =============================================================================
+slurm-*.out
+*.o[0-9]*
+*.e[0-9]*
+core.*
+
+# Large Config Files (but keep small example configs)
+# =============================================================================
+# Keep: Small configuration files and examples
+# Ignore: Large parameter sweep configurations
+**/config/large_*.json
+**/config/parameter_sweep_*.json
+**/config/production_*.json
+
+# Backup and Archive Files
+# =============================================================================
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+
+# Documentation builds
+# =============================================================================
+docs/_build/
+docs/build/
+
+# Specific to this project
+# =============================================================================
+# Keep small analysis reports but ignore large data dumps
+data/dtm_analysis_report.json  # This line allows the small JSON file
+!data/dtm_analysis_report.json
+data/*.tif
+data/*.las
+data/*.laz
+
+# Animation outputs (these can be large)
+animation/output/
+animation/renders/
+animation/*.mp4
+animation/*.avi
+animation/*.mov
+
+# Model checkpoints and weights
+model_checkpoints/
+*.pth
+*.h5
+
+# Large text files and dumps
+*.dump
+large_*.txt
+debug_*.txt

@@ -1,0 +1,215 @@
+# ===================================================================
+# FOREST FIRE SIMULATION - DEVELOPMENT REQUIREMENTS
+# ===================================================================
+#
+# Development and testing dependencies for contributors
+#
+# This file includes:
+# - All core dependencies (from requirements.txt)
+# - Testing frameworks and tools
+# - Code quality and formatting tools
+# - Documentation tools
+# - Advanced optional libraries
+# - Debugging and profiling tools
+#
+# Installation: pip install -r requirements-dev.txt
+#
+# ===================================================================
+
+# Include all core requirements
+-r requirements.txt
+
+# ===================================================================
+# TESTING AND QUALITY ASSURANCE
+# ===================================================================
+
+# Testing frameworks
+pytest>=6.2.0,<8.0.0
+pytest-cov>=3.0.0,<5.0.0
+pytest-xdist>=2.5.0,<4.0.0  # Parallel test execution
+pytest-mock>=3.6.0,<4.0.0   # Mocking utilities
+
+# Code quality and formatting
+black>=21.0.0,<25.0.0
+flake8>=4.0.0,<7.0.0
+isort>=5.10.0,<6.0.0         # Import sorting
+mypy>=0.900,<2.0.0           # Static type checking
+
+# Security scanning
+bandit>=1.7.0,<2.0.0         # Security linting
+safety>=2.0.0,<3.0.0         # Dependency vulnerability scanning
+
+# ===================================================================
+# DOCUMENTATION AND REPORTING
+# ===================================================================
+
+# Documentation generation
+sphinx>=4.0.0,<8.0.0
+sphinx-rtd-theme>=1.0.0,<3.0.0
+myst-parser>=0.17.0,<3.0.0  # Markdown support for Sphinx
+
+# Notebook support for documentation
+jupyter>=1.0.0,<2.0.0
+nbsphinx>=0.8.0,<1.0.0      # Jupyter notebook integration with Sphinx
+
+# ===================================================================
+# PERFORMANCE ANALYSIS AND DEBUGGING
+# ===================================================================
+
+# Memory and performance profiling
+memory-profiler>=0.60.0,<1.0.0
+line-profiler>=3.0.0,<5.0.0
+py-spy>=0.3.0,<1.0.0        # Sampling profiler
+
+# Debugging tools
+ipdb>=0.13.0,<1.0.0         # Enhanced debugger
+rich>=10.0.0,<14.0.0        # Rich console output
+
+# ===================================================================
+# ADVANCED OPTIONAL LIBRARIES
+# ===================================================================
+
+# Distributed computing
+dask>=2021.11.0,<2025.0.0
+# mpi4py>=3.1.0,<4.0.0      # Uncomment for MPI support
+
+# Machine learning and advanced analytics
+scikit-learn>=1.0.0,<2.0.0
+# xarray>=0.20.0,<2025.0.0  # Uncomment for N-dimensional arrays
+
+# Advanced file formats
+# h5py>=3.6.0,<4.0.0        # Uncomment for HDF5 support
+# netcdf4>=1.5.8,<2.0.0     # Uncomment for NetCDF support
+
+# Configuration management
+# pydantic>=1.8.0,<3.0.0    # Uncomment for advanced validation
+
+# Command-line utilities
+click>=8.0.0,<9.0.0
+
+# ===================================================================
+# BUILD AND PACKAGING TOOLS
+# ===================================================================
+
+# Build tools
+build>=0.7.0,<1.0.0
+wheel>=0.37.0,<1.0.0
+setuptools>=60.0.0,<70.0.0
+
+# Package management
+pip-tools>=6.0.0,<8.0.0     # Requirements management
+pipdeptree>=2.0.0,<3.0.0    # Dependency visualization
+
+# ===================================================================
+# JUPYTER AND INTERACTIVE DEVELOPMENT
+# ===================================================================
+
+# Jupyter ecosystem
+jupyterlab>=3.0.0,<5.0.0
+jupyter-contrib-nbextensions>=0.5.0,<1.0.0
+ipywidgets>=7.6.0,<9.0.0
+
+# Interactive plotting
+plotly>=5.0.0,<6.0.0        # Interactive visualizations
+bokeh>=2.4.0,<4.0.0         # Web-based plotting
+
+# ===================================================================
+# DEVELOPMENT WORKFLOW TOOLS
+# ===================================================================
+
+# Pre-commit hooks
+pre-commit>=2.15.0,<4.0.0
+
+# Version management
+bump2version>=1.0.0,<2.0.0
+
+# Git utilities
+gitpython>=3.1.0,<4.0.0
+
+# ===================================================================
+# PLATFORM COMPATIBILITY
+# ===================================================================
+
+# Windows-specific development tools
+# pywin32>=227; sys_platform == "win32"
+
+# ===================================================================
+# INSTALLATION NOTES FOR DEVELOPERS
+# ===================================================================
+#
+# Full development setup:
+# 1. git clone <repository>
+# 2. cd forest-fire-simulation
+# 3. conda create -n fire-sim-dev python=3.9
+# 4. conda activate fire-sim-dev
+# 5. conda install -c conda-forge gdal>=3.4.0
+# 6. pip install -r requirements-dev.txt
+# 7. pre-commit install  # Set up git hooks
+#
+# Running tests:
+# pytest tests/
+# pytest --cov=src tests/  # With coverage
+# pytest -n auto tests/    # Parallel execution
+#
+# Code quality checks:
+# black src/ tests/
+# flake8 src/ tests/
+# mypy src/
+# bandit -r src/
+#
+# Documentation:
+# cd docs/
+# make html  # Build documentation
+# jupyter lab  # Interactive development
+#
+# =================================================================== 
+
+# Development and advanced feature requirements
+
+# Core scientific computing (already in minimal)
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Geospatial libraries  
+gdal>=3.2.0
+rasterio>=1.2.0
+geopandas>=0.10.0
+fiona>=1.8.0
+shapely>=1.7.0
+pyproj>=3.0.0
+
+# Data visualization and analysis (NEW: Enhanced for sensitivity analysis)
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0  # For interactive visualizations
+pandas>=1.3.0
+bokeh>=2.4.0   # Alternative interactive plotting
+
+# Memory profiling and performance
+memory-profiler>=0.60.0
+psutil>=5.8.0
+line-profiler>=3.3.0
+
+# Testing and development  
+pytest>=6.2.0
+pytest-cov>=2.12.0
+black>=21.6.0
+flake8>=3.9.0
+
+# Documentation
+sphinx>=4.0.0
+sphinx-rtd-theme>=0.5.0
+
+# Parallel processing
+joblib>=1.0.0
+
+# Progress bars and user interface
+tqdm>=4.62.0
+click>=8.0.0
+
+# Optional: Machine learning for advanced calibration
+scikit-learn>=1.0.0
+
+# Configuration management
+pyyaml>=5.4.0
+toml>=0.10.0 

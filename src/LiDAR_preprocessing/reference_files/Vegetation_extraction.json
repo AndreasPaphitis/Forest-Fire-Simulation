@@ -1,0 +1,17 @@
+{
+    "pipeline": [
+        {
+            "type": "readers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/Normalized_Points.laz"
+        },
+        {
+            "type": "filters.range",
+            "limits": "Classification[3:5], Z[0:80]"
+        },
+        {
+            "type": "writers.las",
+            "filename": "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/Vegetation_Points.laz",
+            "compression": "laszip"
+        }
+    ]
+}

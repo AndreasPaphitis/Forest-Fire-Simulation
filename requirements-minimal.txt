@@ -1,0 +1,49 @@
+# ===================================================================
+# FOREST FIRE SIMULATION - MINIMAL REQUIREMENTS
+# ===================================================================
+#
+# Minimal dependency set for core forest fire simulation functionality
+# 
+# This file contains only the absolutely essential packages required to:
+# - Run basic fire simulations
+# - Process LiDAR data
+# - Generate basic visualizations
+#
+# For full functionality, use requirements.txt instead
+#
+# Python: >=3.9,<4.0
+# ===================================================================
+
+# Core scientific computing (REQUIRED)
+numpy>=1.21.0,<2.0.0
+scipy>=1.7.0,<2.0.0
+
+# Geospatial data processing (REQUIRED for LiDAR)
+GDAL>=3.4.0,<4.0.0
+
+# Image processing (REQUIRED for data resampling)
+scikit-image>=0.19.0,<1.0.0
+
+# Visualization (REQUIRED for fire spread plots)
+matplotlib>=3.5.0,<4.0.0
+
+# System monitoring (REQUIRED for memory management)
+psutil>=5.8.0,<6.0.0
+
+# Progress tracking (REQUIRED for long operations)
+tqdm>=4.62.0,<5.0.0
+
+# ===================================================================
+# INSTALLATION
+# ===================================================================
+#
+# Basic installation:
+# pip install -r requirements-minimal.txt
+#
+# With conda (recommended for GDAL):
+# conda create -n fire-sim-minimal python=3.9
+# conda activate fire-sim-minimal
+# conda install -c conda-forge gdal>=3.4.0
+# pip install -r requirements-minimal.txt
+#
+# =================================================================== 
