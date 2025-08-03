@@ -177,7 +177,7 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         from src.config.config_tools import ModelConfig
         from src.core.fire_simulation_engine import FireSimulationEngine
         from src.core.forest_model import create_forest_model
-        from src.core.calibration.objective_functions import create_default_spatial_objective
+        from src.core.calibration.sensitivity_objective import create_sensitivity_objective
         
         # Create config variant with parameter at test value
         config_variant_dict = config_dict.copy()
@@ -211,8 +211,8 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         )
         
         # Evaluate objective function
-        objective_function = create_default_spatial_objective()
-        objective_result = objective_function(simulation_result, target_data)
+        objective_function = create_sensitivity_objective()
+        objective_result = objective_function.evaluate(simulation_result, target_data)
         
         if objective_result.is_valid:
             return (evaluation.parameter_name, evaluation.test_value, 
@@ -258,7 +258,11 @@ class SensitivityAnalyzer:
         """
         self.config = calibration_config
         self.parameter_bounds = parameter_bounds
-        self.objective_function = objective_function
+        if objective_function is None:
+            from src.core.calibration.sensitivity_objective import create_sensitivity_objective
+            self.objective_function = create_sensitivity_objective()
+        else:
+            self.objective_function = objective_function
         self.perturbation_method = "range_based"  # Force Method 2
         
         # Set default perturbation values for Method 2: 9 evenly spaced points (0%, 10%, 20%, ..., 80%)
@@ -509,7 +513,7 @@ class SensitivityAnalyzer:
             simulation_result = self._run_simulation_with_config(self.baseline_config)
             
             # Evaluate objective
-            objective_result = self.objective_function(simulation_result, target_data)
+            objective_result = self.objective_function.evaluate(simulation_result, target_data)
             if objective_result.is_valid:
                 return objective_result.value
             else:
@@ -564,7 +568,7 @@ class SensitivityAnalyzer:
                     simulation_result = self._run_simulation_with_config(test_config)
                     
                     # Evaluate objective
-                    objective_result = self.objective_function(simulation_result, target_data)
+                    objective_result = self.objective_function.evaluate(simulation_result, target_data)
                     
                     if objective_result.is_valid:
                         objective_values.append(objective_result.value)

@@ -322,9 +322,13 @@ class BaseForestModel(ABC):
                 logger.info("🔄 Using preprocessed terrain data")
                 return self._load_preprocessed_terrain_data(preprocessed_dir)
         
-        # Only fall back to DEM loading if no preprocessed data available
-        logger.warning("No preprocessed terrain data found, falling back to DEM loading")
-        return self._load_dem_terrain_data(dem_file)
+        # Only fall back to DEM loading if no preprocessed data available AND DEM file exists
+        if dem_file and os.path.exists(dem_file):
+            logger.warning("No preprocessed terrain data found, falling back to DEM loading")
+            return self._load_dem_terrain_data(dem_file)
+        else:
+            logger.warning("No terrain data available (no preprocessed terrain or DEM file), using flat terrain")
+            return True  # Continue with flat terrain (no terrain elevation data)
     
     def _load_preprocessed_terrain_data(self, preprocessed_dir: str) -> bool:
         """

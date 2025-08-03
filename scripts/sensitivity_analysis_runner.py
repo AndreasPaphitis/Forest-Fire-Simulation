@@ -237,12 +237,12 @@ class HPCOptimizedSensitivityRunner:
             print(f"📏 Using CLI-specified max steps: {max_steps}")
         
         # Check for preprocessed terrain and determine appropriate grid size
-        preprocessed_terrain_dir = Path("preprocessed_terrain")
+        preprocessed_terrain_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
         use_preprocessed_terrain = preprocessed_terrain_dir.exists()
         
         if cli_args is not None and hasattr(cli_args, 'force_preprocessed') and cli_args.force_preprocessed:
             use_preprocessed_terrain = True
-            preprocessed_terrain_dir = Path("preprocessed_terrain")
+            preprocessed_terrain_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
         
         # If CLI didn't specify grid size, determine it based on mode and terrain
         if grid_size is None:
@@ -349,7 +349,20 @@ class HPCOptimizedSensitivityRunner:
             
             # PREPROCESSED TERRAIN CONFIGURATION
             use_preprocessed_terrain=use_preprocessed_terrain,
-            preprocessed_terrain_dir=str(preprocessed_terrain_dir) if use_preprocessed_terrain else None
+            preprocessed_terrain_dir=str(preprocessed_terrain_dir) if use_preprocessed_terrain else None,
+            
+            # NO DEM FALLBACK (no DEM file available - will use flat terrain if preprocessed fails)
+            use_terrain=False,
+            dem_file=None,
+            
+            # LIDAR CONFIGURATION
+            use_lidar=True,
+            lidar_data_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results/",
+            auto_size_from_lidar=False,
+            extinction_coefficient=0.5,
+            pad_bin_size=2.0,
+            exclude_ground_layer=True,
+            max_vegetation_height_m=50.0
         )
         
         # Determine worker count

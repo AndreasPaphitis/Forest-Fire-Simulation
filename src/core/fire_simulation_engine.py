@@ -135,7 +135,8 @@ class FireSimulationEngine:
         if (hasattr(self.config, 'use_preprocessed_terrain') and self.config.use_preprocessed_terrain and
             hasattr(self.config, 'preprocessed_terrain_dir') and self.config.preprocessed_terrain_dir):
             logger.info(f"Loading preprocessed terrain data from: {self.config.preprocessed_terrain_dir}")
-            success = self.forest_model.load_terrain_data("")  # DEM file not used with preprocessed
+            # Try to load preprocessed terrain (will fall back to flat terrain if it fails)
+            success = self.forest_model.load_terrain_data("")  # Empty string for preprocessed-only loading
             if success:
                 logger.info("✅ Successfully loaded preprocessed terrain data")
                 # Log terrain statistics for verification
