@@ -57,7 +57,7 @@ try:
         CalibrationConfig, CalibrationMethod, CalibrationObjective,
         SensitivityAnalyzer,
         get_default_calibration_bounds,
-        create_default_spatial_objective,
+
         create_sensitivity_progress_callback,
         save_calibration_results,
         create_calibration_report,
@@ -238,7 +238,26 @@ class HPCOptimizedSensitivityRunner:
         
         # Check for preprocessed terrain and determine appropriate grid size
         preprocessed_terrain_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
-        use_preprocessed_terrain = preprocessed_terrain_dir.exists()
+        use_preprocessed_terrain = False
+        
+        if preprocessed_terrain_dir.exists():
+            # Validate that all required preprocessed terrain files exist
+            required_files = [
+                "elevation.npy", "slope.npy", "aspect.npy", "barranco_mask.npy",
+                "barranco_directions.npy", "depression_mask.npy", "wind_channeling_mask.npy",
+                "wind_amplification.npy", "wind_direction_modification.npy"
+            ]
+            missing_files = [f for f in required_files if not (preprocessed_terrain_dir / f).exists()]
+            
+            if missing_files:
+                print(f"⚠️  Preprocessed terrain directory found but missing files: {missing_files}")
+                print("   Will use flat terrain instead")
+                use_preprocessed_terrain = False
+            else:
+                print("✅ All preprocessed terrain files found")
+                use_preprocessed_terrain = True
+        else:
+            print("📊 Preprocessed terrain directory not found - will use flat terrain")
         
         if cli_args is not None and hasattr(cli_args, 'force_preprocessed') and cli_args.force_preprocessed:
             use_preprocessed_terrain = True
@@ -320,6 +339,25 @@ class HPCOptimizedSensitivityRunner:
         if cli_args is not None and hasattr(cli_args, 'memory_level'):
             memory_level = cli_args.memory_level
         
+        # Validate LiDAR data directory
+        lidar_data_dir = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results/"
+        use_lidar = False
+        
+        lidar_path = Path(lidar_data_dir)
+        if lidar_path.exists():
+            # Check if directory contains LiDAR files (look for common LiDAR file extensions)
+            lidar_files = list(lidar_path.glob("*.las")) + list(lidar_path.glob("*.laz")) + list(lidar_path.glob("*.txt"))
+            if lidar_files:
+                print(f"✅ LiDAR data directory found with {len(lidar_files)} files")
+                use_lidar = True
+            else:
+                print("⚠️  LiDAR directory exists but no LiDAR files found (.las, .laz, .txt)")
+                print("   Disabling LiDAR usage")
+                use_lidar = False
+        else:
+            print("📊 LiDAR directory not found - disabling LiDAR usage")
+            use_lidar = False
+        
         # HPC-optimized base config for sensitivity analysis
         base_config = ModelConfig(
             grid_size=grid_size,
@@ -355,9 +393,9 @@ class HPCOptimizedSensitivityRunner:
             use_terrain=False,
             dem_file=None,
             
-            # LIDAR CONFIGURATION
-            use_lidar=True,
-            lidar_data_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results/",
+            # LIDAR CONFIGURATION (validated)
+            use_lidar=use_lidar,
+            lidar_data_dir=lidar_data_dir if use_lidar else None,
             auto_size_from_lidar=False,
             extinction_coefficient=0.5,
             pad_bin_size=2.0,
@@ -522,9 +560,10 @@ class HPCOptimizedSensitivityRunner:
         self.parameter_bounds = get_default_calibration_bounds()
         print(f"✅ Loaded bounds for {len(self.parameter_bounds)} parameters")
         
-        # Create objective function
-        self.objective_function = create_default_spatial_objective()
-        print("✅ Created spatial similarity objective function")
+        # Create objective function for sensitivity analysis
+        from src.core.calibration.sensitivity_objective import create_sensitivity_objective
+        self.objective_function = create_sensitivity_objective()
+        print("✅ Created sensitivity analysis objective function")
         
         # Create production target data with real terrain and fuel
         # Ensure base_config exists (should be created in __post_init__)

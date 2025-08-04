@@ -177,7 +177,7 @@ class SensitivityAnalysisObjective(ObjectiveFunction):
         """Calculate fire persistence (normalized by max steps)."""
         try:
             steps = stats.get('steps', 0)
-            max_steps = getattr(forest_model, 'max_steps', 50)  # Default max steps
+            max_steps = getattr(forest_model.config, 'max_steps', 50) if forest_model.config else 50
             
             if max_steps > 0:
                 return min(steps / max_steps, 1.0)  # Normalize to [0, 1]
@@ -213,8 +213,8 @@ class SensitivityAnalysisObjective(ObjectiveFunction):
                     
                     # Normalize by grid dimensions
                     grid_height, grid_width = fire_mask.shape
-                    x_cv = x_std / max(grid_width, 1) if x_mean > 0 else 0
-                    y_cv = y_std / max(grid_height, 1) if y_mean > 0 else 0
+                    x_cv = x_std / max(grid_width, 1)
+                    y_cv = y_std / max(grid_height, 1)
                     
                     return min((x_cv + y_cv) / 2, 1.0)  # Average and normalize
                 else:
