@@ -421,7 +421,7 @@ class HPCOptimizedSensitivityRunner:
             objective=CalibrationObjective.SPATIAL_SIMILARITY,
             base_config=base_config,
             
-            # All 15 calibration parameters organized by tier
+            # All 13 calibration parameters organized by tier
             calibration_parameters=self._get_all_calibration_parameters(),
             
             # Results configuration
@@ -506,10 +506,10 @@ class HPCOptimizedSensitivityRunner:
     
     def _get_all_calibration_parameters(self) -> List[str]:
         """
-        Get all 14 calibration parameters organized by sensitivity groups.
+        Get all 13 calibration parameters organized by sensitivity groups.
         
         Group 1: Full range parameters (7 parameters)
-        Group 2: Constrained range parameters (7 parameters)
+        Group 2: Constrained range parameters (6 parameters)
         
         Returns:
             List of all calibration parameter names in priority order
@@ -548,7 +548,7 @@ class HPCOptimizedSensitivityRunner:
             # Quick mode: only top 7 critical parameters (Group 1)
             return group1_full_range
         else:
-            # Full mode: all 14 parameters
+            # Full mode: all 13 parameters
             return group1_full_range + group2_constrained_range
     
     def setup_components(self):

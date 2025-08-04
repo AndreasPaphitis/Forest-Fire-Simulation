@@ -2,160 +2,185 @@
 
 ## Executive Summary
 
-The sensitivity analysis framework has been **significantly streamlined** to focus on **5 core parameters** that are actually used in the simulation and not preprocessed. This represents a major improvement in parameter selection rationale, removing parameters that would disproportionately influence model output or are handled by preprocessing.
+The sensitivity analysis framework implements **comprehensive parameter coverage** with **13 calibration parameters** organized into two groups for systematic analysis. This provides thorough coverage of all core fire simulation mechanisms including fire spread, fuel dynamics, wind effects, terrain interactions, and ember generation.
 
-## Major Changes Made
+## Current Parameter Configuration
 
-### ✅ **Parameters Removed (9 total)**
+### ✅ **Complete Parameter Set (13 Total)**
 
-#### **Disproportionately Influential Parameters (3)**
-- `ignition_threshold` - Would dominate sensitivity analysis due to binary ignition logic
-- `min_fuel_value` - Would disproportionately affect fuel availability
-- `max_fuel_value` - Would disproportionately affect fuel normalization
+The framework analyzes 13 parameters organized into two groups:
 
-#### **Preprocessed Terrain Parameters (6)**
-- `slope_influence` - Now handled by terrain preprocessing
-- `terrain_effect_strength` - Now handled by terrain preprocessing  
-- `barranco_amplification` - Now handled by terrain preprocessing
-- `barranco_direction_weight` - Now handled by terrain preprocessing
-- `barranco_threshold` - Now handled by terrain preprocessing
-- `min_depression_depth` - Now handled by terrain preprocessing
-
-### ✅ **Parameters Retained (5 total)**
-- `spread_probability` - Core fire spread mechanism
-- `fuel_consumption_rate` - Core fuel dynamics
-- `wind_speed` - Core wind influence on fire behavior
-- `wind_influence_on_spread` - Core wind-spread interaction
-- `ember_probability` - Core ember generation mechanism
-
-## Current Parameter Set (5 Total)
-
-### **Tier 1: Critical Parameters (4 parameters)**
-1. `spread_probability` - Base fire spread probability [0.1, 0.8]
+#### **Group 1: Full Range Parameters (7 parameters)**
+Parameters tested across their complete theoretical ranges:
+1. `wind_influence_on_spread` - Wind effect on fire spread probability [0.0, 1.0]
 2. `fuel_consumption_rate` - Rate of fuel consumption [0.1, 5.0]
-3. `wind_speed` - Base wind speed affecting fire spread [1.0, 20.0]
-4. `wind_influence_on_spread` - Wind effect on spread [0.0, 1.0]
+3. `terrain_effect_strength` - Overall terrain effect strength [0.0, 1.0]
+4. `barranco_amplification` - Wind speed amplification in ravines [1.0, 3.0]
+5. `barranco_direction_weight` - Wind direction alignment weight in ravines [0.0, 1.0]
+6. `slope_influence` - Terrain slope effect on fire spread [0.0, 1.0]
+7. `ember_height_factor` - Height factor for ember generation [0.5, 2.0]
 
-### **Tier 3: Low Sensitivity (1 parameter)**
-5. `ember_probability` - Ember generation probability [0.01, 0.3]
+#### **Group 2: Constrained Range Parameters (6 parameters)**
+Parameters tested within realistic operational ranges:
+8. `wind_speed` - Base wind speed affecting fire spread [5.0, 15.0]
+9. `wind_direction` - Wind direction in degrees [0.0, 360.0]
+10. `ember_distance` - Ember travel distance [5.0, 50.0]
+11. `ember_probability` - Ember generation probability [0.01, 0.3]
+12. `spread_probability` - Base fire spread probability [0.1, 0.8]
+13. `ember_ignition` - Ember ignition probability [0.1, 0.6]
 
-## Parameter Usage Verification
+## Framework Implementation Status
 
-### ✅ **All 5 Parameters Are Actually Used in Simulation**
+### ✅ **All 13 Parameters Are Consistently Defined**
 
-**Fire Spread Parameters (2/2 used):**
-- `spread_probability` - Used in `_check_ignition()` line 444
-- `wind_influence_on_spread` - Used in `_check_ignition()` line 517
-
-**Fuel Parameters (1/1 used):**
-- `fuel_consumption_rate` - Used in `_check_burnout()` line 393
-
-**Wind Parameters (1/1 used):**
-- `wind_speed` - Used in forest model wind initialization and calculations
-
-**Ember Parameters (1/1 used):**
-- `ember_probability` - Used in `_process_embers()` line 757
+**Parameter Distribution by Category:**
+- **Fire Spread Parameters (2):** `spread_probability`, `wind_influence_on_spread`
+- **Fuel Parameters (1):** `fuel_consumption_rate`
+- **Wind Parameters (2):** `wind_speed`, `wind_direction`
+- **Terrain Parameters (3):** `terrain_effect_strength`, `barranco_amplification`, `slope_influence`
+- **Ember Parameters (4):** `ember_probability`, `ember_ignition`, `ember_distance`, `ember_height_factor`
+- **Barranco Parameters (1):** `barranco_direction_weight`
 
 ## Framework Components Status
 
-### ✅ **Core Components Updated**
+### ✅ **Core Components Fully Implemented**
 1. **Parameter Bounds** (`src/core/calibration/parameter_bounds.py`)
-   - Removed 9 problematic/preprocessed parameters
-   - Retained 5 core parameters with appropriate bounds
-   - Updated parameter count to 5
+   - Defines all 13 calibration parameters with appropriate bounds
+   - Comprehensive validation and type checking
+   - Literature-based range definitions
 
 2. **Sensitivity Analysis Runner** (`scripts/sensitivity_analysis_runner.py`)
-   - Updated parameter list to reflect changes
-   - Updated documentation comments
-   - Maintained tier organization
+   - Implements 13-parameter analysis in two groups
+   - HPC-optimized parallel processing (28 workers)
+   - Comprehensive validation and error handling
 
 3. **Calibration Configuration** (`src/core/calibration/calibration_config.py`)
-   - Updated default parameter list
-   - Maintained tier organization
-   - Streamlined to 5 parameters
+   - Default parameter list includes all 13 parameters
+   - Maintains group organization for systematic analysis
+   - Fully consistent with bounds and runner
 
-4. **Documentation** (Multiple files)
-   - Updated parameter counts from 14 to 5
-   - Updated parameter descriptions
-   - Maintained consistency across all docs
+4. **Sensitivity Objective Function** (`src/core/calibration/sensitivity_objective.py`)
+   - Custom objective function for intrinsic fire behavior analysis
+   - Measures burned area, spread rate, persistence, and spatial dispersion
+   - No external target data required
 
 ### ✅ **Validation Tests Passed**
-- Parameter bounds loading: ✅ 5 parameters loaded successfully
-- Parameter validation: ✅ All parameters have valid bounds
+- Parameter bounds loading: ✅ 13 parameters loaded successfully
+- Parameter validation: ✅ All parameters have valid bounds and types
 - Import tests: ✅ No import errors
+- Objective function: ✅ Correctly measures fire behavior metrics
+- Parallel processing: ✅ Consistent results across workers
 
-## Expected Impact of Changes
+## Expected Performance and Efficiency
 
-### **Dramatically Improved Efficiency**
-- **Before**: 14 parameters × 9 evaluations = 126 simulations
-- **After**: 5 parameters × 9 evaluations = 45 simulations
-- **Efficiency improvement**: 64% reduction in computation time
-- **Time savings**: ~20-40 minutes vs 30-60 minutes
+### **Comprehensive Analysis Scope**
+- **Current**: 13 parameters × 9 evaluations = 117 simulations
+- **Parallel Workers**: 28 (HPC optimized)
+- **Estimated Runtime**: 2-4 hours (depending on grid size and optimization level)
+- **Memory Usage**: Up to 28GB (HPC configured)
 
-### **Enhanced Parameter Focus**
-- **Removed disproportionate parameters**: No single parameter will dominate results
-- **Focused on core mechanisms**: Only parameters that directly affect fire behavior
-- **Preprocessed terrain**: Terrain effects handled by preprocessing pipeline
-- **Balanced sensitivity**: All parameters have similar influence scales
+### **Analysis Coverage**
+- **Complete fire behavior**: All core mechanisms analyzed
+- **Terrain interactions**: Slope, barranco, and terrain strength effects
+- **Wind dynamics**: Speed, direction, and influence on spread
+- **Ember generation**: Probability, ignition, distance, and height factors
+- **Fuel dynamics**: Consumption rates and effects
 
-### **Improved Calibration Strategy**
-- **Focused calibration**: 3 parameters × 5 points = 125 combinations (1-2 hours)
-- **Comprehensive calibration**: 4 parameters × 3 points = 81 combinations (2-4 hours)
-- **Complete analysis**: 5 parameters × 3 points = 243 combinations (4-6 hours)
+### **Calibration Strategy Options**
+- **Quick Analysis**: 7 parameters (Group 1) × 9 points = 63 evaluations (1-2 hours)
+- **Full Analysis**: 13 parameters × 9 points = 117 evaluations (2-4 hours)
+- **Extended Analysis**: 13 parameters × additional test points (4-8 hours)
 
-## Rationale for Parameter Selection
+## Rationale for Current Parameter Set
 
-### **Why These 5 Parameters?**
+### **Why These 13 Parameters?**
 
-1. **`spread_probability`**: Core fire spread mechanism - directly controls fire progression
-2. **`fuel_consumption_rate`**: Core fuel dynamics - directly controls burn intensity
-3. **`wind_speed`**: Core wind influence - directly affects fire behavior and ember transport
-4. **`wind_influence_on_spread`**: Core wind-spread interaction - modulates wind effects
-5. **`ember_probability`**: Core ember mechanism - affects long-range fire spread
+**Core Fire Mechanisms (5 parameters):**
+1. **`spread_probability`**: Base fire spread probability - fundamental fire behavior
+2. **`fuel_consumption_rate`**: Fuel depletion rate - controls fire intensity and duration
+3. **`wind_speed`**: Environmental wind speed - major driver of fire behavior
+4. **`wind_influence_on_spread`**: Wind effect modifier - controls wind impact
+5. **`ember_probability`**: Ember generation rate - enables long-range fire spread
 
-### **Why Removed Parameters?**
+**Terrain and Environmental Effects (4 parameters):**
+6. **`terrain_effect_strength`**: Overall terrain influence - modulates topographic effects
+7. **`slope_influence`**: Slope impact on fire spread - critical for mountainous terrain
+8. **`barranco_amplification`**: Wind amplification in ravines - terrain-wind interaction
+9. **`barranco_direction_weight`**: Wind alignment in channels - directional effects
 
-#### **Disproportionately Influential (3 parameters)**
-- **`ignition_threshold`**: Binary logic would dominate sensitivity analysis
-- **`min_fuel_value`**: Would disproportionately affect fuel availability
-- **`max_fuel_value`**: Would disproportionately affect fuel normalization
+**Ember Dynamics (3 parameters):**
+10. **`ember_ignition`**: Ember ignition success rate - spot fire initiation
+11. **`ember_distance`**: Maximum ember travel distance - long-range spread
+12. **`ember_height_factor`**: Vertical ember generation - height-dependent processes
 
-#### **Preprocessed Terrain (6 parameters)**
-- **All terrain parameters**: Now handled by preprocessing pipeline
-- **Barranco effects**: Precomputed and stored in terrain data
-- **Slope effects**: Precomputed and stored in terrain data
-- **Depression effects**: Precomputed and stored in terrain data
+**Environmental Variability (1 parameter):**
+13. **`wind_direction`**: Wind direction - directional fire spread patterns
+
+## Technical Implementation Status
+
+### ✅ **Critical Fixes Completed**
+1. **Sequential/Parallel Consistency**: Fixed function signature mismatches
+2. **Objective Function**: Implemented sensitivity-specific metrics (no target data)
+3. **Performance Optimization**: Eliminated unnecessary target data processing
+4. **Mathematical Robustness**: Using median-based sensitivity index calculations
+5. **HPC Configuration**: Optimized for 28-worker parallel execution
+
+### ✅ **Framework Validation**
+- **Import Tests**: All modules import correctly
+- **Parameter Consistency**: All 13 parameters defined consistently across files
+- **Bounds Validation**: All parameters have valid, literature-based ranges
+- **Objective Function**: Measures intrinsic fire behavior without external dependencies
+- **Parallel Processing**: Consistent objective function configuration across workers
 
 ## Recommendations for Next Steps
 
-### **Immediate Actions**
-1. **Run new sensitivity analysis** with streamlined 5-parameter set
-2. **Validate parameter balance** - all parameters should have similar sensitivity scales
-3. **Update calibration strategies** based on new focused parameter space
-
+### **Immediate Actions (Production Ready)**
+1. **Run comprehensive sensitivity analysis** with full 13-parameter set
+2. **Monitor performance**: Expect 2-4 hour runtime on HPC system
+3. **Validate results**: Ensure meaningful sensitivity indices across all parameters
+4. **Consider quick mode**: Use 7-parameter subset for faster initial analysis
 ### **Future Enhancements**
-1. **Consider adding weather parameters** (if not preprocessed):
-   - `wind_direction` - Wind direction (if not handled by preprocessing)
-   - `fuel_moisture_baseline` - Fuel moisture (if not handled by preprocessing)
+1. **Advanced Analysis Methods**:
+   - Implement global sensitivity analysis (Sobol indices) for parameter interactions
+   - Add variance-based sensitivity analysis for more robust rankings
+   - Include uncertainty quantification for parameter bounds
 
-2. **Expand objective functions**:
-   - Add burn duration metrics
-   - Include spread rate measurements
-   - Add fuel consumption tracking
+2. **Expanded Objective Functions**:
+   - Add fire intensity distribution metrics
+   - Include spatial pattern analysis (fire shape, connectivity)
+   - Incorporate temporal fire progression metrics
 
-3. **Investigate preprocessing integration**:
-   - Ensure terrain preprocessing parameters are properly documented
-   - Consider sensitivity analysis of preprocessing parameters separately
+3. **Methodological Improvements**:
+   - Parameter interaction analysis (two-way sensitivity)
+   - Multi-objective sensitivity analysis
+   - Adaptive parameter sampling for efficient exploration
+
+## Risk Assessment
+
+### **Low Risk ✅**
+- **Parameter Consistency**: All 13 parameters defined consistently across all files
+- **Implementation Robustness**: Comprehensive error handling and validation
+- **Computational Efficiency**: Optimized parallel processing for HPC environment
+- **Mathematical Soundness**: Robust median-based sensitivity calculations
+
+### **Medium Risk ⚠️**  
+- **Runtime Management**: 2-4 hour analysis requires proper scheduling and monitoring
+- **Resource Usage**: High memory usage (28GB) needs system resource planning
+- **Result Interpretation**: Large parameter set requires careful analysis of results
+
+### **High Risk ❌**
+- **None Identified**: Framework is technically sound and production-ready
 
 ## Conclusion
 
-The sensitivity analysis framework is now in a **highly optimized state** with:
-- **100% parameter accuracy** (all 5 parameters are actually used)
-- **Balanced parameter influence** (no single parameter dominates)
-- **Preprocessed terrain integration** (terrain effects handled separately)
-- **Dramatically improved efficiency** (64% reduction in computation time)
-- **Focused calibration approach** (manageable parameter space)
+The sensitivity analysis framework implements **comprehensive parameter coverage** with **13 calibration parameters** providing thorough analysis of all fire simulation mechanisms. Key achievements:
 
-The framework is ready for production use and should provide **balanced, meaningful parameter sensitivity rankings** that accurately reflect the relative importance of core fire behavior mechanisms without being dominated by preprocessing or disproportionately influential parameters.
+- **✅ Technical Excellence**: All critical implementation issues resolved
+- **✅ Comprehensive Coverage**: Fire spread, fuel dynamics, wind effects, terrain interactions, and ember generation
+- **✅ HPC Optimization**: 28-worker parallel processing with robust error handling  
+- **✅ Mathematical Rigor**: Proper sensitivity index calculations and objective functions
+- **✅ Production Ready**: Validated implementation ready for immediate deployment
 
-**Next recommended action**: Run a new sensitivity analysis to validate the streamlined approach and obtain balanced parameter rankings. 
+The framework provides **industry-standard sensitivity analysis** capabilities and should deliver **meaningful, actionable insights** for forest fire simulation parameter understanding and calibration.
+
+**Next recommended action**: Execute the comprehensive 13-parameter sensitivity analysis on HPC system to obtain complete parameter rankings across all fire behavior mechanisms. 

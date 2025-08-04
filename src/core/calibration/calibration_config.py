@@ -74,7 +74,7 @@ class CalibrationConfig:
         'barranco_direction_weight',
         'slope_influence',
         'ember_height_factor',
-        # Group 2: Constrained Range Parameters (7 parameters)
+        # Group 2: Constrained Range Parameters (6 parameters)
         'wind_speed',
         'wind_direction',
         'ember_distance',
