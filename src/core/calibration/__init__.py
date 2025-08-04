@@ -52,6 +52,7 @@ from .calibration_utils import (
 
 # Convenience functions for creating default objects
 from .objective_functions import create_default_spatial_objective
+from .sensitivity_objective import SensitivityAnalysisObjective, create_sensitivity_objective
 from .parameter_bounds import create_calibration_parameters
 from .grid_search import create_progress_callback
 from .sensitivity_analysis import create_sensitivity_progress_callback
@@ -73,6 +74,7 @@ __all__ = [
     'ObjectiveFunction',
     'SpatialSimilarityObjective',
     'FireBehaviorObjective',
+    'SensitivityAnalysisObjective',
     'calculate_jaccard_index',
     'calculate_dice_coefficient',
     'calculate_sorensen_coefficient',
@@ -93,6 +95,7 @@ __all__ = [
     
     # Convenience functions
     'create_default_spatial_objective',
+    'create_sensitivity_objective',
     'create_calibration_parameters',
     'create_progress_callback',
     'create_sensitivity_progress_callback'

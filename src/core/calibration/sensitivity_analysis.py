@@ -166,7 +166,8 @@ class ParameterEvaluation:
 def _evaluate_single_parameter_value(evaluation: ParameterEvaluation, 
                                      config_dict: Dict[str, Any],
                                      parameter_bounds: Dict[str, Any],
-                                     target_data: Optional[Dict[str, Any]]) -> Tuple[str, float, float, bool, str]:
+                                     target_data: Optional[Dict[str, Any]],
+                                     objective_config: Optional[Dict[str, Any]] = None) -> Tuple[str, float, float, bool, str]:
     """
     Static function for parallel evaluation of a single parameter-value combination.
     
@@ -210,8 +211,13 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
             stop_when_fire_extinguished=True
         )
         
-        # Evaluate objective function
-        objective_function = create_sensitivity_objective()
+        # Evaluate objective function (use consistent configuration)
+        if objective_config:
+            from src.core.calibration.sensitivity_objective import SensitivityAnalysisObjective
+            objective_function = SensitivityAnalysisObjective(**objective_config)
+        else:
+            from src.core.calibration.sensitivity_objective import create_sensitivity_objective
+            objective_function = create_sensitivity_objective()
         objective_result = objective_function.evaluate(simulation_result, target_data)
         
         if objective_result.is_valid:
@@ -392,11 +398,19 @@ class SensitivityAnalyzer:
         
         evaluation_results = []
         
+        # Create objective function configuration for consistent parallel processing
+        objective_config = {
+            'area_weight': self.objective_function.area_weight,
+            'spread_rate_weight': self.objective_function.spread_rate_weight,
+            'persistence_weight': self.objective_function.persistence_weight,
+            'dispersion_weight': self.objective_function.dispersion_weight
+        }
+        
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all jobs
             future_to_eval = {
                 executor.submit(_evaluate_single_parameter_value, 
-                               eval_item, config_dict, self.parameter_bounds, target_data): eval_item
+                               eval_item, config_dict, self.parameter_bounds, target_data, objective_config): eval_item
                 for eval_item in evaluations
             }
             
@@ -686,9 +700,10 @@ class SensitivityAnalyzer:
         # Calculate raw sensitivity (output change per unit parameter change)
         raw_sensitivity = output_range / param_range
         
-        # Find middle output value for normalization (40% point, index 3 of 9 values)
-        if len(objective_values) >= 4:
-            middle_output = objective_values[3]  # 40% point (index 3 of [0,1,2,3,4,5,6,7,8])
+        # Find middle output value for normalization (use median for robust estimation)
+        if len(objective_values) >= 3:
+            # Use median for robust middle value estimation
+            middle_output = np.median(objective_values)
         else:
             middle_output = baseline_objective  # Fallback to reference value
         
