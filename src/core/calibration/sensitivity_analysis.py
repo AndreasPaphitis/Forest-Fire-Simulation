@@ -171,6 +171,13 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
     """
     Static function for parallel evaluation of a single parameter-value combination.
     
+    Args:
+        evaluation: Parameter evaluation specification
+        config_dict: Configuration dictionary
+        parameter_bounds: Parameter bounds dictionary
+        target_data: Target data (not used for sensitivity analysis)
+        objective_config: Objective function configuration for consistency
+    
     Returns: (parameter_name, test_value, objective_value, is_valid, error_message)
     """
     try:
@@ -441,8 +448,16 @@ class SensitivityAnalyzer:
         
         evaluation_results = []
         
+        # Create objective function configuration for consistent sequential processing
+        objective_config = {
+            'area_weight': self.objective_function.area_weight,
+            'spread_rate_weight': self.objective_function.spread_rate_weight,
+            'persistence_weight': self.objective_function.persistence_weight,
+            'dispersion_weight': self.objective_function.dispersion_weight
+        }
+        
         for i, evaluation in enumerate(evaluations):
-            result = _evaluate_single_parameter_value(evaluation, config_dict, self.parameter_bounds, target_data)
+            result = _evaluate_single_parameter_value(evaluation, config_dict, self.parameter_bounds, target_data, objective_config)
             evaluation_results.append(result)
             
             # Progress callback

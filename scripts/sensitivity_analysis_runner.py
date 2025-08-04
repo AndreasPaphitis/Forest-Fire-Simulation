@@ -62,8 +62,7 @@ try:
         save_calibration_results,
         create_calibration_report,
         validate_calibration_config,
-        create_synthetic_target_data,
-        create_production_target_data
+
     )
     from src.config.config_tools import ModelConfig
     from src.utils.logging_utils import get_logger
@@ -575,48 +574,11 @@ class HPCOptimizedSensitivityRunner:
         num_layers = self.calibration_config.base_config.num_layers
         model_resolution = self.calibration_config.base_config.model_resolution
         
-        # Check if user wants to force synthetic data
-        cli_args = getattr(self, '_cli_args', None)
-        if cli_args is not None and hasattr(cli_args, 'force_synthetic') and cli_args.force_synthetic:
-            print("🔄 Using SYNTHETIC DATA (forced by --force-synthetic)")
-            self.target_data = create_synthetic_target_data(grid_size, "elliptical")
-            print(f"✅ Created synthetic target data ({self.target_data['burned_cells']} burned cells)")
-        else:
-            # Use production data paths - CLI args override defaults
-            lidar_data_dir = "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/Analysis files/Processed/PAD Results"
-            dem_file = "C:/Users/user/Desktop/UvA/YEAR 2/Thesis/LiDAR/DTM data/Merged_DTM.tif"
-            
-            # Override with CLI arguments if provided
-            if cli_args is not None:
-                if hasattr(cli_args, 'lidar_dir') and cli_args.lidar_dir is not None:
-                    lidar_data_dir = cli_args.lidar_dir
-                    print(f"📁 Using CLI-specified LiDAR directory: {lidar_data_dir}")
-                if hasattr(cli_args, 'dem_file') and cli_args.dem_file is not None:
-                    dem_file = cli_args.dem_file
-                    print(f"📁 Using CLI-specified DEM file: {dem_file}")
-            
-            # Check if production data files exist
-            if os.path.exists(dem_file) and os.path.exists(lidar_data_dir):
-                print("🏔️  Using PRODUCTION DATA (real terrain and fuel)")
-                print(f"    • DEM file: {dem_file}")
-                print(f"    • LiDAR directory: {lidar_data_dir}")
-                self.target_data = create_production_target_data(
-                    dem_file=dem_file,
-                    lidar_data_dir=lidar_data_dir,
-                    grid_size=grid_size,
-                    num_layers=num_layers,
-                    model_resolution=model_resolution
-                )
-                print(f"✅ Created production target data:")
-                print(f"    • Terrain: {self.target_data['terrain_stats']['elevation_min']:.1f}m to {self.target_data['terrain_stats']['elevation_max']:.1f}m")
-                print(f"    • Fuel coverage: {self.target_data['fuel_coverage_percent']:.1f}% of cells")
-                print(f"    • Data type: {self.target_data['data_type']}")
-            else:
-                print("⚠️  Production data files not found, falling back to synthetic data")
-                print(f"    Missing: {dem_file if not os.path.exists(dem_file) else lidar_data_dir}")
-                print(f"    Use --dem-file and --lidar-dir to specify custom paths")
-                self.target_data = create_synthetic_target_data(grid_size, "elliptical")
-                print(f"✅ Created synthetic target data ({self.target_data['burned_cells']} burned cells)")
+        # Sensitivity analysis uses intrinsic fire behavior metrics - no target data needed
+        print("📊 Sensitivity analysis uses intrinsic fire behavior metrics")
+        print("   • Burned area, spread rate, persistence, and spatial dispersion")
+        print("   • No external target data required")
+        self.target_data = None
         
         return True
     
@@ -686,7 +648,7 @@ class HPCOptimizedSensitivityRunner:
         
         try:
             results = analyzer.run_sensitivity_analysis(
-                target_data=self.target_data,
+                target_data=None,  # Not used for sensitivity analysis
                 progress_callback=progress_callback
             )
             
