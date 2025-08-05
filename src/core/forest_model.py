@@ -372,7 +372,7 @@ class BaseForestModel(ABC):
             else:
                 self.terrain_metadata = {}
             
-            # Check if resizing is needed
+            # Check if spatial subsetting is needed
             target_shape = (self.height, self.width)  # Model expects (height, width)
             current_shape = elevation.shape
             
@@ -380,45 +380,38 @@ class BaseForestModel(ABC):
             logger.info(f"📊 Target simulation size: {target_shape[0]} × {target_shape[1]} cells")
             
             if current_shape != target_shape:
-                logger.info(f"🔄 Resizing preprocessed terrain data to match simulation grid...")
+                logger.info(f"🔄 Extracting {target_shape[0]}×{target_shape[1]} subset from full terrain (preserving ~2m resolution)...")
                 
-                # Resize all terrain data to match simulation grid
-                from skimage.transform import resize
+                # Calculate subset boundaries (take center region for representative terrain)
+                start_row = (current_shape[0] - target_shape[0]) // 2
+                end_row = start_row + target_shape[0]
+                start_col = (current_shape[1] - target_shape[1]) // 2  
+                end_col = start_col + target_shape[1]
                 
-                # Resize elevation data
-                elevation_resized = resize(elevation, target_shape, preserve_range=True, mode='constant')
-                slope_resized = resize(slope, target_shape, preserve_range=True, mode='constant')
-                aspect_resized = resize(aspect, target_shape, preserve_range=True, mode='constant')
+                # Ensure boundaries are valid
+                start_row = max(0, start_row)
+                start_col = max(0, start_col)
+                end_row = min(current_shape[0], end_row)
+                end_col = min(current_shape[1], end_col)
                 
-                # Resize binary masks (use nearest neighbor to preserve binary values)
-                barranco_mask_resized = resize(barranco_mask, target_shape, preserve_range=True, mode='constant', order=0)
-                depression_mask_resized = resize(depression_mask, target_shape, preserve_range=True, mode='constant', order=0)
-                wind_channeling_mask_resized = resize(wind_channeling_mask, target_shape, preserve_range=True, mode='constant', order=0)
+                logger.info(f"📍 Extracting region: rows {start_row}:{end_row}, cols {start_col}:{end_col}")
                 
-                # Resize continuous data
-                barranco_directions_resized = resize(barranco_directions, target_shape, preserve_range=True, mode='constant')
-                wind_amplification_resized = resize(wind_amplification, target_shape, preserve_range=True, mode='constant')
-                wind_direction_modification_resized = resize(wind_direction_modification, target_shape, preserve_range=True, mode='constant')
+                # Extract subset from all terrain data (preserves original resolution)
+                elevation = elevation[start_row:end_row, start_col:end_col]
+                slope = slope[start_row:end_row, start_col:end_col]
+                aspect = aspect[start_row:end_row, start_col:end_col]
+                barranco_mask = barranco_mask[start_row:end_row, start_col:end_col]
+                barranco_directions = barranco_directions[start_row:end_row, start_col:end_col]
+                depression_mask = depression_mask[start_row:end_row, start_col:end_col]
+                wind_channeling_mask = wind_channeling_mask[start_row:end_row, start_col:end_col]
+                wind_amplification = wind_amplification[start_row:end_row, start_col:end_col]
+                wind_direction_modification = wind_direction_modification[start_row:end_row, start_col:end_col]
                 
-                # Convert binary masks back to boolean
-                barranco_mask_resized = barranco_mask_resized > 0.5
-                depression_mask_resized = depression_mask_resized > 0.5
-                wind_channeling_mask_resized = wind_channeling_mask_resized > 0.5
-                
-                logger.info(f"✅ Successfully resized terrain data from {current_shape} to {target_shape}")
-                
-                # Use resized data
-                elevation = elevation_resized
-                slope = slope_resized
-                aspect = aspect_resized
-                barranco_mask = barranco_mask_resized
-                barranco_directions = barranco_directions_resized
-                depression_mask = depression_mask_resized
-                wind_channeling_mask = wind_channeling_mask_resized
-                wind_amplification = wind_amplification_resized
-                wind_direction_modification = wind_direction_modification_resized
+                final_shape = elevation.shape
+                logger.info(f"✅ Successfully extracted terrain subset: {final_shape[0]} × {final_shape[1]} cells")
+                logger.info(f"🎯 Preserved original ~2m cell resolution for LiDAR compatibility")
             else:
-                logger.info(f"✅ Terrain data size matches simulation grid - no resizing needed")
+                logger.info(f"✅ Terrain data size matches simulation grid - no subsetting needed")
             
             # Load the terrain data into the model (transpose to match coordinate system)
             self.terrain_elevation = elevation.T
