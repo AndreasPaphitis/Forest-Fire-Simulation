@@ -346,13 +346,7 @@ class BaseForestModel(ABC):
             return False
         
         try:
-            # Create preprocessor instance (classes already imported at module level)
-            preprocessor = TerrainPreprocessorRasterio(TerrainPreprocessingConfig(
-                dem_file="",  # Not used for loading
-                output_dir=preprocessed_dir
-            ))
-            
-            # Load the preprocessed data directly from numpy files
+            # Load the preprocessed data directly from numpy files (no preprocessor needed)
             import numpy as np
             from pathlib import Path
             
