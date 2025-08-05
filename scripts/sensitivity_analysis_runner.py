@@ -236,25 +236,57 @@ class HPCOptimizedSensitivityRunner:
             print(f"📏 Using CLI-specified max steps: {max_steps}")
         
         # Check for preprocessed terrain and determine appropriate grid size
-        preprocessed_terrain_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
+        base_terrain_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
         use_preprocessed_terrain = False
+        preprocessed_terrain_dir = None
         
-        if preprocessed_terrain_dir.exists():
-            # Validate that all required preprocessed terrain files exist
+        if base_terrain_dir.exists():
+            # Required terrain files
             required_files = [
                 "elevation.npy", "slope.npy", "aspect.npy", "barranco_mask.npy",
                 "barranco_directions.npy", "depression_mask.npy", "wind_channeling_mask.npy",
                 "wind_amplification.npy", "wind_direction_modification.npy"
             ]
-            missing_files = [f for f in required_files if not (preprocessed_terrain_dir / f).exists()]
             
-            if missing_files:
-                print(f"⚠️  Preprocessed terrain directory found but missing files: {missing_files}")
-                print("   Will use flat terrain instead")
-                use_preprocessed_terrain = False
-            else:
-                print("✅ All preprocessed terrain files found")
+            # First check if files are directly in the base directory
+            missing_files = [f for f in required_files if not (base_terrain_dir / f).exists()]
+            
+            if not missing_files:
+                # Files found directly in base directory
+                print("✅ All preprocessed terrain files found in base directory")
+                preprocessed_terrain_dir = base_terrain_dir
                 use_preprocessed_terrain = True
+            else:
+                # Search for files in subdirectories (nested structure)
+                print("🔍 Files not in base directory - searching subdirectories...")
+                
+                # Find all .npy files in subdirectories
+                all_npy_files = list(base_terrain_dir.rglob("*.npy"))
+                
+                if all_npy_files:
+                    # Group files by their parent directory
+                    dir_file_counts = {}
+                    for npy_file in all_npy_files:
+                        parent_dir = npy_file.parent
+                        if parent_dir not in dir_file_counts:
+                            dir_file_counts[parent_dir] = []
+                        dir_file_counts[parent_dir].append(npy_file.name)
+                    
+                    # Find directory with all required files
+                    for candidate_dir, files in dir_file_counts.items():
+                        if all(req_file in files for req_file in required_files):
+                            print(f"✅ All preprocessed terrain files found in: {candidate_dir.relative_to(base_terrain_dir)}")
+                            preprocessed_terrain_dir = candidate_dir
+                            use_preprocessed_terrain = True
+                            break
+                    
+                    if not use_preprocessed_terrain:
+                        print(f"⚠️  Found {len(all_npy_files)} .npy files but none contain all required files")
+                        print("   Required files:", required_files)
+                        print("   Will use flat terrain instead")
+                else:
+                    print("⚠️  No .npy files found in directory structure")
+                    print("   Will use flat terrain instead")
         else:
             print("📊 Preprocessed terrain directory not found - will use flat terrain")
         
