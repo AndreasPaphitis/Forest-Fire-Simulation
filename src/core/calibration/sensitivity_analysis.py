@@ -100,23 +100,35 @@ class SensitivityResults:
         """Get a summary of sensitivity analysis results."""
         valid_results = [r for r in self.results if r.is_valid]
         
-        if not valid_results:
-            return {'status': 'No valid results'}
-        
-        sensitivity_indices = [r.sensitivity_index for r in valid_results]
-        
-        return {
+        # Always include basic fields even if no valid results
+        base_summary = {
             'total_parameters': len(self.results),
             'valid_parameters': len(valid_results),
             'baseline_objective': self.baseline_objective,
+            'total_evaluations': self.total_evaluations,
+            'total_time': self.total_time
+        }
+        
+        if not valid_results:
+            base_summary['status'] = 'No valid results'
+            base_summary['mean_sensitivity'] = 0.0
+            base_summary['std_sensitivity'] = 0.0
+            base_summary['sensitivity_range'] = 0.0
+            base_summary['most_sensitive'] = None
+            base_summary['least_sensitive'] = None
+            return base_summary
+        
+        sensitivity_indices = [r.sensitivity_index for r in valid_results]
+        
+        base_summary.update({
             'most_sensitive': self.parameter_rankings[0] if self.parameter_rankings else None,
             'least_sensitive': self.parameter_rankings[-1] if self.parameter_rankings else None,
             'mean_sensitivity': np.mean(sensitivity_indices),
             'std_sensitivity': np.std(sensitivity_indices),
             'sensitivity_range': max(sensitivity_indices) - min(sensitivity_indices) if sensitivity_indices else 0.0,
-            'total_evaluations': self.total_evaluations,
-            'total_time': self.total_time
-        }
+        })
+        
+        return base_summary
     
     def save_results(self, filepath: Union[str, Path]) -> None:
         """Save sensitivity analysis results to JSON file."""
