@@ -364,6 +364,11 @@ class BaseForestModel(ABC):
             return False
         
         try:
+            # Initialize path for metadata loading
+            import numpy as np
+            from pathlib import Path
+            preprocessed_path = Path(preprocessed_dir)
+            
             # Check for shared terrain data first (for memory-efficient parallel processing)
             shared_terrain_data = self._try_load_shared_terrain()
             
@@ -380,10 +385,7 @@ class BaseForestModel(ABC):
                 wind_direction_modification = shared_terrain_data['wind_direction_modification']
             else:
                 # Load the preprocessed data directly from numpy files (no preprocessor needed)
-                import numpy as np
-                from pathlib import Path
-                
-                preprocessed_path = Path(preprocessed_dir)
+                logger.info("📂 Loading terrain data directly from files")
                 
                 # Load all terrain data
                 elevation = np.load(preprocessed_path / "elevation.npy")
