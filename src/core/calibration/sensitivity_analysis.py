@@ -167,7 +167,8 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
                                      config_dict: Dict[str, Any],
                                      parameter_bounds: Dict[str, Any],
                                      target_data: Optional[Dict[str, Any]],
-                                     objective_config: Optional[Dict[str, Any]] = None) -> Tuple[str, float, float, bool, str]:
+                                     objective_config: Optional[Dict[str, Any]] = None,
+                                     shared_terrain_info: Optional[Dict[str, Any]] = None) -> Tuple[str, float, float, bool, str]:
     """
     Static function for parallel evaluation of a single parameter-value combination.
     
@@ -177,6 +178,7 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         parameter_bounds: Parameter bounds dictionary
         target_data: Target data (not used for sensitivity analysis)
         objective_config: Objective function configuration for consistency
+        shared_terrain_info: Shared terrain data information for memory efficiency
     
     Returns: (parameter_name, test_value, objective_value, is_valid, error_message)
     """
@@ -193,6 +195,10 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         
         # Force memory optimization level 2 for parallel processing
         config_variant_dict['memory_optimization_level'] = 2
+        
+        # Add shared terrain info if available
+        if shared_terrain_info:
+            config_variant_dict['shared_terrain_info'] = shared_terrain_info
         
         # Create ModelConfig from dictionary
         config = ModelConfig(**config_variant_dict)
@@ -413,11 +419,16 @@ class SensitivityAnalyzer:
             'dispersion_weight': self.objective_function.dispersion_weight
         }
         
+        # Get shared terrain info if available from config_dict or base config
+        shared_terrain_info = config_dict.get('shared_terrain_info', None)
+        if not shared_terrain_info and hasattr(self.config, 'base_config'):
+            shared_terrain_info = getattr(self.config.base_config, 'shared_terrain_info', None)
+        
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all jobs
             future_to_eval = {
                 executor.submit(_evaluate_single_parameter_value, 
-                               eval_item, config_dict, self.parameter_bounds, target_data, objective_config): eval_item
+                               eval_item, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info): eval_item
                 for eval_item in evaluations
             }
             

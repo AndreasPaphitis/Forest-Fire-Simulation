@@ -623,10 +623,49 @@ class HPCOptimizedSensitivityRunner:
         
         return True
     
+    def _setup_shared_terrain(self, preprocessed_terrain_dir: Path, grid_size: Tuple[int, int]):
+        """Setup shared terrain data for memory-efficient parallel processing."""
+        try:
+            from src.utils.shared_terrain import get_shared_terrain_manager
+            
+            print("🧠 Setting up shared terrain data for memory-efficient processing...")
+            
+            # Get the shared terrain manager
+            shared_manager = get_shared_terrain_manager()
+            
+            # Load terrain data into shared memory
+            target_shape = (grid_size[1], grid_size[0])  # (height, width) for terrain arrays
+            success = shared_manager.load_terrain_data(str(preprocessed_terrain_dir), target_shape)
+            
+            if success:
+                self.shared_terrain_info = shared_manager.get_shared_terrain_info()
+                print(f"✅ Shared terrain data loaded successfully")
+                print(f"📊 Memory saved: ~{len(self.shared_terrain_info['shared_names']) * 26.7 * 27:.1f} GB across {27} workers")
+            else:
+                print("⚠️  Failed to load shared terrain data - falling back to individual loading")
+                self.shared_terrain_info = None
+                
+        except Exception as e:
+            print(f"⚠️  Error setting up shared terrain: {e}")
+            self.shared_terrain_info = None
+    
     def run_sensitivity_analysis(self):
         """Run the complete Method 2 Range-Based sensitivity analysis with parallel processing."""
         print("\n🚀 STARTING METHOD 2 RANGE-BASED SENSITIVITY ANALYSIS")
         print("=" * 70)
+        
+        # Setup shared terrain data for memory efficiency
+        if hasattr(self, 'use_preprocessed_terrain') and self.use_preprocessed_terrain:
+            preprocessed_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
+            grid_size = getattr(self.calibration_config.base_config, 'grid_size', (80, 80))
+            if isinstance(grid_size, int):
+                grid_size = (grid_size, grid_size)
+            self._setup_shared_terrain(preprocessed_dir, grid_size)
+        
+        # Add shared terrain info to the base config if available
+        if hasattr(self, 'shared_terrain_info') and self.shared_terrain_info:
+            self.calibration_config.base_config.shared_terrain_info = self.shared_terrain_info
+            print(f"✅ Added shared terrain info to analysis configuration")
         
         # Initialize sensitivity analyzer with Method 2 Range-Based approach and parallel processing
         analyzer = SensitivityAnalyzer(
@@ -703,9 +742,26 @@ class HPCOptimizedSensitivityRunner:
                 efficiency = theoretical_speedup / analyzer.max_workers * 100
                 print(f"🎯 Parallel efficiency: {efficiency:.1f}% ({theoretical_speedup:.1f}x speedup with {analyzer.max_workers} workers)")
             
+            # Clean up shared terrain data
+            if hasattr(self, 'shared_terrain_info') and self.shared_terrain_info:
+                try:
+                    from src.utils.shared_terrain import cleanup_shared_terrain
+                    cleanup_shared_terrain()
+                    print("🧹 Cleaned up shared terrain data")
+                except Exception as e:
+                    print(f"⚠️  Error cleaning up shared terrain: {e}")
+            
             return results
             
         except Exception as e:
+            # Clean up shared terrain data even on error
+            if hasattr(self, 'shared_terrain_info') and self.shared_terrain_info:
+                try:
+                    from src.utils.shared_terrain import cleanup_shared_terrain
+                    cleanup_shared_terrain()
+                except:
+                    pass
+            
             print(f"\n❌ Sensitivity analysis failed: {e}")
             logger.error(f"Sensitivity analysis failed: {e}")
             raise

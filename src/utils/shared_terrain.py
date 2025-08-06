@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+Shared terrain data utilities for memory-efficient parallel processing.
+
+This module provides functionality to load terrain data once and share it
+across multiple worker processes using shared memory, dramatically reducing
+memory usage in parallel sensitivity analysis.
+"""
+
+import numpy as np
+import multiprocessing as mp
+from multiprocessing import shared_memory
+from typing import Dict, Any, Optional, Tuple, List
+from pathlib import Path
+import json
+import os
+
+from src.utils.logging_utils import get_logger
+logger = get_logger(__name__)
+
+class SharedTerrainManager:
+    """
+    Manages shared terrain data across multiple processes.
+    
+    This class handles loading terrain data once and sharing it across
+    worker processes using Python's shared_memory module.
+    """
+    
+    def __init__(self):
+        self.shared_blocks = {}
+        self.terrain_shapes = {}
+        self.terrain_dtypes = {}
+        self.is_loaded = False
+        
+    def load_terrain_data(self, preprocessed_dir: str, target_shape: Tuple[int, int]) -> bool:
+        """
+        Load terrain data into shared memory.
+        
+        Args:
+            preprocessed_dir: Directory containing preprocessed terrain files
+            target_shape: Target shape for terrain data (height, width)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            preprocessed_path = Path(preprocessed_dir)
+            
+            # Required terrain files
+            terrain_files = [
+                'elevation.npy',
+                'slope.npy', 
+                'aspect.npy',
+                'barranco_mask.npy',
+                'barranco_directions.npy',
+                'depression_mask.npy',
+                'wind_channeling_mask.npy',
+                'wind_amplification.npy',
+                'wind_direction_modification.npy'
+            ]
+            
+            logger.info(f"🔄 Loading terrain data into shared memory from {preprocessed_dir}")
+            
+            for filename in terrain_files:
+                file_path = preprocessed_path / filename
+                if not file_path.exists():
+                    logger.warning(f"⚠️  Terrain file not found: {filename}")
+                    continue
+                    
+                # Load terrain data
+                terrain_data = np.load(file_path)
+                
+                # Apply spatial subsetting if needed
+                if terrain_data.shape != target_shape:
+                    logger.info(f"🔄 Subsetting {filename} from {terrain_data.shape} to {target_shape}")
+                    start_row = (terrain_data.shape[0] - target_shape[0]) // 2
+                    end_row = start_row + target_shape[0]
+                    start_col = (terrain_data.shape[1] - target_shape[1]) // 2
+                    end_col = start_col + target_shape[1]
+                    terrain_data = terrain_data[start_row:end_row, start_col:end_col]
+                
+                # Create shared memory block
+                terrain_name = filename.replace('.npy', '')
+                nbytes = terrain_data.nbytes
+                
+                shm = shared_memory.SharedMemory(create=True, size=nbytes, name=f"terrain_{terrain_name}")
+                
+                # Copy data to shared memory
+                shared_array = np.ndarray(terrain_data.shape, dtype=terrain_data.dtype, buffer=shm.buf)
+                shared_array[:] = terrain_data[:]
+                
+                # Store references
+                self.shared_blocks[terrain_name] = shm
+                self.terrain_shapes[terrain_name] = terrain_data.shape
+                self.terrain_dtypes[terrain_name] = terrain_data.dtype
+                
+                logger.info(f"✅ Loaded {terrain_name} into shared memory: {terrain_data.shape}, {nbytes/1024/1024:.1f} MB")
+            
+            self.is_loaded = True
+            logger.info(f"✅ All terrain data loaded into shared memory")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error loading terrain data into shared memory: {e}")
+            self.cleanup()
+            return False
+    
+    def get_shared_terrain_info(self) -> Dict[str, Any]:
+        """
+        Get information about shared terrain data for worker processes.
+        
+        Returns:
+            Dictionary containing shared memory names, shapes, and dtypes
+        """
+        return {
+            'shared_names': {name: shm.name for name, shm in self.shared_blocks.items()},
+            'shapes': self.terrain_shapes.copy(),
+            'dtypes': {name: str(dtype) for name, dtype in self.terrain_dtypes.items()},
+            'is_loaded': self.is_loaded
+        }
+    
+    def cleanup(self):
+        """Clean up shared memory blocks."""
+        for name, shm in self.shared_blocks.items():
+            try:
+                shm.close()
+                shm.unlink()
+                logger.info(f"🧹 Cleaned up shared memory for {name}")
+            except Exception as e:
+                logger.warning(f"⚠️  Error cleaning up shared memory for {name}: {e}")
+        
+        self.shared_blocks.clear()
+        self.terrain_shapes.clear()
+        self.terrain_dtypes.clear()
+        self.is_loaded = False
+
+
+def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarray]:
+    """
+    Load terrain data from shared memory in a worker process.
+    
+    Args:
+        shared_info: Information about shared terrain data
+        
+    Returns:
+        Dictionary of terrain arrays
+    """
+    terrain_data = {}
+    
+    try:
+        if not shared_info.get('is_loaded', False):
+            logger.warning("No shared terrain data available")
+            return terrain_data
+            
+        shared_names = shared_info['shared_names']
+        shapes = shared_info['shapes']
+        dtypes = shared_info['dtypes']
+        
+        for terrain_name, shm_name in shared_names.items():
+            try:
+                # Connect to existing shared memory
+                shm = shared_memory.SharedMemory(name=shm_name)
+                
+                # Create numpy array view
+                shape = shapes[terrain_name]
+                dtype = np.dtype(dtypes[terrain_name])
+                
+                shared_array = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+                
+                # Create a copy to avoid issues with shared memory cleanup
+                terrain_data[terrain_name] = shared_array.copy()
+                
+                # Close the shared memory reference (but don't unlink)
+                shm.close()
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Could not load shared terrain data for {terrain_name}: {e}")
+                
+        logger.info(f"✅ Loaded {len(terrain_data)} terrain arrays from shared memory")
+        return terrain_data
+        
+    except Exception as e:
+        logger.error(f"❌ Error loading shared terrain data: {e}")
+        return terrain_data
+
+
+# Global shared terrain manager instance
+_shared_terrain_manager = None
+
+def get_shared_terrain_manager() -> SharedTerrainManager:
+    """Get the global shared terrain manager instance."""
+    global _shared_terrain_manager
+    if _shared_terrain_manager is None:
+        _shared_terrain_manager = SharedTerrainManager()
+    return _shared_terrain_manager
+
+
+def cleanup_shared_terrain():
+    """Clean up the global shared terrain manager."""
+    global _shared_terrain_manager
+    if _shared_terrain_manager is not None:
+        _shared_terrain_manager.cleanup()
+        _shared_terrain_manager = None

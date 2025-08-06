@@ -330,6 +330,24 @@ class BaseForestModel(ABC):
             logger.warning("No terrain data available (no preprocessed terrain or DEM file), using flat terrain")
             return True  # Continue with flat terrain (no terrain elevation data)
     
+    def _try_load_shared_terrain(self) -> Optional[Dict[str, np.ndarray]]:
+        """
+        Try to load terrain data from shared memory.
+        
+        Returns:
+            Dictionary of terrain arrays if available, None otherwise
+        """
+        try:
+            # Check if shared terrain info is available in config
+            if hasattr(self, 'config') and self.config and hasattr(self.config, 'shared_terrain_info'):
+                from src.utils.shared_terrain import load_shared_terrain_data
+                shared_info = self.config.shared_terrain_info
+                return load_shared_terrain_data(shared_info)
+        except Exception as e:
+            logger.debug(f"No shared terrain data available: {e}")
+        
+        return None
+    
     def _load_preprocessed_terrain_data(self, preprocessed_dir: str) -> bool:
         """
         Load preprocessed terrain data from the terrain preprocessor.
@@ -346,22 +364,37 @@ class BaseForestModel(ABC):
             return False
         
         try:
-            # Load the preprocessed data directly from numpy files (no preprocessor needed)
-            import numpy as np
-            from pathlib import Path
+            # Check for shared terrain data first (for memory-efficient parallel processing)
+            shared_terrain_data = self._try_load_shared_terrain()
             
-            preprocessed_path = Path(preprocessed_dir)
-            
-            # Load all terrain data
-            elevation = np.load(preprocessed_path / "elevation.npy")
-            slope = np.load(preprocessed_path / "slope.npy")
-            aspect = np.load(preprocessed_path / "aspect.npy")
-            barranco_mask = np.load(preprocessed_path / "barranco_mask.npy")
-            barranco_directions = np.load(preprocessed_path / "barranco_directions.npy")
-            depression_mask = np.load(preprocessed_path / "depression_mask.npy")
-            wind_channeling_mask = np.load(preprocessed_path / "wind_channeling_mask.npy")
-            wind_amplification = np.load(preprocessed_path / "wind_amplification.npy")
-            wind_direction_modification = np.load(preprocessed_path / "wind_direction_modification.npy")
+            if shared_terrain_data:
+                logger.info("✅ Using shared terrain data from memory")
+                elevation = shared_terrain_data['elevation']
+                slope = shared_terrain_data['slope']
+                aspect = shared_terrain_data['aspect']
+                barranco_mask = shared_terrain_data['barranco_mask']
+                barranco_directions = shared_terrain_data['barranco_directions']
+                depression_mask = shared_terrain_data['depression_mask']
+                wind_channeling_mask = shared_terrain_data['wind_channeling_mask']
+                wind_amplification = shared_terrain_data['wind_amplification']
+                wind_direction_modification = shared_terrain_data['wind_direction_modification']
+            else:
+                # Load the preprocessed data directly from numpy files (no preprocessor needed)
+                import numpy as np
+                from pathlib import Path
+                
+                preprocessed_path = Path(preprocessed_dir)
+                
+                # Load all terrain data
+                elevation = np.load(preprocessed_path / "elevation.npy")
+                slope = np.load(preprocessed_path / "slope.npy")
+                aspect = np.load(preprocessed_path / "aspect.npy")
+                barranco_mask = np.load(preprocessed_path / "barranco_mask.npy")
+                barranco_directions = np.load(preprocessed_path / "barranco_directions.npy")
+                depression_mask = np.load(preprocessed_path / "depression_mask.npy")
+                wind_channeling_mask = np.load(preprocessed_path / "wind_channeling_mask.npy")
+                wind_amplification = np.load(preprocessed_path / "wind_amplification.npy")
+                wind_direction_modification = np.load(preprocessed_path / "wind_direction_modification.npy")
             
             # Load metadata
             metadata_file = preprocessed_path / "metadata.json"
