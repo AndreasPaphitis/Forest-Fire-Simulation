@@ -4,7 +4,7 @@
 """
 HPC-Optimized Method 2 Range-Based Sensitivity Analysis Runner
 
-This script performs comprehensive sensitivity analysis on all 14 calibration parameters
+This script performs comprehensive sensitivity analysis on all 13 calibration parameters
 using Method 2: Standardized Range-Based Sensitivity Analysis with 9 test points spanning
 0% to 80% of each parameter's range. This approach provides baseline-independent sensitivity
 rankings suitable for parameter prioritization and focused calibration.
@@ -20,10 +20,10 @@ Key Features:
 - Massive speedup: ~15-20x faster with HPC parallel processing
 
 HPC Performance Improvements:
-- Sequential processing: ~5.6 hours for 126 evaluations
-- HPC Parallel processing (28 workers): ~20-25 minutes for 126 evaluations  
+- Sequential processing: ~4.9 hours for 117 evaluations
+- HPC Parallel processing (28 workers): ~15-20 minutes for 117 evaluations  
 - HPC Parallel efficiency: Up to 95% with optimal worker configuration
-- Extended capability: ~6-8 hours for 1,260 evaluations (10x parameter resolution)
+- Extended capability: ~6-8 hours for 1,170 evaluations (10x parameter resolution)
 
 Usage:
     python sensitivity_analysis_runner.py [--config CONFIG_FILE] [--output OUTPUT_DIR] [--name EXPERIMENT_NAME]
@@ -149,7 +149,7 @@ class HPCOptimizedSensitivityRunner:
                     method=CalibrationMethod.SENSITIVITY_ANALYSIS
                 )
                 
-                # Override calibration parameters with all 15 parameters
+                # Override calibration parameters with all 13 parameters
                 self.calibration_config.calibration_parameters = self._get_all_calibration_parameters()
                 
                 # Override performance settings for HPC optimization
@@ -723,7 +723,7 @@ class HPCOptimizedSensitivityRunner:
         print("🏆 PARAMETER SENSITIVITY RANKINGS:")
         print("-" * 70)
         
-        rankings = results.get_most_sensitive_parameters(15)  # All parameters
+        rankings = results.get_most_sensitive_parameters(13)  # All parameters
         
         print(f"{'Rank':<4} {'Parameter':<25} {'Sensitivity':<12} {'Tier':<12}")
         print("-" * 70)
@@ -850,7 +850,7 @@ class HPCOptimizedSensitivityRunner:
     
     def _generate_calibration_recommendations(self, results, output_file):
         """Generate practical calibration recommendations."""
-        rankings = results.get_most_sensitive_parameters(15)
+        rankings = results.get_most_sensitive_parameters(13)
         
         # Break down into smaller methods
         header = self._create_report_header(rankings)

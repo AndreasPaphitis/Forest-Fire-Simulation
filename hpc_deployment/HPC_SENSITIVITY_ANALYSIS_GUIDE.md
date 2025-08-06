@@ -13,7 +13,7 @@ This guide explains how to run the forest fire simulation sensitivity analysis o
 | **HPC Mode**  | **28**| **28 GB** | **~20 minutes** | **17x** |
 | **Production Scale** | **28** | **28 GB** | **~45 minutes** | **7x** |
 
-*Analysis time for 135 evaluations (15 parameters × 9 test points)*
+*Analysis time for 117 evaluations (13 parameters × 9 test points)*
 
 ## Quick Start (HPC)
 
@@ -400,12 +400,12 @@ chmod +x run_sensitivity.sh
 
 ## Expected Performance on Your 32-Core System
 
-### Standard Analysis (135 evaluations)
+### Standard Analysis (117 evaluations)
 - **Sequential**: 5.6 hours
 - **HPC Optimized**: ~20 minutes  
 - **Speedup**: ~17x
 
-### Production Scale (135 evaluations, large grids)
+### Production Scale (117 evaluations, large grids)
 - **Sequential**: ~12 hours
 - **HPC Optimized**: ~45 minutes
 - **Speedup**: ~16x

@@ -87,7 +87,7 @@
 ## Parameter Validation Status
 
 ### ✅ All Parameters Present
-All 15 calibration-required parameters identified in the methodology are now present in the ModelConfig class.
+All 13 calibration-required parameters identified in the methodology are now present in the ModelConfig class.
 
 ### ✅ Default Values Set
 All parameters have scientifically reasonable default values based on literature review.

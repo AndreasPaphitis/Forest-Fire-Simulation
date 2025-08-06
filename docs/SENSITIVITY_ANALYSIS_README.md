@@ -5,7 +5,7 @@ This directory contains a ready-to-run sensitivity analysis tool for the forest 
 ## What This Analysis Does
 
 The sensitivity analysis:
-- **Tests all 5 calibration parameters** systematically
+- **Tests all 13 calibration parameters** systematically
 - **Uses 10% increments** (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9) across each parameter's valid range
 - **Requires NO baseline values** - samples across the entire parameter space
 - **Ranks parameters by sensitivity** to guide efficient calibration
@@ -39,7 +39,7 @@ python run_sensitivity_analysis.py --quick
 
 ## Expected Runtime
 
-- **Total simulations**: 5 parameters × 9 perturbations = **45 simulations**
+- **Total simulations**: 13 parameters × 9 perturbations = **117 simulations**
 - **Estimated time**: 10-20 minutes (depends on your hardware)
 - **Memory usage**: Moderate (optimized for speed over memory)
 - **Parallel execution**: Yes (4 workers by default)
@@ -47,7 +47,7 @@ python run_sensitivity_analysis.py --quick
 ## What You'll Get
 
 ### 1. Parameter Rankings
-The analysis will rank all 15 parameters by sensitivity, showing which ones matter most:
+The analysis will rank all 13 parameters by sensitivity, showing which ones matter most:
 
 ```
 Rank | Parameter                 | Sensitivity | Recommendation
