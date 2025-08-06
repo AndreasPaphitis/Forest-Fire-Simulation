@@ -9,11 +9,19 @@ memory usage in parallel sensitivity analysis.
 
 import numpy as np
 import multiprocessing as mp
-from multiprocessing import shared_memory
+import sys
 from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 import json
 import os
+
+# Check for shared_memory availability (Python 3.8+)
+try:
+    from multiprocessing import shared_memory
+    HAS_SHARED_MEMORY = True
+except ImportError:
+    HAS_SHARED_MEMORY = False
+    shared_memory = None
 
 from src.utils.logging_utils import get_logger
 logger = get_logger(__name__)
@@ -43,6 +51,11 @@ class SharedTerrainManager:
         Returns:
             True if successful, False otherwise
         """
+        # Check for shared memory availability
+        if not HAS_SHARED_MEMORY:
+            logger.warning("⚠️  Shared memory not available (requires Python 3.8+). Skipping shared terrain setup.")
+            return False
+            
         try:
             preprocessed_path = Path(preprocessed_dir)
             

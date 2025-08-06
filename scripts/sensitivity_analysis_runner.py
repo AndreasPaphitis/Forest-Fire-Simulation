@@ -655,7 +655,7 @@ class HPCOptimizedSensitivityRunner:
         print("=" * 70)
         
         # Setup shared terrain data for memory efficiency
-        if hasattr(self, 'use_preprocessed_terrain') and self.use_preprocessed_terrain:
+        if getattr(self.calibration_config.base_config, 'use_preprocessed_terrain', False):
             preprocessed_dir = Path("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain")
             grid_size = getattr(self.calibration_config.base_config, 'grid_size', (80, 80))
             if isinstance(grid_size, int):

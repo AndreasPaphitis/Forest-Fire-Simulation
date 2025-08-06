@@ -467,8 +467,13 @@ class SensitivityAnalyzer:
             'dispersion_weight': self.objective_function.dispersion_weight
         }
         
+        # Get shared terrain info if available from config_dict or base config
+        shared_terrain_info = config_dict.get('shared_terrain_info', None)
+        if not shared_terrain_info and hasattr(self.config, 'base_config'):
+            shared_terrain_info = getattr(self.config.base_config, 'shared_terrain_info', None)
+        
         for i, evaluation in enumerate(evaluations):
-            result = _evaluate_single_parameter_value(evaluation, config_dict, self.parameter_bounds, target_data, objective_config)
+            result = _evaluate_single_parameter_value(evaluation, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info)
             evaluation_results.append(result)
             
             # Progress callback
