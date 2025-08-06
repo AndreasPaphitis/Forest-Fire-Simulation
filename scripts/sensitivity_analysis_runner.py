@@ -376,14 +376,23 @@ class HPCOptimizedSensitivityRunner:
         
         lidar_path = Path(lidar_data_dir)
         if lidar_path.exists():
-            # Check if directory contains LiDAR files (look for common LiDAR file extensions)
-            lidar_files = list(lidar_path.glob("*.las")) + list(lidar_path.glob("*.laz")) + list(lidar_path.glob("*.txt"))
+            # Check if directory contains LiDAR files recursively (look in subdirectories)
+            lidar_files = (list(lidar_path.rglob("*.las")) + 
+                          list(lidar_path.rglob("*.laz")) + 
+                          list(lidar_path.rglob("*.txt")) + 
+                          list(lidar_path.rglob("*.tif")) +  # PAD rasters
+                          list(lidar_path.rglob("*.tiff")))  # Alternative TIFF extension
             if lidar_files:
-                print(f"✅ LiDAR data directory found with {len(lidar_files)} files")
+                print(f"✅ LiDAR data directory found with {len(lidar_files)} files (including subdirectories)")
+                # Log subdirectory info for debugging
+                subdirs = [f.parent for f in lidar_files]
+                unique_subdirs = set(subdirs)
+                if len(unique_subdirs) > 1:
+                    print(f"📁 Files found in {len(unique_subdirs)} subdirectories")
                 use_lidar = True
             else:
-                print("⚠️  LiDAR directory exists but no LiDAR files found (.las, .laz, .txt)")
-                print("   Disabling LiDAR usage")
+                print("⚠️  LiDAR directory exists but no LiDAR files found (.las, .laz, .txt, .tif)")
+                print("   Checked recursively in all subdirectories - disabling LiDAR usage")
                 use_lidar = False
         else:
             print("📊 LiDAR directory not found - disabling LiDAR usage")
