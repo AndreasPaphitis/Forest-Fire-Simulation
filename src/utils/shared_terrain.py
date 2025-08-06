@@ -53,7 +53,9 @@ class SharedTerrainManager:
         """
         # Check for shared memory availability
         if not HAS_SHARED_MEMORY:
-            logger.warning("⚠️  Shared memory not available (requires Python 3.8+). Skipping shared terrain setup.")
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            logger.warning(f"⚠️  Shared memory not available on Python {python_version}. Requires Python 3.8+.")
+            logger.warning("   Falling back to individual terrain loading (higher memory usage)")
             return False
             
         try:
@@ -134,11 +136,22 @@ class SharedTerrainManager:
     
     def cleanup(self):
         """Clean up shared memory blocks."""
-        for name, shm in self.shared_blocks.items():
+        if not self.shared_blocks:
+            logger.debug("No shared memory blocks to clean up")
+            return
+            
+        for name, shm in list(self.shared_blocks.items()):
             try:
-                shm.close()
-                shm.unlink()
-                logger.info(f"🧹 Cleaned up shared memory for {name}")
+                # Validate that the shared memory block still exists
+                if hasattr(shm, 'name') and hasattr(shm, 'size'):
+                    shm.close()
+                    shm.unlink()
+                    logger.info(f"🧹 Cleaned up shared memory for {name}")
+                else:
+                    logger.warning(f"⚠️  Invalid shared memory block for {name}")
+            except FileNotFoundError:
+                # Shared memory block already cleaned up
+                logger.debug(f"Shared memory block {name} already cleaned up")
             except Exception as e:
                 logger.warning(f"⚠️  Error cleaning up shared memory for {name}: {e}")
         

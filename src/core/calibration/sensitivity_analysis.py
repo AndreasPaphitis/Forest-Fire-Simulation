@@ -226,8 +226,19 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         
         # Evaluate objective function (use consistent configuration)
         if objective_config:
-            from src.core.calibration.sensitivity_objective import SensitivityAnalysisObjective
-            objective_function = SensitivityAnalysisObjective(**objective_config)
+            # Validate objective config structure
+            if not isinstance(objective_config, dict):
+                logger.warning(f"Invalid objective_config type: {type(objective_config)}. Using default.")
+                from src.core.calibration.sensitivity_objective import create_sensitivity_objective
+                objective_function = create_sensitivity_objective()
+            else:
+                try:
+                    from src.core.calibration.sensitivity_objective import SensitivityAnalysisObjective
+                    objective_function = SensitivityAnalysisObjective(**objective_config)
+                except TypeError as e:
+                    logger.warning(f"Invalid objective_config parameters: {e}. Using default.")
+                    from src.core.calibration.sensitivity_objective import create_sensitivity_objective
+                    objective_function = create_sensitivity_objective()
         else:
             from src.core.calibration.sensitivity_objective import create_sensitivity_objective
             objective_function = create_sensitivity_objective()
@@ -424,32 +435,61 @@ class SensitivityAnalyzer:
         if not shared_terrain_info and hasattr(self.config, 'base_config'):
             shared_terrain_info = getattr(self.config.base_config, 'shared_terrain_info', None)
         
-        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all jobs
-            future_to_eval = {
-                executor.submit(_evaluate_single_parameter_value, 
-                               eval_item, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info): eval_item
-                for eval_item in evaluations
-            }
-            
-            # Collect results as they complete
-            completed = 0
-            for future in as_completed(future_to_eval):
-                try:
-                    result = future.result(timeout=600)  # 10 minute timeout per evaluation
-                    evaluation_results.append(result)
-                    completed += 1
-                    
-                    # Progress callback
-                    if progress_callback and completed % max(1, len(evaluations) // 20) == 0:
-                        progress = completed / len(evaluations) * 100
-                        logger.info(f"📈 Progress: {progress:.1f}% ({completed}/{len(evaluations)})")
+        try:
+            with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submit all jobs
+                future_to_eval = {
+                    executor.submit(_evaluate_single_parameter_value, 
+                                   eval_item, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info): eval_item
+                    for eval_item in evaluations
+                }
                 
-                except Exception as e:
-                    eval_item = future_to_eval[future]
-                    logger.warning(f"⚠️  Evaluation failed for {eval_item.parameter_name}={eval_item.test_value}: {e}")
-                    evaluation_results.append((eval_item.parameter_name, eval_item.test_value, 0.0, False, str(e)))
-                    completed += 1
+                # Collect results as they complete
+                completed = 0
+                for future in as_completed(future_to_eval, timeout=3600):  # 1-hour total timeout
+                    try:
+                        result = future.result(timeout=600)  # 10 minute timeout per evaluation
+                        evaluation_results.append(result)
+                        completed += 1
+                        
+                        # Progress callback
+                        if progress_callback and completed % max(1, len(evaluations) // 20) == 0:
+                            progress = completed / len(evaluations) * 100
+                            logger.info(f"📈 Progress: {progress:.1f}% ({completed}/{len(evaluations)})")
+                    
+                    except TimeoutError:
+                        eval_item = future_to_eval[future]
+                        logger.error(f"❌ Timeout for {eval_item.parameter_name}={eval_item.test_value}")
+                        evaluation_results.append((eval_item.parameter_name, eval_item.test_value, 0.0, False, "Evaluation timeout"))
+                        completed += 1
+                        future.cancel()  # Try to cancel the timed-out task
+                    
+                    except Exception as e:
+                        eval_item = future_to_eval[future]
+                        logger.warning(f"⚠️  Evaluation failed for {eval_item.parameter_name}={eval_item.test_value}: {e}")
+                        evaluation_results.append((eval_item.parameter_name, eval_item.test_value, 0.0, False, str(e)))
+                        completed += 1
+                        
+        except KeyboardInterrupt:
+            logger.warning("🛑 Sensitivity analysis interrupted by user")
+            # Cleanup shared memory if interrupted
+            try:
+                from src.utils.shared_terrain import cleanup_shared_terrain
+                cleanup_shared_terrain()
+                logger.info("🧹 Cleaned up shared memory after interruption")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️  Error cleaning up after interruption: {cleanup_error}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Critical error in parallel evaluation: {e}")
+            # Cleanup shared memory on critical error
+            try:
+                from src.utils.shared_terrain import cleanup_shared_terrain
+                cleanup_shared_terrain()
+                logger.info("🧹 Cleaned up shared memory after error")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️  Error cleaning up after critical error: {cleanup_error}")
+            raise
         
         return evaluation_results
     
