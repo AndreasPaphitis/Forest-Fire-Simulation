@@ -74,12 +74,11 @@ class CalibrationConfig:
         'barranco_direction_weight',
         'slope_influence',
         'ember_height_factor',
-        # Group 2: Constrained Range Parameters (6 parameters)
+        # Group 2: Constrained Range Parameters (5 parameters) - removed spread_probability
         'wind_speed',
         'wind_direction',
         'ember_distance',
         'ember_probability',
-        'spread_probability',
         'ember_ignition'
     ])
     
@@ -501,7 +500,7 @@ def create_calibration_from_production_config(
         config = create_calibration_from_production_config(
             production_config_path="hpc_deployment/Forest_Fire_Simulation_production_test.json",
             experiment_name="tenerife_calibration",
-            calibration_parameters=['spread_probability', 'fuel_consumption_rate']
+            calibration_parameters=['fuel_consumption_rate', 'terrain_effect_strength']
         )
     """
     production_config_path = Path(production_config_path)
@@ -530,7 +529,6 @@ def create_calibration_from_production_config(
                 'wind_direction',
                 'ember_distance',
                 'ember_probability',
-                'spread_probability',
                 'ember_ignition',
                 'ember_generation'
             ]

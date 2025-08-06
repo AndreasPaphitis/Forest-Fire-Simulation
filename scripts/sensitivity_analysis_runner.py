@@ -149,7 +149,7 @@ class HPCOptimizedSensitivityRunner:
                     method=CalibrationMethod.SENSITIVITY_ANALYSIS
                 )
                 
-                # Override calibration parameters with all 13 parameters
+                # Override calibration parameters with all 12 parameters
                 self.calibration_config.calibration_parameters = self._get_all_calibration_parameters()
                 
                 # Override performance settings for HPC optimization
@@ -579,7 +579,6 @@ class HPCOptimizedSensitivityRunner:
             'wind_direction',            # Wind direction in degrees
             'ember_distance',            # Ember travel distance
             'ember_probability',         # Ember generation probability
-            'spread_probability',        # Base fire spread probability
             'ember_ignition',            # Ember ignition probability
 
         ]
@@ -589,7 +588,7 @@ class HPCOptimizedSensitivityRunner:
             # Quick mode: only top 7 critical parameters (Group 1)
             return group1_full_range
         else:
-            # Full mode: all 13 parameters
+            # Full mode: all 12 parameters
             return group1_full_range + group2_constrained_range
     
     def setup_components(self):
