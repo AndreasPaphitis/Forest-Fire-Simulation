@@ -2410,9 +2410,8 @@ def create_forest_model(model_type='standard', **kwargs):
     
     # Create the appropriate model type
     if model_type == 'memory_optimized':
-        # Use ForestModel for now since MemoryOptimizedForestModel is not implemented
-        logger.info("Using ForestModel for memory_optimized type (MemoryOptimizedForestModel not implemented)")
-        return ForestModel(**kwargs)
+        logger.info("Creating MemoryOptimizedForestModel for memory-efficient processing")
+        return MemoryOptimizedForestModel(**kwargs)
     elif model_type == 'minimal' or model_type == 'stub':
         return MinimalForestModelStub(**kwargs)
     else:  # standard
