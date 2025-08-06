@@ -664,8 +664,19 @@ class HPCOptimizedSensitivityRunner:
         
         # Add shared terrain info to the base config if available
         if hasattr(self, 'shared_terrain_info') and self.shared_terrain_info:
-            self.calibration_config.base_config.shared_terrain_info = self.shared_terrain_info
-            print(f"✅ Added shared terrain info to analysis configuration")
+            try:
+                # Validate that base_config can accept the shared_terrain_info attribute
+                if hasattr(self.calibration_config.base_config, '__dict__'):
+                    self.calibration_config.base_config.shared_terrain_info = self.shared_terrain_info
+                    print(f"✅ Added shared terrain info to analysis configuration")
+                else:
+                    # Fallback: add to config dict if base_config is immutable
+                    print("⚠️  Base config is immutable, adding shared terrain info to config dict")
+                    if not hasattr(self.calibration_config, 'shared_terrain_info'):
+                        self.calibration_config.shared_terrain_info = self.shared_terrain_info
+            except (AttributeError, TypeError) as e:
+                print(f"⚠️  Could not add shared terrain info to config: {e}")
+                print("   Shared terrain may not be available to all workers")
         
         # Initialize sensitivity analyzer with Method 2 Range-Based approach and parallel processing
         analyzer = SensitivityAnalyzer(
@@ -1425,6 +1436,13 @@ Standard Examples:
         
     except KeyboardInterrupt:
         print("\n⚠️  Analysis interrupted by user")
+        # Clean up shared memory if it was created
+        try:
+            from src.utils.shared_terrain import cleanup_shared_terrain
+            cleanup_shared_terrain()
+            print("🧹 Cleaned up shared memory after interruption")
+        except Exception as cleanup_error:
+            print(f"⚠️  Warning: Could not clean up shared memory: {cleanup_error}")
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Analysis failed: {e}")

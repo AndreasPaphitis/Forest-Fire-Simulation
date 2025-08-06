@@ -435,6 +435,20 @@ class SensitivityAnalyzer:
         if not shared_terrain_info and hasattr(self.config, 'base_config'):
             shared_terrain_info = getattr(self.config.base_config, 'shared_terrain_info', None)
         
+        # Validate shared terrain info before starting workers to prevent deadlocks
+        if shared_terrain_info:
+            try:
+                # Quick validation that shared memory blocks exist
+                shared_names = shared_terrain_info.get('shared_names', {})
+                if not shared_names or not shared_terrain_info.get('is_loaded', False):
+                    logger.warning("⚠️  Shared terrain info provided but appears invalid. Disabling for safety.")
+                    shared_terrain_info = None
+                else:
+                    logger.info(f"✅ Validated shared terrain with {len(shared_names)} blocks")
+            except Exception as e:
+                logger.warning(f"⚠️  Error validating shared terrain: {e}. Disabling for safety.")
+                shared_terrain_info = None
+        
         try:
             with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all jobs
