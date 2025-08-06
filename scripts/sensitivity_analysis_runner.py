@@ -888,9 +888,10 @@ class HPCOptimizedSensitivityRunner:
                 'parallel_workers': self.calibration_config.max_workers,
                 'memory_optimization': 2,
                 'objective_weights': {
-                    'jaccard_weight': self.objective_function.jaccard_weight,
-                    'dice_weight': self.objective_function.dice_weight,
-                    'sorensen_weight': self.objective_function.sorensen_weight
+                    'area_weight': getattr(self.objective_function, 'area_weight', 0.3),
+                    'spread_rate_weight': getattr(self.objective_function, 'spread_rate_weight', 0.3),
+                    'persistence_weight': getattr(self.objective_function, 'persistence_weight', 0.2),
+                    'dispersion_weight': getattr(self.objective_function, 'dispersion_weight', 0.2)
                 }
             }
         }
