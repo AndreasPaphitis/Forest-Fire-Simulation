@@ -88,10 +88,13 @@ class SharedTerrainManager:
                 # Apply spatial subsetting if needed
                 if terrain_data.shape != target_shape:
                     logger.info(f"🔄 Subsetting {filename} from {terrain_data.shape} to {target_shape}")
-                    start_row = (terrain_data.shape[0] - target_shape[0]) // 2
-                    end_row = start_row + target_shape[0]
-                    start_col = (terrain_data.shape[1] - target_shape[1]) // 2
-                    end_col = start_col + target_shape[1]
+                    logger.info(f"🏔️ Targeting Teide Southern Slopes (Pine Forest Belt) - 25% down, 40% across")
+                    # Target Teide Southern Slopes (Pine Forest Belt) instead of geometric center
+                    # Option 1: 25% down (southern slopes), 40% across (pine forest belt)
+                    start_row = terrain_data.shape[0] // 4          # 25% down = ~3780 (southern slopes)
+                    end_row = start_row + target_shape[0]           # +80 = 3860
+                    start_col = int(terrain_data.shape[1] * 0.4)    # 40% across = ~9896 (pine forests)
+                    end_col = start_col + target_shape[1]           # +80 = 9976
                     terrain_data = terrain_data[start_row:end_row, start_col:end_col]
                 
                 # Create shared memory block
