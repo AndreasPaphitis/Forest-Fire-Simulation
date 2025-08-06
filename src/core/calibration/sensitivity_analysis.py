@@ -260,12 +260,16 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
             return (evaluation.parameter_name, evaluation.test_value, 
                    objective_result.value, True, "")
         else:
+            error_msg = f"Invalid objective result: {objective_result.error_message}"
+            logger.warning(f"Parameter {evaluation.parameter_name}={evaluation.test_value}: {error_msg}")
             return (evaluation.parameter_name, evaluation.test_value, 
-                   0.0, False, objective_result.error_message)
+                   0.0, False, error_msg)
             
     except Exception as e:
+        error_msg = f"Simulation failed: {str(e)}"
+        logger.error(f"Parameter {evaluation.parameter_name}={evaluation.test_value}: {error_msg}")
         return (evaluation.parameter_name, evaluation.test_value, 
-               0.0, False, str(e))
+               0.0, False, error_msg)
 
 
 class SensitivityAnalyzer:

@@ -88,12 +88,28 @@ class SensitivityAnalysisObjective(ObjectiveFunction):
         try:
             # Extract forest model and state
             forest_model = simulation_result.get('forest_model')
-            if not forest_model or not hasattr(forest_model, 'state'):
+            if not forest_model:
                 return ObjectiveResult(
                     value=0.0,
                     components={},
                     is_valid=False,
-                    error_message="No forest model state available"
+                    error_message="No forest model in simulation result"
+                )
+            
+            if not hasattr(forest_model, 'state'):
+                return ObjectiveResult(
+                    value=0.0,
+                    components={},
+                    is_valid=False,
+                    error_message=f"Forest model missing state attribute (type: {type(forest_model).__name__})"
+                )
+            
+            if forest_model.state is None:
+                return ObjectiveResult(
+                    value=0.0,
+                    components={},
+                    is_valid=False,
+                    error_message="Forest model state is None"
                 )
             
             # Get simulation statistics
