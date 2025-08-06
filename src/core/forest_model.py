@@ -413,7 +413,7 @@ class BaseForestModel(ABC):
             logger.info(f"📊 Target simulation size: {target_shape[0]} × {target_shape[1]} cells")
             
             if current_shape != target_shape:
-                logger.info(f"🔄 Extracting {target_shape[0]}×{target_shape[1]} subset from full terrain (preserving ~2m resolution)...")
+                logger.info(f"🔄 Extracting {target_shape[0]}×{target_shape[1]} subset from full terrain (preserving ~5m resolution)...")
                 
                 # Calculate subset boundaries (take center region for representative terrain)
                 start_row = (current_shape[0] - target_shape[0]) // 2
@@ -442,7 +442,7 @@ class BaseForestModel(ABC):
                 
                 final_shape = elevation.shape
                 logger.info(f"✅ Successfully extracted terrain subset: {final_shape[0]} × {final_shape[1]} cells")
-                logger.info(f"🎯 Preserved original ~2m cell resolution for LiDAR compatibility")
+                logger.info(f"🎯 Preserved original ~5m cell resolution for LiDAR compatibility")
             else:
                 logger.info(f"✅ Terrain data size matches simulation grid - no subsetting needed")
             

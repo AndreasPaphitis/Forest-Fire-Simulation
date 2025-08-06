@@ -90,6 +90,7 @@ class ModelConfig:
     bytes_per_cell: int = 10
     tile_size: int = 200
     chunk_size: int = 1000
+    shared_terrain_info: Optional[Dict[str, Any]] = None
 
     # === VISUALIZATION AND OUTPUT ===
     simulation_type: str = "standard"
