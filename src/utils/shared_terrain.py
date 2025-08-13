@@ -51,6 +51,15 @@ class SharedTerrainManager:
         Returns:
             True if successful, False otherwise
         """
+        # Check if the target grid is too large for shared memory
+        total_cells = target_shape[0] * target_shape[1]
+        estimated_memory_gb = total_cells * 4 * 9 / (1024**3)  # 9 terrain layers, 4 bytes each
+        
+        if estimated_memory_gb > 100:  # More than 100GB
+            logger.warning(f"⚠️  Target grid too large for shared memory: {target_shape}")
+            logger.warning(f"   Estimated memory: {estimated_memory_gb:.1f} GB")
+            logger.warning(f"   Disabling shared terrain to prevent memory issues")
+            return False
         # Check for shared memory availability
         if not HAS_SHARED_MEMORY:
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -85,17 +94,43 @@ class SharedTerrainManager:
                 # Load terrain data
                 terrain_data = np.load(file_path)
                 
-                # Apply spatial subsetting if needed
+                # Handle different grid sizes intelligently
                 if terrain_data.shape != target_shape:
-                    logger.info(f"🔄 Subsetting {filename} from {terrain_data.shape} to {target_shape}")
-                    logger.info(f"🏔️ Targeting Teide Southern Slopes (Pine Forest Belt) - 25% down, 40% across")
-                    # Target Teide Southern Slopes (Pine Forest Belt) instead of geometric center
-                    # Option 1: 25% down (southern slopes), 40% across (pine forest belt)
-                    start_row = terrain_data.shape[0] // 4          # 25% down = ~3780 (southern slopes)
-                    end_row = start_row + target_shape[0]           # +80 = 3860
-                    start_col = int(terrain_data.shape[1] * 0.4)    # 40% across = ~9896 (pine forests)
-                    end_col = start_col + target_shape[1]           # +80 = 9976
-                    terrain_data = terrain_data[start_row:end_row, start_col:end_col]
+                    # Check if this is a full Tenerife domain request
+                    if target_shape[0] > 10000 and target_shape[1] > 10000:
+                        # Full Tenerife domain - ensure terrain matches exactly
+                        logger.info(f"🗺️  Full Tenerife domain requested: {target_shape}")
+                        if terrain_data.shape == target_shape:
+                            logger.info(f"✅ Terrain data already matches full domain")
+                        else:
+                            logger.warning(f"⚠️  Terrain shape {terrain_data.shape} doesn't match full domain {target_shape}")
+                            # For full domain, we need exact match or we skip shared terrain
+                            if terrain_data.shape[0] >= target_shape[0] and terrain_data.shape[1] >= target_shape[1]:
+                                # Crop to exact size if terrain is larger
+                                terrain_data = terrain_data[:target_shape[0], :target_shape[1]]
+                                logger.info(f"✅ Cropped terrain to exact domain size: {terrain_data.shape}")
+                            else:
+                                logger.error(f"❌ Terrain too small for full domain - skipping shared terrain for {filename}")
+                                continue
+                    else:
+                        # Smaller domain - use subset for memory efficiency
+                        logger.info(f"🔄 Subsetting {filename} from {terrain_data.shape} to {target_shape}")
+                        logger.info(f"🏔️ Targeting Teide Southern Slopes (Pine Forest Belt) - 25% down, 40% across")
+                        # Target Teide Southern Slopes (Pine Forest Belt) instead of geometric center
+                        start_row = terrain_data.shape[0] // 4          # 25% down = ~3780 (southern slopes)
+                        end_row = start_row + target_shape[0]           # +target_size
+                        start_col = int(terrain_data.shape[1] * 0.4)    # 40% across = ~9896 (pine forests)
+                        end_col = start_col + target_shape[1]           # +target_size
+                        
+                        # Ensure we don't exceed bounds
+                        if end_row > terrain_data.shape[0]:
+                            start_row = terrain_data.shape[0] - target_shape[0]
+                            end_row = terrain_data.shape[0]
+                        if end_col > terrain_data.shape[1]:
+                            start_col = terrain_data.shape[1] - target_shape[1]
+                            end_col = terrain_data.shape[1]
+                        
+                        terrain_data = terrain_data[start_row:end_row, start_col:end_col]
                 
                 # Create shared memory block
                 terrain_name = filename.replace('.npy', '')
