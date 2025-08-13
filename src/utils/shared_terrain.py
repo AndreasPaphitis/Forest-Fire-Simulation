@@ -55,11 +55,16 @@ class SharedTerrainManager:
         total_cells = target_shape[0] * target_shape[1]
         estimated_memory_gb = total_cells * 4 * 9 / (1024**3)  # 9 terrain layers, 4 bytes each
         
-        if estimated_memory_gb > 100:  # More than 100GB
+        if estimated_memory_gb > 200:  # More than 200GB (increased limit for full Tenerife)
             logger.warning(f"⚠️  Target grid too large for shared memory: {target_shape}")
             logger.warning(f"   Estimated memory: {estimated_memory_gb:.1f} GB")
             logger.warning(f"   Disabling shared terrain to prevent memory issues")
             return False
+        elif estimated_memory_gb > 100:
+            logger.info(f"🗺️  Large domain detected: {target_shape}")
+            logger.info(f"   Estimated shared terrain memory: {estimated_memory_gb:.1f} GB")
+            logger.info(f"   Enabling shared terrain for full Tenerife domain")
+            logger.info(f"   This will significantly reduce per-worker memory usage")
         # Check for shared memory availability
         if not HAS_SHARED_MEMORY:
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"

@@ -117,9 +117,9 @@ def estimate_calibration_time(parameters: List[str], grid_points: int, workers: 
     """Estimate calibration time and resource requirements."""
     total_combinations = grid_points ** len(parameters)
     
-    # Conservative estimates for full Tenerife domain
+    # Updated estimates for full Tenerife domain WITH SHARED TERRAIN
     time_per_sim_minutes = 20.0  # 15-25 minutes per simulation
-    memory_per_sim_gb = 37.0     # ~37 GB per simulation with max optimization
+    memory_per_sim_gb = 2.5      # ~2.5 GB per simulation with shared terrain + max optimization
     
     # Calculate timings
     sequential_time_hours = (total_combinations * time_per_sim_minutes) / 60

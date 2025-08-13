@@ -579,28 +579,38 @@ class TenerifeFirePerimeterCalibrator:
         return calib_config
     
     def _estimate_memory_per_simulation(self) -> float:
-        """Estimate memory usage per simulation in GB with proper optimization."""
+        """Estimate memory usage per simulation in GB with shared terrain enabled."""
         # Full Tenerife: 15,121 × 24,741 × 25 = ~9.35 billion cells
         total_cells = 15121 * 24741 * 25
         
-        # CRITICAL: With maximum memory optimization, memory usage is DRASTICALLY reduced:
-        # 1. Shared terrain: ~50GB shared across ALL workers (not per-simulation)
-        # 2. Disk storage: History stored on disk, only current timestep in memory
-        # 3. Sparse storage: Only active fire cells stored (~1-5% of total)
-        # 4. Differential history: Only changes stored, not full states
+        # WITH SHARED TERRAIN ENABLED:
+        # 1. Shared terrain: ~134GB loaded ONCE and shared across ALL workers
+        # 2. Disk storage: History stored on disk, only current timestep in memory  
+        # 3. Sparse storage: Only active fire cells stored (~5-10% of total)
+        # 4. Level 2 optimization: 60% memory reduction
         
-        # Realistic estimate for per-simulation memory:
-        # - Active simulation state: Only burning/fuel cells (~1% of domain)
-        active_cells = total_cells * 0.01  # Only 1% typically burning/changing
+        # Per-simulation memory (excluding shared terrain):
+        # Active fire cells (more realistic estimate for large fires)
+        active_percentage = 0.08  # 8% of domain actively burning/changing
+        active_cells = total_cells * active_percentage
         
-        # Current state layers: ~8 layers × 4 bytes/cell for active cells only
-        current_state_gb = (active_cells * 8 * 4) / (1024**3)
+        # Current state layers with Level 2 optimization (60% reduction)
+        # Fire state, fuel remaining, temperature, wind effects = ~4 layers
+        current_state_layers = 4
+        current_state_gb = (active_cells * current_state_layers * 4) / (1024**3)
+        current_state_gb *= 0.4  # Level 2 optimization (60% reduction)
         
-        # Working memory for simulation logic: ~0.5GB per worker
-        working_memory_gb = 0.5
+        # Sparse storage additional reduction (80% reduction for fire data)
+        current_state_gb *= 0.2  # Sparse storage benefit
         
-        # Total per simulation (NOT including shared terrain)
-        total_per_sim = current_state_gb + working_memory_gb
+        # Working memory for simulation logic and Python objects
+        working_memory_gb = 1.0  # More realistic for complex simulations
+        
+        # Terrain memory per worker: ZERO (shared terrain eliminates this!)
+        terrain_per_worker_gb = 0.0
+        
+        # Total per simulation (shared terrain is separate)
+        total_per_sim = current_state_gb + working_memory_gb + terrain_per_worker_gb
         
         return total_per_sim
     
@@ -706,10 +716,17 @@ class TenerifeFirePerimeterCalibrator:
         
         # Check if grid is too large for shared memory
         total_cells = grid_size[0] * grid_size[1]
-        if total_cells > 100_000_000:  # More than 100M cells
+        estimated_shared_gb = total_cells * 4 * 9 / (1024**3)  # 9 terrain layers
+        
+        if total_cells > 500_000_000:  # More than 500M cells
             logger.warning(f"⚠️  Grid too large for shared terrain: {grid_size} ({total_cells:,} cells)")
             logger.warning("   Shared terrain disabled - each worker will load terrain individually")
             return None
+        elif total_cells > 100_000_000:  # Full Tenerife range (100M-500M cells)
+            logger.info(f"🗺️  Full Tenerife domain detected: {grid_size} ({total_cells:,} cells)")
+            logger.info(f"   Estimated shared terrain memory: {estimated_shared_gb:.1f} GB")
+            logger.info(f"   Enabling shared terrain - will dramatically reduce per-worker memory")
+            logger.info(f"   Shared terrain will be loaded once and used by all workers")
         
         try:
             from src.utils.shared_terrain import get_shared_terrain_manager
