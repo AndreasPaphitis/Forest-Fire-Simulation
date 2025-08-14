@@ -172,10 +172,10 @@ class FirePerimeterDiscovery:
             
             day_number, date_str = day_info
             
-            # Find shapefile in directory
+            # Find fire perimeter file in directory
             shapefile_path = self._find_shapefile(day_dir)
             if not shapefile_path:
-                print(f"   ⚠️  No shapefile found in {day_dir.name}")
+                print(f"   ⚠️  No fire perimeter file found in {day_dir.name}")
                 # Show directory contents for debugging
                 try:
                     contents = list(day_dir.iterdir())
@@ -203,7 +203,8 @@ class FirePerimeterDiscovery:
             
             if fire_perimeter.is_valid:
                 fire_perimeters.append(fire_perimeter)
-                print(f"   ✅ Added: {shapefile_path.name}")
+                file_format = Path(shapefile_path).suffix.upper()
+                print(f"   ✅ Added: {shapefile_path.name} ({file_format})")
                 print(f"      Date: {date_str}, Day: {day_number}")
                 print(f"      Area: {fire_perimeter.area_hectares:.1f} ha" if fire_perimeter.area_hectares else "      Area: Unknown")
             else:
@@ -262,37 +263,55 @@ class FirePerimeterDiscovery:
             return None
     
     def _find_shapefile(self, directory: Path) -> Optional[Path]:
-        """Find the main shapefile (.shp) in a directory (including subdirectories)."""
-        # First try direct search in the directory
-        shapefiles = list(directory.glob("*.shp"))
+        """Find the main fire perimeter file (.shp, .kmz, .kml) in a directory."""
+        # Try multiple geospatial formats in order of preference
+        formats_to_try = [
+            ("*.shp", "shapefile"),
+            ("*.kmz", "KMZ file"), 
+            ("*.kml", "KML file"),
+            ("*.json", "GeoJSON file")
+        ]
         
-        # If no direct shapefiles, search recursively in subdirectories
-        if not shapefiles:
-            logger.debug(f"No direct shapefiles in {directory.name}, searching subdirectories...")
-            shapefiles = list(directory.rglob("*.shp"))
-            if shapefiles:
-                logger.info(f"Found {len(shapefiles)} shapefiles in subdirectories of {directory.name}")
-        
-        if len(shapefiles) == 1:
-            return shapefiles[0]
-        elif len(shapefiles) > 1:
-            # Prefer files that don't contain "GRA" (grading) - focus on delineation
-            delineation_files = [f for f in shapefiles if "DEL" in f.name and "GRA" not in f.name]
-            if delineation_files:
-                logger.info(f"Selected delineation file: {delineation_files[0].name}")
-                return delineation_files[0]
+        for pattern, format_name in formats_to_try:
+            # First try direct search in the directory
+            files = list(directory.glob(pattern))
             
-            # Prefer files with "EMSR" in the name
-            emsr_files = [f for f in shapefiles if "EMSR" in f.name]
-            if emsr_files:
-                logger.info(f"Selected EMSR file: {emsr_files[0].name}")
-                return emsr_files[0]
+            # If no direct files, search recursively in subdirectories
+            if not files:
+                logger.debug(f"No direct {format_name}s in {directory.name}, searching subdirectories...")
+                files = list(directory.rglob(pattern))
+                if files:
+                    logger.info(f"Found {len(files)} {format_name}s in subdirectories of {directory.name}")
             
-            # Fallback to first file
-            logger.info(f"Using first available shapefile: {shapefiles[0].name}")
-            return shapefiles[0]
+            if files:
+                logger.info(f"Using {format_name} format for {directory.name}")
+                selected_file = self._select_best_file(files)
+                if selected_file:
+                    logger.info(f"Selected: {selected_file.name}")
+                    return selected_file
         
         return None
+    
+    def _select_best_file(self, files: List[Path]) -> Optional[Path]:
+        """Select the best file from a list of candidates."""
+        if len(files) == 1:
+            return files[0]
+        
+        # Prefer files that don't contain "GRA" (grading) - focus on delineation
+        delineation_files = [f for f in files if "DEL" in f.name and "GRA" not in f.name]
+        if delineation_files:
+            logger.info(f"Selected delineation file over {len(files)} candidates")
+            return delineation_files[0]
+        
+        # Prefer files with "EMSR" in the name
+        emsr_files = [f for f in files if "EMSR" in f.name]
+        if emsr_files:
+            logger.info(f"Selected EMSR file over {len(files)} candidates")
+            return emsr_files[0]
+        
+        # Fallback to first file
+        logger.info(f"Using first available file from {len(files)} candidates")
+        return files[0]
     
     def _extract_fire_id(self, filename: str) -> str:
         """Extract fire ID from EMSR filename."""
@@ -303,36 +322,61 @@ class FirePerimeterDiscovery:
         return filename.split(".")[0]  # Fallback to filename without extension
     
     def _validate_and_extract_metadata(self, fire_perimeter: FirePerimeterData):
-        """Validate shapefile and extract metadata."""
+        """Validate fire perimeter file and extract metadata."""
         if not SPATIAL_LIBS_AVAILABLE:
             fire_perimeter.error_message = "Spatial libraries (geopandas) not available"
             fire_perimeter.is_valid = False
             return
         
         try:
-            shapefile_path = Path(fire_perimeter.shapefile_path)
+            file_path = Path(fire_perimeter.shapefile_path)
+            file_ext = file_path.suffix.lower()
             
-            # Check if all required shapefile components exist
-            required_extensions = ['.shp', '.shx', '.dbf', '.prj']
-            base_name = shapefile_path.stem
-            base_dir = shapefile_path.parent
+            # Handle different file formats
+            if file_ext == '.shp':
+                # Check if all required shapefile components exist
+                required_extensions = ['.shp', '.shx', '.dbf', '.prj']
+                base_name = file_path.stem
+                base_dir = file_path.parent
+                
+                missing_files = []
+                for ext in required_extensions:
+                    if not (base_dir / f"{base_name}{ext}").exists():
+                        missing_files.append(ext)
+                
+                if missing_files:
+                    fire_perimeter.error_message = f"Missing shapefile components: {missing_files}"
+                    fire_perimeter.is_valid = False
+                    return
             
-            missing_files = []
-            for ext in required_extensions:
-                if not (base_dir / f"{base_name}{ext}").exists():
-                    missing_files.append(ext)
+            elif file_ext in ['.kmz', '.kml']:
+                # KMZ/KML files are self-contained, just check existence
+                if not file_path.exists():
+                    fire_perimeter.error_message = f"KMZ/KML file does not exist: {file_path}"
+                    fire_perimeter.is_valid = False
+                    return
+                logger.info(f"Processing KMZ/KML file: {file_path.name}")
             
-            if missing_files:
-                fire_perimeter.error_message = f"Missing shapefile components: {missing_files}"
+            elif file_ext == '.json':
+                # JSON files should be GeoJSON format
+                if not file_path.exists():
+                    fire_perimeter.error_message = f"JSON file does not exist: {file_path}"
+                    fire_perimeter.is_valid = False
+                    return
+                logger.info(f"Processing GeoJSON file: {file_path.name}")
+            
+            else:
+                fire_perimeter.error_message = f"Unsupported file format: {file_ext}"
                 fire_perimeter.is_valid = False
                 return
             
-            # Load and validate shapefile
-            gdf = gpd.read_file(shapefile_path)
+            # Load and validate fire perimeter file
+            logger.info(f"Reading {file_ext} file with geopandas...")
+            gdf = gpd.read_file(file_path)
             
             # Check if empty
             if len(gdf) == 0:
-                fire_perimeter.error_message = "Shapefile contains no features"
+                fire_perimeter.error_message = "Fire perimeter file contains no features"
                 fire_perimeter.is_valid = False
                 return
             
