@@ -325,7 +325,7 @@ Examples:
         '--emsr-dir',
         type=str,
         default="EMSR Delineations",
-        help='Path to EMSR delineations directory (default: "EMSR Delineations")'
+        help='Path to EMSR delineations directory (default: auto-detect with HPC fallbacks)'
     )
     
     parser.add_argument(

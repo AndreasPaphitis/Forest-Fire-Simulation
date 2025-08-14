@@ -104,11 +104,46 @@ class FirePerimeterDiscovery:
         Args:
             base_directory: Base directory containing EMSR fire perimeter data
         """
-        self.base_directory = Path(base_directory)
+        self.base_directory = self._find_emsr_directory(base_directory)
         if not self.base_directory.exists():
             raise FileNotFoundError(f"EMSR directory not found: {self.base_directory}")
         
         logger.info(f"Initialized fire perimeter discovery for: {self.base_directory}")
+    
+    def _find_emsr_directory(self, base_directory: Union[str, Path]) -> Path:
+        """Find EMSR directory with HPC and local fallbacks."""
+        possible_paths = [
+            # User-provided path (first priority)
+            str(base_directory),
+            # HPC paths (confirmed Snellius location)
+            "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations",
+            "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations/",
+            "/gpfs/home1/apaphitis/Forest-Fire-Simulation/EMSR Delineations", 
+            "/project/EMSR Delineations",
+            "/scratch-shared/apaphitis/EMSR Delineations",
+            # Project relative paths
+            str(Path(__file__).parent.parent.parent.parent / "EMSR Delineations"),
+            str(Path(__file__).parent.parent.parent.parent / "data" / "EMSR Delineations"),
+            # Current directory relative
+            "EMSR Delineations",
+            "data/EMSR Delineations",
+            "./EMSR Delineations"
+        ]
+        
+        for path in possible_paths:
+            path_obj = Path(path)
+            if path_obj.exists() and path_obj.is_dir():
+                # Check if it contains Day directories with expected structure
+                day_dirs = list(path_obj.glob("Day *"))
+                if len(day_dirs) > 0:
+                    logger.info(f"✅ Found EMSR directory: {path} ({len(day_dirs)} day directories)")
+                    return path_obj
+                else:
+                    logger.debug(f"Directory exists but no Day subdirectories: {path}")
+        
+        # If no valid directory found, return the original path (will trigger error later)
+        logger.warning(f"⚠️  No valid EMSR directory found, using: {base_directory}")
+        return Path(base_directory)
     
     def discover_fire_perimeters(self) -> FirePerimeterDataset:
         """
