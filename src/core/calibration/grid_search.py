@@ -236,14 +236,40 @@ class GridSearchCalibrator:
             num_layers = self._get_num_layers_from_config(calibration_config)
             total_model_cells = total_cells * num_layers
             
-            if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
-                self.max_workers = 1  # Sequential for massive grids
-                logger.warning(f"Very large grid detected ({total_model_cells:,} cells) - using sequential processing")
-            elif total_model_cells > 100_000_000:  # 100M+ cells (large)
-                self.max_workers = 2  # Minimal parallelism for large grids
-                logger.info(f"Large grid detected ({total_model_cells:,} cells) - limiting to 2 workers")
-            else:
-                self.max_workers = 4  # Standard parallelism for smaller grids
+            # Detect available memory for intelligent worker allocation
+            try:
+                import psutil
+                available_memory_gb = psutil.virtual_memory().total / (1024**3)
+            except ImportError:
+                available_memory_gb = 64  # Conservative fallback
+            
+            if available_memory_gb >= 120:  # High-memory HPC environment
+                if total_model_cells > 10_000_000_000:  # 10B+ cells
+                    self.max_workers = 20  # Generous parallelism for high-memory systems
+                    logger.info(f"Very large grid ({total_model_cells:,} cells) on high-memory system - using 20 workers")
+                elif total_model_cells > 1_000_000_000:  # 1B+ cells
+                    self.max_workers = 30  # Good parallelism
+                    logger.info(f"Large grid ({total_model_cells:,} cells) on high-memory system - using 30 workers")
+                else:
+                    self.max_workers = 40  # Full parallelism for smaller grids
+            elif available_memory_gb >= 60:  # Medium-memory environment
+                if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
+                    self.max_workers = 8  # Moderate parallelism
+                    logger.info(f"Very large grid detected ({total_model_cells:,} cells) - using 8 workers")
+                elif total_model_cells > 100_000_000:  # 100M+ cells (large)
+                    self.max_workers = 15  # Good parallelism for medium memory
+                    logger.info(f"Large grid detected ({total_model_cells:,} cells) - using 15 workers")
+                else:
+                    self.max_workers = 20  # Good parallelism for smaller grids
+            else:  # Low-memory environment - use original conservative approach
+                if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
+                    self.max_workers = 1  # Sequential for massive grids
+                    logger.warning(f"Very large grid detected ({total_model_cells:,} cells) - using sequential processing")
+                elif total_model_cells > 100_000_000:  # 100M+ cells (large)
+                    self.max_workers = 2  # Minimal parallelism for large grids
+                    logger.info(f"Large grid detected ({total_model_cells:,} cells) - limiting to 2 workers")
+                else:
+                    self.max_workers = 4  # Standard parallelism for smaller grids
         else:
             # Even if max_workers is explicitly set, check for safety overrides
             grid_size = self._get_grid_size_from_config(calibration_config)
@@ -255,19 +281,52 @@ class GridSearchCalibrator:
             num_layers = self._get_num_layers_from_config(calibration_config)
             total_model_cells = total_cells * num_layers
             
-            if total_model_cells > 5_000_000_000:  # 5B+ cells (Tenerife scale) - FORCE sequential
-                logger.error(f"CRITICAL: Grid too large ({total_model_cells:,} cells) for parallel processing!")
-                logger.error(f"Overriding max_workers from {max_workers} to 1 for memory safety")
-                self.max_workers = 1
-                self.parallel_execution = False  # Force sequential
-            elif total_model_cells > 1_000_000_000:  # 1B+ cells - severely limit workers
-                safe_workers = min(10, max_workers)
-                if safe_workers < max_workers:
-                    logger.warning(f"Very large grid detected ({total_model_cells:,} cells)")
-                    logger.warning(f"Reducing workers from {max_workers} to {safe_workers} for memory safety")
-                self.max_workers = safe_workers
-            else:
-                self.max_workers = max_workers
+            # Detect available system memory for intelligent scaling
+            try:
+                import psutil
+                available_memory_gb = psutil.virtual_memory().total / (1024**3)
+                logger.info(f"Detected {available_memory_gb:.1f}GB system memory")
+            except ImportError:
+                available_memory_gb = 64  # Conservative fallback
+                logger.warning("psutil not available, assuming 64GB memory")
+            
+            # High-memory systems (128GB+) can handle much larger parallel workloads
+            if available_memory_gb >= 120:  # High-memory HPC environment
+                if total_model_cells > 20_000_000_000:  # 20B+ cells - still limit for extreme cases
+                    safe_workers = min(max_workers // 2, 20)
+                    logger.warning(f"Extreme grid size ({total_model_cells:,} cells) - reducing to {safe_workers} workers")
+                    self.max_workers = safe_workers
+                elif total_model_cells > 10_000_000_000:  # 10B+ cells - moderate limiting
+                    safe_workers = min(max_workers, 30)
+                    logger.info(f"Very large grid ({total_model_cells:,} cells) - using {safe_workers} workers (high-memory mode)")
+                    self.max_workers = safe_workers
+                else:
+                    self.max_workers = max_workers
+                    logger.info(f"High-memory system: using full {max_workers} workers")
+            elif available_memory_gb >= 60:  # Medium-memory environment
+                if total_model_cells > 5_000_000_000:  # 5B+ cells
+                    safe_workers = min(10, max_workers)
+                    logger.warning(f"Large grid ({total_model_cells:,} cells) - limiting to {safe_workers} workers")
+                    self.max_workers = safe_workers
+                elif total_model_cells > 1_000_000_000:  # 1B+ cells
+                    safe_workers = min(max_workers, 15)
+                    self.max_workers = safe_workers
+                else:
+                    self.max_workers = max_workers
+            else:  # Low-memory environment - use original conservative limits
+                if total_model_cells > 5_000_000_000:  # 5B+ cells (Tenerife scale) - FORCE sequential
+                    logger.error(f"CRITICAL: Grid too large ({total_model_cells:,} cells) for low-memory parallel processing!")
+                    logger.error(f"Overriding max_workers from {max_workers} to 1 for memory safety")
+                    self.max_workers = 1
+                    self.parallel_execution = False  # Force sequential
+                elif total_model_cells > 1_000_000_000:  # 1B+ cells - severely limit workers
+                    safe_workers = min(10, max_workers)
+                    if safe_workers < max_workers:
+                        logger.warning(f"Very large grid detected ({total_model_cells:,} cells)")
+                        logger.warning(f"Reducing workers from {max_workers} to {safe_workers} for memory safety")
+                    self.max_workers = safe_workers
+                else:
+                    self.max_workers = max_workers
         
         # Initialize parameter space
         self.parameter_space = self._create_parameter_space()
@@ -498,9 +557,30 @@ class GridSearchCalibrator:
         num_layers = self._get_num_layers_from_config(self.config)
         total_model_cells = total_cells * num_layers
         
-        if total_model_cells > 1_000_000_000 and should_run_parallel:  # 1B+ cells
-            logger.warning(f"Forcing sequential execution for massive grid ({total_model_cells:,} cells) to prevent memory exhaustion")
-            should_run_parallel = False
+        # Detect available memory for intelligent parallel execution decision
+        try:
+            import psutil
+            available_memory_gb = psutil.virtual_memory().total / (1024**3)
+        except ImportError:
+            available_memory_gb = 64  # Conservative fallback
+        
+        # Only force sequential on high-memory systems for truly extreme grids
+        if should_run_parallel:
+            if available_memory_gb >= 120:  # High-memory HPC environment
+                # Allow parallel processing even for very large grids (up to 20B cells)
+                if total_model_cells > 20_000_000_000:
+                    logger.warning(f"Extreme grid size ({total_model_cells:,} cells) - forcing sequential execution")
+                    should_run_parallel = False
+                else:
+                    logger.info(f"High-memory system ({available_memory_gb:.1f}GB) - allowing parallel execution for {total_model_cells:,} cells")
+            elif available_memory_gb >= 60:  # Medium-memory environment
+                if total_model_cells > 5_000_000_000:
+                    logger.warning(f"Large grid ({total_model_cells:,} cells) on medium-memory system - forcing sequential execution")
+                    should_run_parallel = False
+            else:  # Low-memory environment - use original conservative limit
+                if total_model_cells > 1_000_000_000:
+                    logger.warning(f"Forcing sequential execution for massive grid ({total_model_cells:,} cells) to prevent memory exhaustion")
+                    should_run_parallel = False
         
         if should_run_parallel:
             results = self._run_parallel_calibration(target_data, progress_callback, results)
