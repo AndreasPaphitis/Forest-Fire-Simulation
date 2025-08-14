@@ -176,6 +176,15 @@ class FirePerimeterDiscovery:
             shapefile_path = self._find_shapefile(day_dir)
             if not shapefile_path:
                 print(f"   ⚠️  No shapefile found in {day_dir.name}")
+                # Show directory contents for debugging
+                try:
+                    contents = list(day_dir.iterdir())
+                    subdirs = [d.name for d in contents if d.is_dir()]
+                    files = [f.name for f in contents if f.is_file()]
+                    print(f"      📂 Subdirectories: {subdirs}")
+                    print(f"      📄 Files: {files}")
+                except Exception as e:
+                    print(f"      ❌ Error listing contents: {e}")
                 continue
             
             # Extract fire ID from filename
@@ -253,8 +262,16 @@ class FirePerimeterDiscovery:
             return None
     
     def _find_shapefile(self, directory: Path) -> Optional[Path]:
-        """Find the main shapefile (.shp) in a directory."""
+        """Find the main shapefile (.shp) in a directory (including subdirectories)."""
+        # First try direct search in the directory
         shapefiles = list(directory.glob("*.shp"))
+        
+        # If no direct shapefiles, search recursively in subdirectories
+        if not shapefiles:
+            logger.debug(f"No direct shapefiles in {directory.name}, searching subdirectories...")
+            shapefiles = list(directory.rglob("*.shp"))
+            if shapefiles:
+                logger.info(f"Found {len(shapefiles)} shapefiles in subdirectories of {directory.name}")
         
         if len(shapefiles) == 1:
             return shapefiles[0]
@@ -262,8 +279,18 @@ class FirePerimeterDiscovery:
             # Prefer files that don't contain "GRA" (grading) - focus on delineation
             delineation_files = [f for f in shapefiles if "DEL" in f.name and "GRA" not in f.name]
             if delineation_files:
+                logger.info(f"Selected delineation file: {delineation_files[0].name}")
                 return delineation_files[0]
-            return shapefiles[0]  # Fallback to first file
+            
+            # Prefer files with "EMSR" in the name
+            emsr_files = [f for f in shapefiles if "EMSR" in f.name]
+            if emsr_files:
+                logger.info(f"Selected EMSR file: {emsr_files[0].name}")
+                return emsr_files[0]
+            
+            # Fallback to first file
+            logger.info(f"Using first available shapefile: {shapefiles[0].name}")
+            return shapefiles[0]
         
         return None
     
