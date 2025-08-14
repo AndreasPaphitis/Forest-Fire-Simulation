@@ -2259,15 +2259,17 @@ class MemoryOptimizedForestModel(ForestModel):
         # Add property accessors for fuel_load and state to maintain compatibility
         self._setup_sparse_property_accessors()
         
+        # TEMPORARILY DISABLE terrain loading in sparse init to isolate crash cause
         # Load terrain data if available (must be done after array initialization)
-        if config and hasattr(config, 'use_preprocessed_terrain') and config.use_preprocessed_terrain:
-            if hasattr(config, 'preprocessed_terrain_dir') and config.preprocessed_terrain_dir:
-                logger.info(f"🏔️  Loading preprocessed terrain data for sparse model")
-                terrain_success = self.load_terrain_data("")  # Use preprocessed terrain
-                if terrain_success:
-                    logger.info(f"✅ Terrain data loaded successfully for sparse model")
-                else:
-                    logger.warning(f"⚠️  Failed to load terrain data for sparse model")
+        logger.info(f"🚧 Temporarily skipping terrain loading in sparse initialization to isolate crash")
+        # if config and hasattr(config, 'use_preprocessed_terrain') and config.use_preprocessed_terrain:
+        #     if hasattr(config, 'preprocessed_terrain_dir') and config.preprocessed_terrain_dir:
+        #         logger.info(f"🏔️  Loading preprocessed terrain data for sparse model")
+        #         terrain_success = self.load_terrain_data("")  # Use preprocessed terrain
+        #         if terrain_success:
+        #             logger.info(f"✅ Terrain data loaded successfully for sparse model")
+        #         else:
+        #             logger.warning(f"⚠️  Failed to load terrain data for sparse model")
         
         logger.info(f"✅ Successfully initialized sparse model: {self.width}×{self.height}×{num_layers} "
                    f"({self.width * self.height * num_layers:,} total cells)")
