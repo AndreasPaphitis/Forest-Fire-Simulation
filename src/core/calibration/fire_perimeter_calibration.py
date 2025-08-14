@@ -699,7 +699,7 @@ class TenerifeFirePerimeterCalibrator:
         total_cells = 15121 * 24741 * 25
         
         # WITH SHARED TERRAIN ENABLED:
-        # 1. Shared terrain: ~134GB loaded ONCE and shared across ALL workers
+        # 1. Shared terrain: ~9.5GB loaded ONCE and shared across ALL workers
         # 2. Disk storage: History stored on disk, only current timestep in memory  
         # 3. Sparse storage: Only active fire cells stored (~5-10% of total)
         # 4. Level 2 optimization: 60% memory reduction
@@ -831,7 +831,12 @@ class TenerifeFirePerimeterCalibrator:
         
         # Check if grid is too large for shared memory
         total_cells = grid_size[0] * grid_size[1]
-        estimated_shared_gb = total_cells * 4 * 9 / (1024**3)  # 9 terrain layers
+        # Correct memory calculation based on actual terrain data types:
+        # 6 float32 layers: elevation, slope, aspect, barranco_directions, wind_amplification, wind_direction_modification
+        # 3 uint8 layers: barranco_mask, depression_mask, wind_channeling_mask
+        float32_layers_gb = total_cells * 6 * 4 / (1024**3)  # 6 layers × 4 bytes
+        uint8_layers_gb = total_cells * 3 * 1 / (1024**3)    # 3 layers × 1 byte
+        estimated_shared_gb = float32_layers_gb + uint8_layers_gb
         
         if total_cells > 1_000_000_000:  # More than 1B cells (increased threshold)
             logger.warning(f"⚠️  Grid too large for shared terrain: {grid_size} ({total_cells:,} cells)")

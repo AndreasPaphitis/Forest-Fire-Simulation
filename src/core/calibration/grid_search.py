@@ -226,14 +226,14 @@ class GridSearchCalibrator:
         # MEMORY OPTIMIZATION: Reduce workers for large grids to prevent memory exhaustion
         if max_workers is None:
             # Calculate grid size to determine appropriate worker count
-            grid_size = getattr(calibration_config, 'grid_size', (100, 100))
+            grid_size = self._get_grid_size_from_config(calibration_config)
             if isinstance(grid_size, (int, float)):
                 total_cells = int(grid_size) ** 2
             else:
                 total_cells = int(grid_size[0]) * int(grid_size[1])
             
             # Get number of layers
-            num_layers = getattr(calibration_config, 'num_layers', 10)
+            num_layers = self._get_num_layers_from_config(calibration_config)
             total_model_cells = total_cells * num_layers
             
             if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
@@ -245,13 +245,36 @@ class GridSearchCalibrator:
             else:
                 self.max_workers = 4  # Standard parallelism for smaller grids
         else:
-            self.max_workers = max_workers
+            # Even if max_workers is explicitly set, check for safety overrides
+            grid_size = self._get_grid_size_from_config(calibration_config)
+            if isinstance(grid_size, (int, float)):
+                total_cells = int(grid_size) ** 2
+            else:
+                total_cells = int(grid_size[0]) * int(grid_size[1])
+            
+            num_layers = self._get_num_layers_from_config(calibration_config)
+            total_model_cells = total_cells * num_layers
+            
+            if total_model_cells > 5_000_000_000:  # 5B+ cells (Tenerife scale) - FORCE sequential
+                logger.error(f"CRITICAL: Grid too large ({total_model_cells:,} cells) for parallel processing!")
+                logger.error(f"Overriding max_workers from {max_workers} to 1 for memory safety")
+                self.max_workers = 1
+                self.parallel_execution = False  # Force sequential
+            elif total_model_cells > 1_000_000_000:  # 1B+ cells - severely limit workers
+                safe_workers = min(10, max_workers)
+                if safe_workers < max_workers:
+                    logger.warning(f"Very large grid detected ({total_model_cells:,} cells)")
+                    logger.warning(f"Reducing workers from {max_workers} to {safe_workers} for memory safety")
+                self.max_workers = safe_workers
+            else:
+                self.max_workers = max_workers
         
         # Initialize parameter space
         self.parameter_space = self._create_parameter_space()
         self.total_combinations = self._calculate_total_combinations()
         
         logger.info(f"Initialized grid search with {self.total_combinations} parameter combinations")
+        logger.info(f"Worker configuration: {self.max_workers} workers, parallel={self.parallel_execution}")
     
     def _create_parameter_space(self) -> Dict[str, List[float]]:
         """Create the parameter space grid."""
@@ -272,6 +295,38 @@ class GridSearchCalibrator:
                         f"{min(grid_points):.3f} to {max(grid_points):.3f}")
         
         return parameter_space
+    
+    def _get_grid_size_from_config(self, calibration_config) -> Union[int, Tuple[int, int]]:
+        """Get grid size from calibration config, checking both direct and base_config locations."""
+        # Try direct access first
+        grid_size = getattr(calibration_config, 'grid_size', None)
+        if grid_size is not None:
+            return grid_size
+        
+        # Try base_config access
+        if hasattr(calibration_config, 'base_config'):
+            grid_size = getattr(calibration_config.base_config, 'grid_size', None)
+            if grid_size is not None:
+                return grid_size
+        
+        # Default fallback
+        return (100, 100)
+    
+    def _get_num_layers_from_config(self, calibration_config) -> int:
+        """Get number of layers from calibration config, checking both direct and base_config locations."""
+        # Try direct access first
+        num_layers = getattr(calibration_config, 'num_layers', None)
+        if num_layers is not None:
+            return num_layers
+        
+        # Try base_config access
+        if hasattr(calibration_config, 'base_config'):
+            num_layers = getattr(calibration_config.base_config, 'num_layers', None)
+            if num_layers is not None:
+                return num_layers
+        
+        # Default fallback
+        return 10
     
     def _calculate_total_combinations(self) -> int:
         """Calculate total number of parameter combinations."""
@@ -434,12 +489,12 @@ class GridSearchCalibrator:
         should_run_parallel = self.parallel_execution and self.total_combinations > 1
         
         # Check grid size and disable parallel execution for very large grids
-        grid_size = getattr(self.config, 'grid_size', (100, 100))
+        grid_size = self._get_grid_size_from_config(self.config)
         if isinstance(grid_size, (int, float)):
             total_cells = int(grid_size) ** 2
         else:
             total_cells = int(grid_size[0]) * int(grid_size[1])
-        num_layers = getattr(self.config, 'num_layers', 10)
+        num_layers = self._get_num_layers_from_config(self.config)
         total_model_cells = total_cells * num_layers
         
         if total_model_cells > 1_000_000_000 and should_run_parallel:  # 1B+ cells
@@ -500,12 +555,12 @@ class GridSearchCalibrator:
         
         # MEMORY OPTIMIZATION: Use ThreadPoolExecutor for large grids to avoid process serialization
         # Check grid size to determine executor type
-        grid_size = getattr(self.config, 'grid_size', (100, 100))
+        grid_size = self._get_grid_size_from_config(self.config)
         if isinstance(grid_size, (int, float)):
             total_cells = int(grid_size) ** 2
         else:
             total_cells = int(grid_size[0]) * int(grid_size[1])
-        num_layers = getattr(self.config, 'num_layers', 10)
+        num_layers = self._get_num_layers_from_config(self.config)
         total_model_cells = total_cells * num_layers
         
         if total_model_cells > 100_000_000:  # 100M+ cells
