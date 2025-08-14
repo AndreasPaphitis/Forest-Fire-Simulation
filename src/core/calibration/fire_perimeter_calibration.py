@@ -637,6 +637,16 @@ class TenerifeFirePerimeterCalibrator:
             wind_direction=45.0,
         )
         
+        # Create calibration targets from training data
+        from src.core.calibration.calibration_config import CalibrationTarget
+        calibration_targets = []
+        for fp in training_data:
+            target = CalibrationTarget(
+                fire_perimeter_path=fp.shapefile_path,
+                weight=1.0 / len(training_data)  # Equal weights
+            )
+            calibration_targets.append(target)
+        
         # Create calibration configuration
         calib_config = CalibrationConfig(
             experiment_name=self.experiment_name,
@@ -649,13 +659,13 @@ class TenerifeFirePerimeterCalibrator:
             grid_search_points=self.grid_search_points,
             
             # FIRE PERIMETER TARGETS
-            calibration_targets=[],  # Will be populated with training data
+            calibration_targets=calibration_targets,  # Populated with training data
             
             # HIGH-MEMORY PARALLEL CONFIGURATION
             parallel_execution=True,
-            max_workers=self.workers,
+            max_workers=self.workers,  # Use CLI-specified worker count
             memory_limit_gb=self.memory_gb * 0.9,  # Leave 10% for system
-            simulation_timeout_minutes=120.0,      # 2 hours per simulation
+            simulation_timeout_minutes=180.0,      # 3 hours per simulation (full Tenerife needs more time)
             
             # SPATIAL SIMILARITY WEIGHTS
             jaccard_weight=0.4,
@@ -668,13 +678,6 @@ class TenerifeFirePerimeterCalibrator:
             generate_plots=True,
             verbose=True
         )
-        
-        # Add training data as calibration targets
-        for fp in training_data:
-            calib_config.add_calibration_target(
-                fire_perimeter_path=fp.shapefile_path,
-                weight=1.0 / len(training_data)  # Equal weights
-            )
         
         print(f"✅ Calibration configuration created")
         print(f"   Training targets: {len(calib_config.calibration_targets)}")
@@ -824,7 +827,7 @@ class TenerifeFirePerimeterCalibrator:
         total_cells = grid_size[0] * grid_size[1]
         estimated_shared_gb = total_cells * 4 * 9 / (1024**3)  # 9 terrain layers
         
-        if total_cells > 500_000_000:  # More than 500M cells
+        if total_cells > 1_000_000_000:  # More than 1B cells (increased threshold)
             logger.warning(f"⚠️  Grid too large for shared terrain: {grid_size} ({total_cells:,} cells)")
             logger.warning("   Shared terrain disabled - each worker will load terrain individually")
             return None
@@ -858,8 +861,10 @@ class TenerifeFirePerimeterCalibrator:
                 return None
                 
         except Exception as e:
-            logger.warning(f"⚠️  Error setting up shared terrain: {e}")
-            return None
+            logger.error(f"❌ CRITICAL: Failed to set up shared terrain: {e}")
+            logger.error("   This will cause massive memory usage per worker!")
+            logger.error("   Consider reducing worker count or fixing terrain data")
+            raise RuntimeError(f"Shared terrain setup failed - would cause memory crashes: {e}")
 
     def run_calibration(self, 
                        calibration_config: CalibrationConfig,
