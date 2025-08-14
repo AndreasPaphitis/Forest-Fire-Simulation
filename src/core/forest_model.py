@@ -621,8 +621,25 @@ class BaseForestModel(ABC):
                 return True
             
             # Initialize base wind field
-            self.wind_direction = np.ones((self.width, self.height)) * wind_direction
-            self.wind_speed = np.ones((self.width, self.height)) * wind_speed
+            # MEMORY OPTIMIZATION: For large grids, reuse existing arrays instead of creating new ones
+            total_cells = self.width * self.height
+            if total_cells > 100_000_000:  # 100M cells threshold
+                logger.info(f"Using memory-efficient wind field initialization for large grid ({total_cells:,} cells)")
+                
+                # Check if wind arrays already exist (from sparse model initialization)
+                if hasattr(self, 'wind_direction') and self.wind_direction is not None:
+                    logger.info("Reusing existing wind arrays - filling with uniform values")
+                    self.wind_direction.fill(wind_direction)
+                    self.wind_speed.fill(wind_speed)
+                else:
+                    # Create new arrays if they don't exist
+                    logger.info("Creating new wind arrays with memory-efficient method")
+                    self.wind_direction = np.full((self.width, self.height), wind_direction, dtype=np.float32)
+                    self.wind_speed = np.full((self.width, self.height), wind_speed, dtype=np.float32)
+            else:
+                # Standard initialization for smaller grids
+                self.wind_direction = np.ones((self.width, self.height)) * wind_direction
+                self.wind_speed = np.ones((self.width, self.height)) * wind_speed
             
             # Store original values for reference
             self.base_wind_direction = wind_direction
@@ -663,8 +680,19 @@ class BaseForestModel(ABC):
         except Exception as e:
             logger.error(f"Error initializing terrain wind field: {e}")
             # Fallback to uniform wind field
-            self.wind_direction = np.ones((self.width, self.height)) * wind_direction
-            self.wind_speed = np.ones((self.width, self.height)) * wind_speed
+            # MEMORY OPTIMIZATION: Use memory-efficient fallback for large grids
+            total_cells = self.width * self.height
+            if total_cells > 100_000_000:  # 100M cells threshold
+                logger.info(f"Using memory-efficient fallback wind field for large grid ({total_cells:,} cells)")
+                if hasattr(self, 'wind_direction') and self.wind_direction is not None:
+                    self.wind_direction.fill(wind_direction)
+                    self.wind_speed.fill(wind_speed)
+                else:
+                    self.wind_direction = np.full((self.width, self.height), wind_direction, dtype=np.float32)
+                    self.wind_speed = np.full((self.width, self.height), wind_speed, dtype=np.float32)
+            else:
+                self.wind_direction = np.ones((self.width, self.height)) * wind_direction
+                self.wind_speed = np.ones((self.width, self.height)) * wind_speed
             return False
     
     def _cache_wind_field(self, cache_key, uniform_only=False):
