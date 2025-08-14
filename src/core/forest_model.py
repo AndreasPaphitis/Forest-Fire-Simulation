@@ -787,26 +787,51 @@ class BaseForestModel(ABC):
             logger.info(f"   barranco_mask shape: {barranco_mask.shape}")
             logger.info(f"   ravine_directions shape: {ravine_directions.shape}")
             
-            # Blend original wind direction with ravine direction
-            original_direction_rad = np.radians(self.wind_direction[barranco_mask])
-            ravine_direction_rad = np.radians(ravine_directions[barranco_mask])
+            # MEMORY OPTIMIZATION: Process wind direction alignment in chunks to avoid memory exhaustion
+            # For large grids, trigonometric operations on full arrays can exceed memory
+            barranco_indices = np.where(barranco_mask)
+            total_barranco_cells = len(barranco_indices[0])
             
-            # Calculate weighted average of directions (handling circular nature)
-            # Convert to cartesian, average, convert back
-            orig_x = np.cos(original_direction_rad)
-            orig_y = np.sin(original_direction_rad)
-            ravine_x = np.cos(ravine_direction_rad) 
-            ravine_y = np.sin(ravine_direction_rad)
-            
-            # Weighted average
-            new_x = (1 - effective_weight) * orig_x + effective_weight * ravine_x
-            new_y = (1 - effective_weight) * orig_y + effective_weight * ravine_y
-            
-            # Convert back to degrees
-            new_direction_rad = np.arctan2(new_y, new_x)
-            new_direction_deg = np.degrees(new_direction_rad) % 360
-            
-            self.wind_direction[barranco_mask] = new_direction_deg
+            if total_barranco_cells > 0:
+                # Process in chunks to avoid memory issues
+                chunk_size = min(100000, total_barranco_cells)  # 100k cells per chunk
+                logger.info(f"Processing {total_barranco_cells} barranco cells in chunks of {chunk_size}")
+                
+                for i in range(0, total_barranco_cells, chunk_size):
+                    end_idx = min(i + chunk_size, total_barranco_cells)
+                    
+                    # Get chunk indices
+                    chunk_x = barranco_indices[0][i:end_idx]
+                    chunk_y = barranco_indices[1][i:end_idx]
+                    
+                    # Extract chunk data
+                    chunk_wind_dir = self.wind_direction[chunk_x, chunk_y]
+                    chunk_ravine_dir = ravine_directions[chunk_x, chunk_y]
+                    
+                    # Perform trigonometric operations on smaller chunks
+                    original_direction_rad = np.radians(chunk_wind_dir)
+                    ravine_direction_rad = np.radians(chunk_ravine_dir)
+                    
+                    # Calculate weighted average of directions (handling circular nature)
+                    orig_x = np.cos(original_direction_rad)
+                    orig_y = np.sin(original_direction_rad)
+                    ravine_x = np.cos(ravine_direction_rad) 
+                    ravine_y = np.sin(ravine_direction_rad)
+                    
+                    # Weighted average
+                    new_x = (1 - effective_weight) * orig_x + effective_weight * ravine_x
+                    new_y = (1 - effective_weight) * orig_y + effective_weight * ravine_y
+                    
+                    # Convert back to degrees
+                    new_direction_rad = np.arctan2(new_y, new_x)
+                    new_direction_deg = np.degrees(new_direction_rad) % 360
+                    
+                    # Update the wind direction array for this chunk
+                    self.wind_direction[chunk_x, chunk_y] = new_direction_deg
+                    
+                    # Clear chunk variables to free memory
+                    del chunk_wind_dir, chunk_ravine_dir, original_direction_rad, ravine_direction_rad
+                    del orig_x, orig_y, ravine_x, ravine_y, new_x, new_y, new_direction_rad, new_direction_deg
         
         # Store barranco mask for visualization and analysis
         self.barranco_mask = barranco_mask
@@ -984,9 +1009,35 @@ class BaseForestModel(ABC):
         
         # Apply wind direction modifications if available
         if hasattr(self, 'wind_direction_modification') and self.wind_direction_modification is not None:
-            # Apply preprocessed wind direction modifications
-            self.wind_direction += self.wind_direction_modification
-            self.wind_direction = self.wind_direction % 360  # Normalize to 0-360
+            # MEMORY OPTIMIZATION: For large arrays, apply modifications in chunks
+            total_cells = self.wind_direction.size
+            if total_cells > 10_000_000:  # 10M cells threshold
+                logger.info(f"Applying wind direction modifications in chunks for large grid ({total_cells:,} cells)")
+                
+                # Process in chunks to avoid memory exhaustion
+                chunk_size = 1_000_000  # 1M cells per chunk
+                flat_wind_dir = self.wind_direction.flatten()
+                flat_wind_mod = self.wind_direction_modification.flatten()
+                
+                for i in range(0, total_cells, chunk_size):
+                    end_idx = min(i + chunk_size, total_cells)
+                    chunk_wind = flat_wind_dir[i:end_idx]
+                    chunk_mod = flat_wind_mod[i:end_idx]
+                    
+                    # Apply modifications to chunk
+                    chunk_wind += chunk_mod
+                    chunk_wind = chunk_wind % 360  # Normalize to 0-360
+                    
+                    # Update the flattened array
+                    flat_wind_dir[i:end_idx] = chunk_wind
+                
+                # Reshape back to original shape
+                self.wind_direction = flat_wind_dir.reshape(self.wind_direction.shape)
+            else:
+                # Standard operation for smaller grids
+                self.wind_direction += self.wind_direction_modification
+                self.wind_direction = self.wind_direction % 360  # Normalize to 0-360
+            
             logger.info("Applied preprocessed wind direction modifications")
         
         # Ensure wind speed doesn't become negative
