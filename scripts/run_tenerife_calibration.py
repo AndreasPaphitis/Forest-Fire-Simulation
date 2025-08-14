@@ -262,20 +262,26 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Standard 64GB/60-worker configuration
+  # Auto-detect workers based on system memory (recommended)
   python run_tenerife_calibration.py
   
-  # High-memory 128GB/120-worker configuration  
-  python run_tenerife_calibration.py --memory 128 --workers 120
+  # Override with specific worker count (CLI takes precedence)
+  python run_tenerife_calibration.py --workers 40
+  
+  # High-memory HPC configuration with custom workers
+  python run_tenerife_calibration.py --memory 128 --workers 45
+  
+  # Force many workers (system will warn if unsafe)
+  python run_tenerife_calibration.py --workers 60
   
   # 4-point grid search for higher accuracy
-  python run_tenerife_calibration.py --grid-points 4
+  python run_tenerife_calibration.py --grid-points 4 --workers 30
   
   # Custom parameters from sensitivity analysis
-  python run_tenerife_calibration.py --parameters fuel_consumption_rate terrain_effect_strength wind_influence_on_spread barranco_amplification slope_influence
+  python run_tenerife_calibration.py --parameters fuel_consumption_rate terrain_effect_strength wind_influence_on_spread barranco_amplification slope_influence --workers 25
   
   # Dry run to validate setup
-  python run_tenerife_calibration.py --dry-run --verbose
+  python run_tenerife_calibration.py --dry-run --verbose --workers 20
         """
     )
     
@@ -291,7 +297,7 @@ Examples:
         '--workers',
         type=int,
         default=None,
-        help='Number of parallel workers (default: auto-detect based on memory)'
+        help='Number of parallel workers (default: auto-detect based on memory). CLI override takes precedence over automatic detection.'
     )
     
     parser.add_argument(
