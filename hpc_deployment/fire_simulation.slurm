@@ -44,6 +44,10 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export GDAL_CACHEMAX=4096  # Increased GDAL cache
 export GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR  # HPC optimization
 
+# NumExpr optimization for multi-core systems
+export NUMEXPR_MAX_THREADS=64
+export NUMEXPR_NUM_THREADS=64
+
 # Set up scratch storage for temporary files
 export SIMULATION_SCRATCH="/scratch-shared/$USER/fire_sim_$SLURM_JOB_ID"
 mkdir -p "$SIMULATION_SCRATCH"

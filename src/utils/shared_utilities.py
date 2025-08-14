@@ -330,6 +330,48 @@ def error_handler(func: Optional[Callable] = None, debug: bool = False, exit_on_
     return wrapper
 
 
+def optimize_numexpr_threading(max_threads: Optional[int] = None, force_threads: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Optimize NumExpr threading for maximum performance on multi-core systems.
+    
+    Args:
+        max_threads: Maximum threads to allow (defaults to min(64, cpu_count))
+        force_threads: Force specific thread count (overrides max_threads)
+        
+    Returns:
+        Dictionary with applied settings
+    """
+    try:
+        import os
+        
+        # Get CPU count for optimization
+        cpu_count = os.cpu_count() or 8
+        
+        if force_threads is not None:
+            numexpr_threads = force_threads
+        elif max_threads is not None:
+            numexpr_threads = min(max_threads, cpu_count)
+        else:
+            # Default: use up to 64 threads or CPU count, whichever is smaller
+            numexpr_threads = min(64, cpu_count)
+        
+        # Set NumExpr environment variables
+        os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr_threads)
+        os.environ['NUMEXPR_NUM_THREADS'] = str(numexpr_threads)
+        
+        logger.info(f"NumExpr optimized: max_threads={numexpr_threads} (CPU count: {cpu_count})")
+        
+        return {
+            'numexpr_max_threads': numexpr_threads,
+            'numexpr_num_threads': numexpr_threads,
+            'cpu_count': cpu_count
+        }
+        
+    except Exception as e:
+        logger.warning(f"Failed to optimize NumExpr threading: {e}")
+        return {'error': str(e)}
+
+
 def optimize_gdal_io(cache_size_mb: int = 256, thread_count: Optional[int] = None, use_direct_io: bool = True, 
                      compression_options: Optional[List[str]] = None, hpc_mode: bool = False) -> Optional[Dict[str, Any]]:
     """

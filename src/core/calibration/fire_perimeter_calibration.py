@@ -57,6 +57,7 @@ from src.core.calibration import (
 )
 from src.config.config_tools import ModelConfig
 from src.utils.logging_utils import get_logger
+from src.utils.shared_utilities import optimize_numexpr_threading
 
 logger = get_logger(__name__)
 
@@ -486,6 +487,11 @@ class TenerifeFirePerimeterCalibrator:
         print(f"Grid search points: {grid_search_points} per parameter")
         print(f"Domain: Full Tenerife (15,121 × 24,741 × 25)")
         print(f"Results directory: {self.results_dir}")
+        
+        # Optimize NumExpr threading for performance
+        numexpr_info = optimize_numexpr_threading()
+        logger.info(f"⚡ NumExpr optimization: {numexpr_info}")
+        print(f"NumExpr threads: {numexpr_info.get('numexpr_max_threads', 'unknown')}")
         print()
     
     def setup_training_test_split(self, 
