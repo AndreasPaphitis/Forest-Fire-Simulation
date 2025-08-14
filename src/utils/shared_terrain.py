@@ -53,23 +53,19 @@ class SharedTerrainManager:
         """
         # Check if the target grid is too large for shared memory
         total_cells = target_shape[0] * target_shape[1]
+        # Correct memory calculation: 6 float32 layers (4 bytes) + 3 uint8 layers (1 byte)
+        estimated_memory_gb = total_cells * (6 * 4 + 3 * 1) / (1024**3)  # ~27 bytes per cell
         
-        # Correct memory calculation based on actual terrain data types:
-        # 6 float32 layers: elevation, slope, aspect, barranco_directions, wind_amplification, wind_direction_modification
-        # 3 uint8 layers: barranco_mask, depression_mask, wind_channeling_mask
-        float32_layers_gb = total_cells * 6 * 4 / (1024**3)  # 6 layers × 4 bytes
-        uint8_layers_gb = total_cells * 3 * 1 / (1024**3)    # 3 layers × 1 byte
-        estimated_memory_gb = float32_layers_gb + uint8_layers_gb
-        
-        if estimated_memory_gb > 50:  # More reasonable limit for actual terrain size
+        if estimated_memory_gb > 200:  # More than 200GB (increased limit for full Tenerife)
             logger.warning(f"⚠️  Target grid too large for shared memory: {target_shape}")
             logger.warning(f"   Estimated memory: {estimated_memory_gb:.1f} GB")
             logger.warning(f"   Disabling shared terrain to prevent memory issues")
             return False
-        elif estimated_memory_gb > 5:  # Lowered threshold since actual memory is much smaller
+        elif estimated_memory_gb > 100:
             logger.info(f"🗺️  Large domain detected: {target_shape}")
             logger.info(f"   Estimated shared terrain memory: {estimated_memory_gb:.1f} GB")
-            logger.info(f"   Enabling shared terrain for efficient memory usage")
+            logger.info(f"   Enabling shared terrain for full Tenerife domain")
+            logger.info(f"   This will significantly reduce per-worker memory usage")
         # Check for shared memory availability
         if not HAS_SHARED_MEMORY:
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"

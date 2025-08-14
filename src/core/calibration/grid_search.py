@@ -402,6 +402,11 @@ class GridSearchCalibrator:
             # Create configuration with these parameter values
             config = self.config.create_config_variant(parameter_values)
             
+            # SHARED TERRAIN OPTIMIZATION: Ensure shared terrain info is available for memory efficiency
+            if hasattr(self.config.base_config, 'shared_terrain_info') and self.config.base_config.shared_terrain_info:
+                config.shared_terrain_info = self.config.base_config.shared_terrain_info
+                logger.debug(f"Using shared terrain for memory-efficient model creation")
+            
             # MEMORY OPTIMIZATION: Add memory checks and error handling for large models
             grid_size = config.grid_size
             if isinstance(grid_size, (int, float)):
@@ -651,6 +656,30 @@ class GridSearchCalibrator:
         else:
             # Use ProcessPoolExecutor for smaller grids for better CPU utilization
             executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
+        
+        # MEMORY SAFETY: Check available memory before starting parallel execution
+        try:
+            import psutil
+            memory_info = psutil.virtual_memory()
+            available_gb = memory_info.available / (1024**3)
+            total_gb = memory_info.total / (1024**3)
+            used_gb = memory_info.used / (1024**3)
+            
+            logger.info(f"🧠 Memory status before parallel execution:")
+            logger.info(f"   Total: {total_gb:.1f}GB, Used: {used_gb:.1f}GB, Available: {available_gb:.1f}GB")
+            
+            # Estimate memory per worker (conservative)
+            estimated_memory_per_worker_gb = 2.0  # Conservative estimate with shared terrain
+            total_estimated_gb = self.max_workers * estimated_memory_per_worker_gb
+            
+            if total_estimated_gb > available_gb * 0.8:  # Use max 80% of available memory
+                logger.warning(f"⚠️  HIGH MEMORY RISK: {total_estimated_gb:.1f}GB estimated vs {available_gb:.1f}GB available")
+                logger.warning(f"⚠️  Consider reducing workers to {int(available_gb * 0.8 / estimated_memory_per_worker_gb)}")
+            else:
+                logger.info(f"✅ Memory looks safe: {total_estimated_gb:.1f}GB estimated vs {available_gb:.1f}GB available")
+                
+        except ImportError:
+            logger.warning("⚠️  psutil not available - cannot check memory status")
         
         with executor_class(max_workers=self.max_workers) as executor:
             # Submit all jobs
