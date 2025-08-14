@@ -2207,12 +2207,14 @@ class MemoryOptimizedForestModel(ForestModel):
             self.state_layers.append(state_layer)
         
         # Create minimal dense arrays for terrain/wind (these are 2D only, much smaller)
-        self.wind_direction = np.zeros((self.width, self.height), dtype=np.float32)
-        self.wind_speed = np.zeros((self.width, self.height), dtype=np.float32)  
-        self.terrain_elevation = np.zeros((self.width, self.height), dtype=np.float32)
-        self.terrain_slope = np.zeros((self.width, self.height), dtype=np.float32)
-        self.terrain_aspect = np.zeros((self.width, self.height), dtype=np.float32)
-        self.canopy_height = np.zeros((self.width, self.height), dtype=np.float32)
+        # NOTE: Terrain data gets transposed during loading, so we need to match that shape
+        terrain_shape = (self.height, self.width)  # Transposed to match loaded terrain data
+        self.wind_direction = np.zeros(terrain_shape, dtype=np.float32)
+        self.wind_speed = np.zeros(terrain_shape, dtype=np.float32)  
+        self.terrain_elevation = np.zeros(terrain_shape, dtype=np.float32)
+        self.terrain_slope = np.zeros(terrain_shape, dtype=np.float32)
+        self.terrain_aspect = np.zeros(terrain_shape, dtype=np.float32)
+        self.canopy_height = np.zeros(terrain_shape, dtype=np.float32)
         
         # Debug logging for dimension tracking
         logger.info(f"🔍 Sparse model terrain arrays initialized:")
