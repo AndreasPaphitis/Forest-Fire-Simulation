@@ -10,6 +10,8 @@
     "min_depression_depth": 5.0,
     "min_depression_area": 4
   },
+  "use_preprocessed_terrain": true,
+  "preprocessed_terrain_dir": "preprocessed_terrain",
   "vegetation": {
     "use_lidar": true,
     "auto_size_from_lidar": false,

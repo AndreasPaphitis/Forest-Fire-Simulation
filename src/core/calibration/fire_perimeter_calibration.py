@@ -910,8 +910,8 @@ class TenerifeFirePerimeterCalibrator:
         estimation_info = calibrator.get_estimation_info()
         print(f"📊 CALIBRATION OVERVIEW:")
         print(f"   Total combinations: {estimation_info['total_combinations']:,}")
-        print(f"   Estimated runtime: {estimation_info['estimated_runtime_hours']:.1f} hours")
-        print(f"   Memory requirement: {estimation_info['memory_requirement_gb']:.1f} GB")
+        print(f"   Estimated runtime: {estimation_info['estimated_time_hours']:.1f} hours")
+        print(f"   Memory requirement: {estimation_info.get('memory_requirement_gb', 0.0):.1f} GB")
         print(f"   Parallel workers: {self.workers}")
         
         # Run calibration
