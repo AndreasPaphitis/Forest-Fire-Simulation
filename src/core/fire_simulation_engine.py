@@ -132,7 +132,20 @@ class FireSimulationEngine:
             self.forest_model = create_forest_model(model_type=simulation_type, **model_kwargs)
         
         # Load terrain data if available (must be done before wind initialization)
-        if (hasattr(self.config, 'use_preprocessed_terrain') and self.config.use_preprocessed_terrain and
+        # Skip if terrain was already loaded during sparse initialization
+        if hasattr(self.forest_model, 'terrain_elevation') and self.forest_model.terrain_elevation is not None:
+            logger.info("🏔️  Terrain data already loaded during model initialization")
+            # Log terrain statistics for verification
+            elev_min = np.min(self.forest_model.terrain_elevation)
+            elev_max = np.max(self.forest_model.terrain_elevation)
+            elev_range = elev_max - elev_min
+            logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+            if hasattr(self.forest_model, 'barranco_mask') and self.forest_model.barranco_mask is not None:
+                barranco_count = np.sum(self.forest_model.barranco_mask)
+                total_cells = self.forest_model.barranco_mask.size
+                barranco_percent = barranco_count / total_cells * 100
+                logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
+        elif (hasattr(self.config, 'use_preprocessed_terrain') and self.config.use_preprocessed_terrain and
             hasattr(self.config, 'preprocessed_terrain_dir') and self.config.preprocessed_terrain_dir):
             logger.info(f"Loading preprocessed terrain data from: {self.config.preprocessed_terrain_dir}")
             # Try to load preprocessed terrain (will fall back to flat terrain if it fails)
