@@ -758,25 +758,36 @@ class BaseForestModel(ABC):
                 logger.info("Using depression mask as barranco mask for memory efficiency")
                 barranco_mask = depression_mask
         
-        if not np.any(barranco_mask):
-            logger.info(f"No barrancos detected (threshold {barranco_threshold}°, min depth {min_depression_depth}m)")
-            return
+        # MEMORY OPTIMIZATION: For very large grids, skip np.any() check which can be memory intensive
+        if total_cells > 100_000_000:  # 100M cells threshold
+            # For large grids with preprocessed masks, assume barrancos exist if mask is available
+            logger.info(f"Large grid detected - skipping barranco existence check for memory efficiency")
+        else:
+            if not np.any(barranco_mask):
+                logger.info(f"No barrancos detected (threshold {barranco_threshold}°, min depth {min_depression_depth}m)")
+                return
         
         # Log detection results - avoid np.sum on large arrays if possible
-        depression_count = np.sum(depression_mask)
-        if slope_mask is not None:
-            slope_count = np.sum(slope_mask)
+        # MEMORY OPTIMIZATION: Skip statistics calculation for very large grids to prevent crashes
+        if total_cells > 100_000_000:  # 100M cells threshold
+            logger.info(f"Barranco detection results (statistics skipped for memory efficiency):")
+            logger.info(f"  Large grid: {total_cells:,} total cells")
+            logger.info(f"  Using preprocessed masks without detailed counting")
         else:
-            slope_count = 0  # Not calculated for memory efficiency
-        barranco_count = np.sum(barranco_mask)
-        
-        logger.info(f"Barranco detection results:")
-        logger.info(f"  Depressions: {depression_count} cells ({depression_count/total_cells*100:.1f}%)")
-        if slope_count > 0:
-            logger.info(f"  Steep slopes: {slope_count} cells ({slope_count/total_cells*100:.1f}%)")
-        else:
-            logger.info(f"  Steep slopes: Not calculated (memory optimization)")
-        logger.info(f"  Combined barrancos: {barranco_count} cells ({barranco_count/total_cells*100:.1f}%)")
+            depression_count = np.sum(depression_mask)
+            if slope_mask is not None:
+                slope_count = np.sum(slope_mask)
+            else:
+                slope_count = 0  # Not calculated for memory efficiency
+            barranco_count = np.sum(barranco_mask)
+            
+            logger.info(f"Barranco detection results:")
+            logger.info(f"  Depressions: {depression_count} cells ({depression_count/total_cells*100:.1f}%)")
+            if slope_count > 0:
+                logger.info(f"  Steep slopes: {slope_count} cells ({slope_count/total_cells*100:.1f}%)")
+            else:
+                logger.info(f"  Steep slopes: Not calculated (memory optimization)")
+            logger.info(f"  Combined barrancos: {barranco_count} cells ({barranco_count/total_cells*100:.1f}%)")
         
         # Calculate ravine orientation for detected barrancos
         if hasattr(self, 'barranco_directions') and self.barranco_directions is not None:
@@ -868,8 +879,12 @@ class BaseForestModel(ABC):
         self.barranco_mask = barranco_mask
         self.depression_mask = depression_mask  # Store for analysis
         
-        avg_amplification = np.mean(self.wind_speed[barranco_mask]) / self.base_wind_speed
-        logger.info(f"Applied barranco effects: avg wind amplification = {avg_amplification:.2f}x")
+        # MEMORY OPTIMIZATION: Skip amplification calculation for large grids
+        if total_cells > 100_000_000:  # 100M cells threshold
+            logger.info(f"Applied barranco effects (amplification stats skipped for memory efficiency)")
+        else:
+            avg_amplification = np.mean(self.wind_speed[barranco_mask]) / self.base_wind_speed
+            logger.info(f"Applied barranco effects: avg wind amplification = {avg_amplification:.2f}x")
     
     def _calculate_ravine_direction(self, barranco_mask):
         """
@@ -1024,8 +1039,33 @@ class BaseForestModel(ABC):
         
         # Use preprocessed wind channeling data if available
         if hasattr(self, 'wind_amplification') and self.wind_amplification is not None:
-            # Apply preprocessed wind amplification
-            self.wind_speed *= self.wind_amplification
+            # MEMORY OPTIMIZATION: For large grids, apply amplification in chunks
+            total_cells = self.wind_speed.size
+            if total_cells > 100_000_000:  # 100M cells threshold
+                logger.info(f"Applying wind amplification in chunks for large grid ({total_cells:,} cells)")
+                
+                # Process in chunks to avoid memory exhaustion
+                chunk_size = 1_000_000  # 1M cells per chunk
+                flat_wind_speed = self.wind_speed.flatten()
+                flat_wind_amp = self.wind_amplification.flatten()
+                
+                for i in range(0, total_cells, chunk_size):
+                    end_idx = min(i + chunk_size, total_cells)
+                    chunk_speed = flat_wind_speed[i:end_idx]
+                    chunk_amp = flat_wind_amp[i:end_idx]
+                    
+                    # Apply amplification to chunk
+                    chunk_speed *= chunk_amp
+                    
+                    # Update the flattened array
+                    flat_wind_speed[i:end_idx] = chunk_speed
+                
+                # Reshape back to original shape
+                self.wind_speed = flat_wind_speed.reshape(self.wind_speed.shape)
+            else:
+                # Standard operation for smaller grids
+                self.wind_speed *= self.wind_amplification
+            
             logger.info("Applied preprocessed wind amplification")
         else:
             # Fallback to calculation (should not happen with proper preprocessed data)
@@ -1072,7 +1112,30 @@ class BaseForestModel(ABC):
             logger.info("Applied preprocessed wind direction modifications")
         
         # Ensure wind speed doesn't become negative
-        self.wind_speed = np.maximum(self.wind_speed, 0.1)
+        # MEMORY OPTIMIZATION: For large grids, apply clamping in chunks
+        total_cells = self.wind_speed.size
+        if total_cells > 100_000_000:  # 100M cells threshold
+            logger.info(f"Applying wind speed clamping in chunks for large grid ({total_cells:,} cells)")
+            
+            # Process in chunks to avoid memory exhaustion
+            chunk_size = 1_000_000  # 1M cells per chunk
+            flat_wind_speed = self.wind_speed.flatten()
+            
+            for i in range(0, total_cells, chunk_size):
+                end_idx = min(i + chunk_size, total_cells)
+                chunk_speed = flat_wind_speed[i:end_idx]
+                
+                # Apply clamping to chunk
+                chunk_speed = np.maximum(chunk_speed, 0.1)
+                
+                # Update the flattened array
+                flat_wind_speed[i:end_idx] = chunk_speed
+            
+            # Reshape back to original shape
+            self.wind_speed = flat_wind_speed.reshape(self.wind_speed.shape)
+        else:
+            # Standard operation for smaller grids
+            self.wind_speed = np.maximum(self.wind_speed, 0.1)
         
         logger.debug("Applied general terrain effects to wind field")
     
