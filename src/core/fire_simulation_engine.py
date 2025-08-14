@@ -278,14 +278,55 @@ class FireSimulationEngine:
             logger.error("Forest model does not have 'state' attribute")
             return {"error": "Invalid forest model"}
         
-        # Find initial burning cells
-        for x in range(self.forest_model.width):
-            for y in range(self.forest_model.height):
-                for z in range(self.forest_model.num_layers):
-                    if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value: # Use Enum value
-                        self.active_cells.add((x, y, z))
+        # Find initial burning cells efficiently for large grids
+        total_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
         
-        logger.info(f"ENGINE DEBUG: Initial active_cells from model state: {self.active_cells}") # DEBUG MODIFIED
+        if total_cells > 100_000_000:  # 100M+ cells - use memory-efficient scanning
+            logger.info(f"Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
+            
+            # For memory-optimized sparse models, check if they track active cells
+            if (hasattr(self.forest_model, 'use_sparse_storage') and 
+                self.forest_model.use_sparse_storage and
+                hasattr(self.forest_model, '_get_burning_cells')):
+                # Use sparse model's efficient method
+                self.active_cells = set(self.forest_model._get_burning_cells())
+                logger.info(f"Used sparse model active cell detection: {len(self.active_cells)} initial cells")
+            else:
+                # Check for tracked ignition points first
+                if hasattr(self.forest_model, '_ignition_points') and self.forest_model._ignition_points:
+                    for x, y, z in self.forest_model._ignition_points:
+                        if (0 <= x < self.forest_model.width and 
+                            0 <= y < self.forest_model.height and 
+                            0 <= z < self.forest_model.num_layers):
+                            if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                                self.active_cells.add((x, y, z))
+                    logger.info(f"Used tracked ignition points: {len(self.active_cells)} initial cells")
+                else:
+                    # Fallback: scan only center region where ignition typically occurs
+                    center_x, center_y = self.forest_model.width // 2, self.forest_model.height // 2
+                    search_radius = min(50, self.forest_model.width // 10, self.forest_model.height // 10)
+                    
+                    logger.info(f"Scanning center region ({center_x}±{search_radius}, {center_y}±{search_radius}) for initial burning cells")
+                    
+                    for dx in range(-search_radius, search_radius + 1):
+                        for dy in range(-search_radius, search_radius + 1):
+                            x, y = center_x + dx, center_y + dy
+                            if (0 <= x < self.forest_model.width and 0 <= y < self.forest_model.height):
+                                for z in range(self.forest_model.num_layers):
+                                    if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                                        self.active_cells.add((x, y, z))
+                    
+                    logger.info(f"Center region scan found: {len(self.active_cells)} initial burning cells")
+        else:
+            # Small grid - use traditional full scan
+            logger.info(f"Small grid ({total_cells:,} cells) - using full scan for initial burning cells")
+            for x in range(self.forest_model.width):
+                for y in range(self.forest_model.height):
+                    for z in range(self.forest_model.num_layers):
+                        if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                            self.active_cells.add((x, y, z))
+        
+        logger.info(f"ENGINE DEBUG: Initial active_cells detected: {self.active_cells}") # DEBUG MODIFIED
 
         # Initialize statistics
         stats = {

@@ -261,6 +261,9 @@ class BaseForestModel(ABC):
         
         # Additional flags
         self.debug = kwargs.get('debug', False)
+        
+        # Track ignition points for efficient active cell detection
+        self._ignition_points = []
     
     def set_ignition(self, x, y, z=0):
         """
@@ -275,6 +278,8 @@ class BaseForestModel(ABC):
             0 <= y < self.grid_size_y and 
             0 <= z < self.num_layers):
             self.state[x, y, z] = FrameworkCellState.BURNING.value # Use FrameworkCellState
+            # Track ignition point for efficient active cell detection
+            self._ignition_points.append((x, y, z))
     
     @abstractmethod
     def run_simulation(self, max_steps=100, store_full_states=False, **kwargs):
