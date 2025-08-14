@@ -759,6 +759,12 @@ class BaseForestModel(ABC):
         if barranco_direction_weight > 0:
             effective_weight = barranco_direction_weight * terrain_effect_strength
             
+            # Debug logging for dimension verification
+            logger.info(f"🔍 Wind direction alignment debug:")
+            logger.info(f"   self.wind_direction shape: {self.wind_direction.shape}")
+            logger.info(f"   barranco_mask shape: {barranco_mask.shape}")
+            logger.info(f"   ravine_directions shape: {ravine_directions.shape}")
+            
             # Blend original wind direction with ravine direction
             original_direction_rad = np.radians(self.wind_direction[barranco_mask])
             ravine_direction_rad = np.radians(ravine_directions[barranco_mask])
