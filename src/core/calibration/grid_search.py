@@ -222,7 +222,30 @@ class GridSearchCalibrator:
         self.parameter_bounds = parameter_bounds
         self.objective_function = objective_function
         self.parallel_execution = parallel_execution
-        self.max_workers = max_workers or 4
+        
+        # MEMORY OPTIMIZATION: Reduce workers for large grids to prevent memory exhaustion
+        if max_workers is None:
+            # Calculate grid size to determine appropriate worker count
+            grid_size = getattr(calibration_config, 'grid_size', (100, 100))
+            if isinstance(grid_size, (int, float)):
+                total_cells = int(grid_size) ** 2
+            else:
+                total_cells = int(grid_size[0]) * int(grid_size[1])
+            
+            # Get number of layers
+            num_layers = getattr(calibration_config, 'num_layers', 10)
+            total_model_cells = total_cells * num_layers
+            
+            if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
+                self.max_workers = 1  # Sequential for massive grids
+                logger.warning(f"Very large grid detected ({total_model_cells:,} cells) - using sequential processing")
+            elif total_model_cells > 100_000_000:  # 100M+ cells (large)
+                self.max_workers = 2  # Minimal parallelism for large grids
+                logger.info(f"Large grid detected ({total_model_cells:,} cells) - limiting to 2 workers")
+            else:
+                self.max_workers = 4  # Standard parallelism for smaller grids
+        else:
+            self.max_workers = max_workers
         
         # Initialize parameter space
         self.parameter_space = self._create_parameter_space()
@@ -279,15 +302,42 @@ class GridSearchCalibrator:
             # Create configuration with these parameter values
             config = self.config.create_config_variant(parameter_values)
             
-            # Create forest model and simulation engine with memory optimization
-            forest_model = create_forest_model(
-                model_type='memory_optimized',  # Use memory optimized for large domains
-                config=config,
-                grid_size=config.grid_size,
-                num_layers=config.num_layers
-            )
+            # MEMORY OPTIMIZATION: Add memory checks and error handling for large models
+            grid_size = config.grid_size
+            if isinstance(grid_size, (int, float)):
+                total_cells = int(grid_size) ** 2
+            else:
+                total_cells = int(grid_size[0]) * int(grid_size[1])
+            total_model_cells = total_cells * config.num_layers
             
-            engine = FireSimulationEngine(forest_model=forest_model, config=config)
+            if total_model_cells > 1_000_000_000:  # 1B+ cells
+                logger.info(f"Creating memory-optimized model for massive grid ({total_model_cells:,} cells)")
+            
+            # Create forest model and simulation engine with memory optimization
+            forest_model = None
+            engine = None
+            
+            try:
+                forest_model = create_forest_model(
+                    model_type='memory_optimized',  # Use memory optimized for large domains
+                    config=config,
+                    grid_size=config.grid_size,
+                    num_layers=config.num_layers
+                )
+                
+                engine = FireSimulationEngine(forest_model=forest_model, config=config)
+                
+            except MemoryError as me:
+                logger.error(f"Memory error creating model with {total_model_cells:,} cells: {me}")
+                raise MemoryError(f"Insufficient memory for grid size {grid_size} with {config.num_layers} layers")
+            except Exception as model_error:
+                logger.error(f"Error creating model: {model_error}")
+                # Clean up partial objects
+                if forest_model:
+                    del forest_model
+                if engine:
+                    del engine
+                raise
             
             # Set ignition point (use center of grid for consistency)
             center_x, center_y = config.grid_size[0] // 2, config.grid_size[1] // 2
@@ -305,7 +355,8 @@ class GridSearchCalibrator:
             
             evaluation_time = time.time() - start_time
             
-            return GridSearchResult(
+            # Create result before cleanup
+            result = GridSearchResult(
                 parameter_values=parameter_values.copy(),
                 objective_value=objective_result.value,
                 objective_components=objective_result.components.copy(),
@@ -315,9 +366,41 @@ class GridSearchCalibrator:
                 error_message=objective_result.error_message
             )
             
+            # MEMORY OPTIMIZATION: Explicit cleanup for large models
+            if total_model_cells > 100_000_000:  # 100M+ cells
+                try:
+                    # Clear large objects explicitly
+                    if hasattr(forest_model, 'terrain_elevation'):
+                        forest_model.terrain_elevation = None
+                    if hasattr(forest_model, 'wind_direction'):
+                        forest_model.wind_direction = None
+                    if hasattr(forest_model, 'wind_speed'):
+                        forest_model.wind_speed = None
+                    if hasattr(forest_model, 'barranco_mask'):
+                        forest_model.barranco_mask = None
+                    del forest_model
+                    del engine
+                    del simulation_result
+                except Exception as cleanup_error:
+                    logger.warning(f"Error during cleanup: {cleanup_error}")
+            
+            return result
+            
         except Exception as e:
             evaluation_time = time.time() - start_time
             logger.warning(f"Evaluation failed for parameters {parameter_values}: {e}")
+            
+            # MEMORY OPTIMIZATION: Cleanup on error for large models
+            try:
+                # Try to clean up any partially created objects
+                if 'forest_model' in locals() and forest_model is not None:
+                    del forest_model
+                if 'engine' in locals() and engine is not None:
+                    del engine
+                if 'simulation_result' in locals():
+                    del simulation_result
+            except Exception as cleanup_error:
+                logger.debug(f"Error during exception cleanup: {cleanup_error}")
             
             return GridSearchResult(
                 parameter_values=parameter_values.copy(),
@@ -347,7 +430,23 @@ class GridSearchCalibrator:
         
         results = GridSearchResults(parameter_space=self.parameter_space.copy())
         
-        if self.parallel_execution and self.total_combinations > 1:
+        # MEMORY OPTIMIZATION: Force sequential for massive grids to prevent memory exhaustion
+        should_run_parallel = self.parallel_execution and self.total_combinations > 1
+        
+        # Check grid size and disable parallel execution for very large grids
+        grid_size = getattr(self.config, 'grid_size', (100, 100))
+        if isinstance(grid_size, (int, float)):
+            total_cells = int(grid_size) ** 2
+        else:
+            total_cells = int(grid_size[0]) * int(grid_size[1])
+        num_layers = getattr(self.config, 'num_layers', 10)
+        total_model_cells = total_cells * num_layers
+        
+        if total_model_cells > 1_000_000_000 and should_run_parallel:  # 1B+ cells
+            logger.warning(f"Forcing sequential execution for massive grid ({total_model_cells:,} cells) to prevent memory exhaustion")
+            should_run_parallel = False
+        
+        if should_run_parallel:
             results = self._run_parallel_calibration(target_data, progress_callback, results)
         else:
             results = self._run_sequential_calibration(target_data, progress_callback, results)
