@@ -378,7 +378,7 @@ class BaseForestModel(ABC):
             shared_terrain_data = self._try_load_shared_terrain()
             
             if shared_terrain_data:
-                logger.info("✅ Using shared terrain data from memory")
+                logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
                 elevation = shared_terrain_data['elevation']
                 slope = shared_terrain_data['slope']
                 aspect = shared_terrain_data['aspect']

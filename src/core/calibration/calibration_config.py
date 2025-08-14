@@ -290,7 +290,13 @@ class CalibrationConfig:
         
         # Create new ModelConfig instance
         try:
-            return ModelConfig(**config_dict)
+            new_config = ModelConfig(**config_dict)
+            
+            # SHARED TERRAIN OPTIMIZATION: Preserve shared terrain info if available
+            if hasattr(self.base_config, 'shared_terrain_info') and self.base_config.shared_terrain_info:
+                new_config.shared_terrain_info = self.base_config.shared_terrain_info
+            
+            return new_config
         except Exception as e:
             logger.error(f"Failed to create config variant: {e}")
             raise
