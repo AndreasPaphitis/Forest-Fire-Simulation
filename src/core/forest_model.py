@@ -2214,6 +2214,12 @@ class MemoryOptimizedForestModel(ForestModel):
         self.terrain_aspect = np.zeros((self.width, self.height), dtype=np.float32)
         self.canopy_height = np.zeros((self.width, self.height), dtype=np.float32)
         
+        # Debug logging for dimension tracking
+        logger.info(f"🔍 Sparse model terrain arrays initialized:")
+        logger.info(f"   Grid size: ({self.width}, {self.height})")
+        logger.info(f"   Terrain elevation shape: {self.terrain_elevation.shape}")
+        logger.info(f"   Wind arrays shape: {self.wind_direction.shape}")
+        
         # Initialize other required attributes
         self.stats = {'active_cells': 0, 'burned_cells': 0}
         self.current_step = 0
