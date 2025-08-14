@@ -279,9 +279,9 @@ class GridSearchCalibrator:
             # Create configuration with these parameter values
             config = self.config.create_config_variant(parameter_values)
             
-            # Create forest model and simulation engine
+            # Create forest model and simulation engine with memory optimization
             forest_model = create_forest_model(
-                model_type='standard',
+                model_type='memory_optimized',  # Use memory optimized for large domains
                 config=config,
                 grid_size=config.grid_size,
                 num_layers=config.num_layers

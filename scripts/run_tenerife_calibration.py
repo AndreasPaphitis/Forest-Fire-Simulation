@@ -44,6 +44,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 
+# Set NumExpr to 128 threads for HPC environments immediately
+os.environ['NUMEXPR_MAX_THREADS'] = '128'
+os.environ['NUMEXPR_NUM_THREADS'] = '128'
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
