@@ -36,9 +36,9 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
-# NumExpr optimization - allow more threads for numerical operations
-export NUMEXPR_MAX_THREADS=16
-export NUMEXPR_NUM_THREADS=16
+# NumExpr optimization for 128-core HPC systems
+export NUMEXPR_MAX_THREADS=128
+export NUMEXPR_NUM_THREADS=128
 
 # Move to the Forest Fire Simulation directory
 cd Forest-Fire-Simulation
