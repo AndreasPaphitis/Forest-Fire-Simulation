@@ -487,8 +487,13 @@ class BaseForestModel(ABC):
             
             logger.info(f"✅ Successfully loaded preprocessed terrain data from {preprocessed_dir}")
             logger.info(f"📊 Final grid size: {self.terrain_elevation.shape}")
-            logger.info(f"🏞️ Barranco cells: {np.sum(self.barranco_mask)}")
-            logger.info(f"💨 Wind channeling cells: {np.sum(self.wind_channeling_mask)}")
+            # MEMORY OPTIMIZATION: Skip array sum operations for large grids
+            if self.barranco_mask.size > 100_000_000:  # 100M+ cells
+                logger.info(f"🏞️ Barranco cells: Counting skipped for memory efficiency")
+                logger.info(f"💨 Wind channeling cells: Counting skipped for memory efficiency")
+            else:
+                logger.info(f"🏞️ Barranco cells: {np.sum(self.barranco_mask)}")
+                logger.info(f"💨 Wind channeling cells: {np.sum(self.wind_channeling_mask)}")
             
             return True
             
@@ -560,9 +565,20 @@ class BaseForestModel(ABC):
         NOTE: Preprocessed terrain data should be used instead when available.
         """
         # Check if terrain elevation data is available
-        if np.all(self.terrain_elevation == 0):
-            logger.warning("No terrain elevation data available, skipping slope/aspect calculation")
-            return
+        # MEMORY OPTIMIZATION: For large arrays, use sampling instead of full array comparison
+        if self.terrain_elevation.size > 100_000_000:  # 100M+ cells
+            # Sample a subset to check if terrain data exists
+            sample_size = min(10000, self.terrain_elevation.size)
+            sample_indices = np.random.choice(self.terrain_elevation.size, sample_size, replace=False)
+            flat_elevation = self.terrain_elevation.flatten()
+            sample_values = flat_elevation[sample_indices]
+            if np.all(sample_values == 0):
+                logger.warning("No terrain elevation data available (sampled), skipping slope/aspect calculation")
+                return
+        else:
+            if np.all(self.terrain_elevation == 0):
+                logger.warning("No terrain elevation data available, skipping slope/aspect calculation")
+                return
         
         try:
             # Calculate x and y gradients using central differences
@@ -1207,12 +1223,27 @@ class BaseForestModel(ABC):
         Returns:
             Array of wind speed factors (1.0 = no change, >1.0 = acceleration)
         """
-        if np.all(self.terrain_elevation == 0):
-            return np.ones((self.width, self.height))
+        # MEMORY OPTIMIZATION: For large arrays, use sampling to check terrain data
+        if self.terrain_elevation.size > 100_000_000:  # 100M+ cells
+            # Sample a subset to check if terrain data exists and get statistics
+            sample_size = min(50000, self.terrain_elevation.size)
+            sample_indices = np.random.choice(self.terrain_elevation.size, sample_size, replace=False)
+            flat_elevation = self.terrain_elevation.flatten()
+            sample_values = flat_elevation[sample_indices]
             
-        # Normalize elevation to 0-1 range
-        min_elev = np.min(self.terrain_elevation)
-        max_elev = np.max(self.terrain_elevation)
+            if np.all(sample_values == 0):
+                return np.ones((self.width, self.height))
+            
+            # Use sample statistics for large arrays
+            min_elev = np.min(sample_values)
+            max_elev = np.max(sample_values)
+        else:
+            if np.all(self.terrain_elevation == 0):
+                return np.ones((self.width, self.height))
+                
+            # Use full array statistics for smaller arrays
+            min_elev = np.min(self.terrain_elevation)
+            max_elev = np.max(self.terrain_elevation)
         
         if max_elev <= min_elev:
             return np.ones((self.width, self.height))
@@ -1274,8 +1305,17 @@ class BaseForestModel(ABC):
             return self._simplified_depression_detection(min_depth_m, min_area_cells)
         
         # OPTIMIZATION: Pre-calculate elevation statistics for faster processing
-        elevation_min = np.min(self.terrain_elevation)
-        elevation_max = np.max(self.terrain_elevation)
+        # MEMORY OPTIMIZATION: Use sampling for large arrays
+        if self.terrain_elevation.size > 100_000_000:  # 100M+ cells
+            sample_size = min(100000, self.terrain_elevation.size)
+            sample_indices = np.random.choice(self.terrain_elevation.size, sample_size, replace=False)
+            flat_elevation = self.terrain_elevation.flatten()
+            sample_values = flat_elevation[sample_indices]
+            elevation_min = np.min(sample_values)
+            elevation_max = np.max(sample_values)
+        else:
+            elevation_min = np.min(self.terrain_elevation)
+            elevation_max = np.max(self.terrain_elevation)
         elevation_range = elevation_max - elevation_min
         
         # Skip if terrain is too flat
@@ -1358,8 +1398,17 @@ class BaseForestModel(ABC):
         OPTIMIZED: Uses vectorized operations where possible.
         """
         # OPTIMIZATION: Pre-calculate elevation statistics
-        elevation_min = np.min(self.terrain_elevation)
-        elevation_max = np.max(self.terrain_elevation)
+        # MEMORY OPTIMIZATION: Use sampling for large arrays
+        if self.terrain_elevation.size > 100_000_000:  # 100M+ cells
+            sample_size = min(100000, self.terrain_elevation.size)
+            sample_indices = np.random.choice(self.terrain_elevation.size, sample_size, replace=False)
+            flat_elevation = self.terrain_elevation.flatten()
+            sample_values = flat_elevation[sample_indices]
+            elevation_min = np.min(sample_values)
+            elevation_max = np.max(sample_values)
+        else:
+            elevation_min = np.min(self.terrain_elevation)
+            elevation_max = np.max(self.terrain_elevation)
         
         # Skip if terrain is too flat
         if (elevation_max - elevation_min) < min_depth_m:
