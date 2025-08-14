@@ -848,9 +848,11 @@ class TenerifeFirePerimeterCalibrator:
                 logger.warning("No preprocessed terrain directory specified")
                 return None
             
-            # Load terrain data into shared memory
+            # Load terrain data into shared memory - use absolute path for worker processes
             target_shape = (grid_size[0], grid_size[1])  # Keep consistent with terrain file format (width, height)
-            success = shared_manager.load_terrain_data(str(preprocessed_dir), target_shape)
+            abs_preprocessed_dir = str(Path(preprocessed_dir).resolve())
+            logger.info(f"🗂️  Using absolute path for shared terrain: {abs_preprocessed_dir}")
+            success = shared_manager.load_terrain_data(abs_preprocessed_dir, target_shape)
             
             if success:
                 shared_terrain_info = shared_manager.get_shared_terrain_info()
@@ -862,9 +864,14 @@ class TenerifeFirePerimeterCalibrator:
                 
         except Exception as e:
             logger.error(f"❌ CRITICAL: Failed to set up shared terrain: {e}")
+            logger.error(f"   Preprocessed directory: {abs_preprocessed_dir}")
+            logger.error(f"   Target shape: {target_shape}")
+            logger.error(f"   Working directory: {Path.cwd()}")
             logger.error("   This will cause massive memory usage per worker!")
             logger.error("   Consider reducing worker count or fixing terrain data")
-            raise RuntimeError(f"Shared terrain setup failed - would cause memory crashes: {e}")
+            # Don't raise - let it fall back to individual loading but with warning
+            logger.warning("⚠️  Falling back to individual terrain loading - REDUCE WORKER COUNT!")
+            return None
 
     def run_calibration(self, 
                        calibration_config: CalibrationConfig,
