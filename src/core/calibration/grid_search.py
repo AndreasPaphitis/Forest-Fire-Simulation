@@ -498,8 +498,23 @@ class GridSearchCalibrator:
         # Generate all combinations
         combinations = list(self._generate_parameter_combinations())
         
-        # Use ThreadPoolExecutor for I/O bound tasks, ProcessPoolExecutor for CPU bound
-        executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
+        # MEMORY OPTIMIZATION: Use ThreadPoolExecutor for large grids to avoid process serialization
+        # Check grid size to determine executor type
+        grid_size = getattr(self.config, 'grid_size', (100, 100))
+        if isinstance(grid_size, (int, float)):
+            total_cells = int(grid_size) ** 2
+        else:
+            total_cells = int(grid_size[0]) * int(grid_size[1])
+        num_layers = getattr(self.config, 'num_layers', 10)
+        total_model_cells = total_cells * num_layers
+        
+        if total_model_cells > 100_000_000:  # 100M+ cells
+            # Force ThreadPoolExecutor for large grids to avoid process serialization overhead
+            executor_class = ThreadPoolExecutor
+            logger.info(f"Using ThreadPoolExecutor for large grid ({total_model_cells:,} cells) to avoid serialization overhead")
+        else:
+            # Use ProcessPoolExecutor for smaller grids for better CPU utilization
+            executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
         
         with executor_class(max_workers=self.max_workers) as executor:
             # Submit all jobs

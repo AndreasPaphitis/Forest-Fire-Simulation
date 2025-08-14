@@ -629,8 +629,23 @@ class BaseForestModel(ABC):
                 # Check if wind arrays already exist (from sparse model initialization)
                 if hasattr(self, 'wind_direction') and self.wind_direction is not None:
                     logger.info("Reusing existing wind arrays - filling with uniform values")
-                    self.wind_direction.fill(wind_direction)
-                    self.wind_speed.fill(wind_speed)
+                    
+                    # MEMORY OPTIMIZATION: For extremely large arrays, use row-by-row filling
+                    if total_cells > 200_000_000:  # 200M+ cells (very conservative threshold)
+                        logger.info(f"Using row-by-row filling for extremely large arrays ({total_cells:,} cells)")
+                        # Fill row by row to avoid memory spikes from flattening
+                        rows_per_chunk = max(1, 10_000_000 // self.height)  # Process multiple rows at once
+                        
+                        for start_row in range(0, self.width, rows_per_chunk):
+                            end_row = min(start_row + rows_per_chunk, self.width)
+                            self.wind_direction[start_row:end_row, :] = wind_direction
+                            self.wind_speed[start_row:end_row, :] = wind_speed
+                            
+                        logger.info(f"Completed row-by-row filling for {self.width} rows")
+                    else:
+                        # Standard fill for smaller arrays
+                        self.wind_direction.fill(wind_direction)
+                        self.wind_speed.fill(wind_speed)
                 else:
                     # Create new arrays if they don't exist
                     logger.info("Creating new wind arrays with memory-efficient method")
