@@ -38,6 +38,38 @@ except ImportError:
 logger = get_logger(__name__)
 
 
+def _get_arafo_highlands_coordinates(grid_size: Tuple[int, int]) -> Tuple[int, int]:
+    """
+    Get realistic ignition coordinates for Arafo highlands on Tenerife.
+    
+    Based on the 2023 Tenerife wildfire that started near Chivisaya viewpoint 
+    in Arafo at ~1,200m elevation in the southeastern highlands.
+    
+    Args:
+        grid_size: (width, height) of the simulation grid
+        
+    Returns:
+        (x, y) coordinates for ignition point
+    """
+    width, height = grid_size
+    
+    # Arafo is located in the southeastern part of Tenerife
+    # Approximate location based on Tenerife geography:
+    # - East-southeast of center (about 60-70% across from west to east)
+    # - South-southeast of center (about 60-70% down from north to south)
+    # - In the highlands (intermediate elevation zone)
+    
+    # Convert geographic knowledge to grid coordinates
+    arafo_x = int(width * 0.65)   # 65% across (southeastern)
+    arafo_y = int(height * 0.62)  # 62% down (southeastern highlands)
+    
+    # Ensure coordinates are within bounds
+    arafo_x = max(0, min(arafo_x, width - 1))
+    arafo_y = max(0, min(arafo_y, height - 1))
+    
+    return arafo_x, arafo_y
+
+
 @dataclass
 class SensitivityResult:
     """Result for a single parameter sensitivity analysis."""
@@ -225,9 +257,9 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         
         engine = FireSimulationEngine(forest_model=forest_model, config=config)
         
-        # Set ignition point (use center for consistency)
-        center_x, center_y = config.grid_size[0] // 2, config.grid_size[1] // 2
-        forest_model.set_ignition(center_x, center_y, 0)
+        # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
+        ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)
+        forest_model.set_ignition(ignition_x, ignition_y, 0)
         
         # Run simulation
         simulation_result = engine.run_simulation(
@@ -840,9 +872,9 @@ class SensitivityAnalyzer:
         
         engine = FireSimulationEngine(forest_model=forest_model, config=config)
         
-        # Set ignition point (use center for consistency)
-        center_x, center_y = config.grid_size[0] // 2, config.grid_size[1] // 2
-        forest_model.set_ignition(center_x, center_y, 0)
+        # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
+        ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)
+        forest_model.set_ignition(ignition_x, ignition_y, 0)
         
         # Run simulation
         simulation_result = engine.run_simulation(
