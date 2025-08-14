@@ -600,7 +600,7 @@ class TenerifeFirePerimeterCalibrator:
             model_resolution=5.0,      # 5m resolution
             
             # MAXIMUM MEMORY OPTIMIZATION
-            memory_optimization_level=3,  # Aggressive optimization
+            memory_optimization_level=2,  # Maximum valid optimization level
             use_disk_storage=True,        # Store history on disk
             use_differential_history=True, # Only store changes
             use_sparse_storage=True,      # Sparse arrays for fuel/state
@@ -846,7 +846,7 @@ class TenerifeFirePerimeterCalibrator:
                 return None
             
             # Load terrain data into shared memory
-            target_shape = (grid_size[1], grid_size[0])  # (height, width) for terrain arrays
+            target_shape = (grid_size[0], grid_size[1])  # Keep consistent with terrain file format (width, height)
             success = shared_manager.load_terrain_data(str(preprocessed_dir), target_shape)
             
             if success:
