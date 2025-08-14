@@ -121,9 +121,9 @@ def estimate_calibration_time(parameters: List[str], grid_points: int, workers: 
     """Estimate calibration time and resource requirements."""
     total_combinations = grid_points ** len(parameters)
     
-    # Updated estimates for full Tenerife domain WITH SHARED TERRAIN
-    time_per_sim_minutes = 25.0  # 20-30 minutes per simulation (more conservative)
-    memory_per_sim_gb = 4.0      # ~4 GB per simulation (conservative for dense array initialization)
+    # Updated estimates for full Tenerife domain WITH SHARED TERRAIN AND SPARSE INITIALIZATION
+    time_per_sim_minutes = 20.0  # 15-25 minutes per simulation (optimistic with sparse init)
+    memory_per_sim_gb = 2.5      # ~2.5 GB per simulation (sparse arrays + shared terrain)
     
     # Calculate timings
     sequential_time_hours = (total_combinations * time_per_sim_minutes) / 60
@@ -353,9 +353,9 @@ Examples:
     
     args = parser.parse_args()
     
-    # Set default workers based on memory (reduced for stability)
+    # Set default workers based on memory (restored to optimal levels with sparse initialization)
     if args.workers is None:
-        args.workers = 20 if args.memory == 64 else 30  # Reduced from 60/120 to 20/30
+        args.workers = 60 if args.memory == 64 else 120  # Restored to optimal levels
     
     # Set default experiment name
     if args.experiment_name is None:

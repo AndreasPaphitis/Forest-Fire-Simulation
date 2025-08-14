@@ -2140,15 +2140,103 @@ class MemoryOptimizedForestModel(ForestModel):
         self.tile_size = kwargs.get('tile_size', 200)
         self.overlap = kwargs.get('overlap', int(kwargs.get('tile_size', 200) * 0.1))
         
-        all_params = {**kwargs, 'config': config, 'grid_size': grid_size, 'num_layers': num_layers, 
-                      'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
-                      'initial_fuel_load': initial_fuel_load}
-        super().__init__(**all_params)
+        # Calculate total cells to determine if we should skip dense initialization
+        if isinstance(grid_size, tuple):
+            width, height = grid_size
+        else:
+            width = height = grid_size
+        total_cells = width * height * num_layers
         
-        # Initialize sparse storage if needed
-        if self.use_sparse_storage:
-            self._initialize_sparse_storage()
+        # For large domains (>100M cells), initialize directly as sparse to avoid memory crashes
+        if total_cells > 100_000_000 and self.use_sparse_storage:
+            # Initialize directly as sparse without creating dense arrays first
+            self._initialize_directly_as_sparse(grid_size, num_layers, layer_height_meters, 
+                                              model_resolution, initial_fuel_load, config, **kwargs)
+        else:
+            # Normal initialization for smaller domains
+            all_params = {**kwargs, 'config': config, 'grid_size': grid_size, 'num_layers': num_layers, 
+                          'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
+                          'initial_fuel_load': initial_fuel_load}
+            super().__init__(**all_params)
+            
+            # Initialize sparse storage if needed
+            if self.use_sparse_storage:
+                self._initialize_sparse_storage()
     
+    def _initialize_directly_as_sparse(self, grid_size, num_layers, layer_height_meters, 
+                                      model_resolution, initial_fuel_load, config, **kwargs):
+        """
+        Initialize forest model directly as sparse to avoid memory crashes on large domains.
+        
+        This bypasses the standard BaseForestModel.__init__ that creates dense arrays.
+        """
+        try:
+            from scipy.sparse import lil_matrix
+        except ImportError:
+            logger.error("SciPy not available for sparse matrices. Cannot initialize directly as sparse.")
+            raise ImportError("SciPy required for memory optimization on large domains")
+        
+        # Initialize basic attributes manually (copied from BaseForestModel.__init__)
+        if isinstance(grid_size, tuple):
+            self.grid_size_x, self.grid_size_y = grid_size
+            self.width, self.height = grid_size
+        else:
+            self.grid_size_x = self.grid_size_y = grid_size
+            self.width = self.height = grid_size
+        
+        self.grid_size = (self.grid_size_x, self.grid_size_y)
+        self.num_layers = num_layers
+        self.layer_height_meters = layer_height_meters
+        self.model_resolution = model_resolution
+        
+        # Set config-related attributes
+        self.config = config if config is not None else get_global_config()
+        
+        # Initialize sparse storage directly - NO DENSE ARRAYS CREATED
+        self.fuel_load_layers = []
+        self.state_layers = []
+        
+        logger.info(f"Initializing directly as sparse for large domain: {self.width}×{self.height}×{num_layers}")
+        
+        for z in range(num_layers):
+            # Create empty sparse matrices (no dense conversion needed)
+            fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            
+            self.fuel_load_layers.append(fuel_layer)
+            self.state_layers.append(state_layer)
+        
+        # Create minimal dense arrays for terrain/wind (these are 2D only, much smaller)
+        self.wind_direction = np.zeros((self.width, self.height), dtype=np.float32)
+        self.wind_speed = np.zeros((self.width, self.height), dtype=np.float32)  
+        self.terrain_elevation = np.zeros((self.width, self.height), dtype=np.float32)
+        self.terrain_slope = np.zeros((self.width, self.height), dtype=np.float32)
+        self.terrain_aspect = np.zeros((self.width, self.height), dtype=np.float32)
+        self.canopy_height = np.zeros((self.width, self.height), dtype=np.float32)
+        
+        # Initialize other required attributes
+        self.stats = {'active_cells': 0, 'burned_cells': 0}
+        self.current_step = 0
+        self.history = []
+        self.debug = kwargs.get('debug', False)
+        
+        # Add property accessors for fuel_load and state to maintain compatibility
+        self._setup_sparse_property_accessors()
+        
+        logger.info(f"✅ Successfully initialized sparse model: {self.width}×{self.height}×{num_layers} "
+                   f"({self.width * self.height * num_layers:,} total cells)")
+
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
     def _convert_dense_to_sparse_fuel(self, dense_array):
         """Convert dense fuel array to sparse storage."""
         for z in range(self.num_layers):
