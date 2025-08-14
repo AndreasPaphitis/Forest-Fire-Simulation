@@ -732,7 +732,14 @@ class BaseForestModel(ABC):
             depression_mask = self._detect_topographic_depressions(min_depression_depth, min_depression_area)
         
         # 2. SLOPE DETECTION - Find steep areas  
-        slope_mask = self.terrain_slope >= barranco_threshold
+        # MEMORY OPTIMIZATION: For large grids, avoid creating full boolean masks
+        total_cells = self.width * self.height
+        if total_cells > 100_000_000:  # 100M cells threshold
+            logger.info(f"Large grid detected ({total_cells:,} cells) - using memory-optimized slope detection")
+            # For very large grids, defer slope mask creation and use preprocessed barranco mask directly
+            slope_mask = None  # Don't create the full slope mask to save memory
+        else:
+            slope_mask = self.terrain_slope >= barranco_threshold
         
         # 3. COMBINED DETECTION - Use preprocessed barranco mask if available
         if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
@@ -742,25 +749,33 @@ class BaseForestModel(ABC):
         else:
             # Fallback to calculation (should not happen with proper preprocessed data)
             logger.warning("No preprocessed barranco mask found, calculating...")
-            # Barrancos are depressions WITH steep sides
-            # Option B: Relaxed - Depression OR (steep slopes near depressions)
-            # This catches cases where depression center isn't steep but sides are
-            steep_near_depression = self._dilate_mask(depression_mask, radius=2) & slope_mask
-            barranco_mask = depression_mask | steep_near_depression
+            if slope_mask is not None:
+                # Standard calculation for smaller grids
+                steep_near_depression = self._dilate_mask(depression_mask, radius=2) & slope_mask
+                barranco_mask = depression_mask | steep_near_depression
+            else:
+                # Memory-optimized calculation for large grids - use depression mask only
+                logger.info("Using depression mask as barranco mask for memory efficiency")
+                barranco_mask = depression_mask
         
         if not np.any(barranco_mask):
             logger.info(f"No barrancos detected (threshold {barranco_threshold}°, min depth {min_depression_depth}m)")
             return
         
-        # Log detection results
+        # Log detection results - avoid np.sum on large arrays if possible
         depression_count = np.sum(depression_mask)
-        slope_count = np.sum(slope_mask) 
+        if slope_mask is not None:
+            slope_count = np.sum(slope_mask)
+        else:
+            slope_count = 0  # Not calculated for memory efficiency
         barranco_count = np.sum(barranco_mask)
-        total_cells = self.width * self.height
         
         logger.info(f"Barranco detection results:")
         logger.info(f"  Depressions: {depression_count} cells ({depression_count/total_cells*100:.1f}%)")
-        logger.info(f"  Steep slopes: {slope_count} cells ({slope_count/total_cells*100:.1f}%)")
+        if slope_count > 0:
+            logger.info(f"  Steep slopes: {slope_count} cells ({slope_count/total_cells*100:.1f}%)")
+        else:
+            logger.info(f"  Steep slopes: Not calculated (memory optimization)")
         logger.info(f"  Combined barrancos: {barranco_count} cells ({barranco_count/total_cells*100:.1f}%)")
         
         # Calculate ravine orientation for detected barrancos
@@ -775,7 +790,23 @@ class BaseForestModel(ABC):
         
         # Apply wind speed amplification in barrancos
         amplification_factor = 1.0 + (barranco_amplification - 1.0) * terrain_effect_strength
-        self.wind_speed[barranco_mask] *= amplification_factor
+        
+        # MEMORY OPTIMIZATION: For large grids, apply amplification in chunks
+        if total_cells > 100_000_000:  # 100M cells threshold
+            logger.info(f"Applying wind speed amplification in chunks for large grid")
+            barranco_indices = np.where(barranco_mask)
+            total_barranco_cells = len(barranco_indices[0])
+            
+            if total_barranco_cells > 0:
+                chunk_size = min(100000, total_barranco_cells)  # 100k cells per chunk
+                for i in range(0, total_barranco_cells, chunk_size):
+                    end_idx = min(i + chunk_size, total_barranco_cells)
+                    chunk_x = barranco_indices[0][i:end_idx]
+                    chunk_y = barranco_indices[1][i:end_idx]
+                    self.wind_speed[chunk_x, chunk_y] *= amplification_factor
+        else:
+            # Standard operation for smaller grids
+            self.wind_speed[barranco_mask] *= amplification_factor
         
         # Apply wind direction alignment with ravine orientation
         if barranco_direction_weight > 0:
