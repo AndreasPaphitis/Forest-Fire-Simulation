@@ -408,7 +408,11 @@ class BaseForestModel(ABC):
                 self.terrain_metadata = {}
             
             # Check if spatial subsetting is needed
-            target_shape = (self.height, self.width)  # Model expects (height, width)
+            # For sparse models, use the actual grid dimensions, not transposed
+            if hasattr(self, '_sparse_initialized') and self._sparse_initialized:
+                target_shape = (self.width, self.height)  # Keep original grid dimensions for sparse models
+            else:
+                target_shape = (self.height, self.width)  # Model expects (height, width) for regular models
             current_shape = elevation.shape
             
             logger.info(f"📊 Preprocessed terrain size: {current_shape[0]} × {current_shape[1]} cells")
@@ -448,20 +452,38 @@ class BaseForestModel(ABC):
             else:
                 logger.info(f"✅ Terrain data size matches simulation grid - no subsetting needed")
             
-            # Load the terrain data into the model (transpose to match coordinate system)
-            self.terrain_elevation = elevation.T
-            self.terrain_slope = slope.T
-            self.terrain_aspect = aspect.T
-            
-            # Load barranco detection results
-            self.barranco_mask = barranco_mask.T
-            self.barranco_directions = barranco_directions.T
-            self.depression_mask = depression_mask.T
-            
-            # Load wind channeling data
-            self.wind_channeling_mask = wind_channeling_mask.T
-            self.wind_amplification = wind_amplification.T
-            self.wind_direction_modification = wind_direction_modification.T
+            # Load the terrain data into the model
+            # For sparse models, don't transpose since arrays are already correctly sized
+            if hasattr(self, '_sparse_initialized') and self._sparse_initialized:
+                # No transpose needed for sparse models - arrays already match expected dimensions
+                self.terrain_elevation = elevation
+                self.terrain_slope = slope
+                self.terrain_aspect = aspect
+                
+                # Load barranco detection results
+                self.barranco_mask = barranco_mask
+                self.barranco_directions = barranco_directions
+                self.depression_mask = depression_mask
+                
+                # Load wind channeling data
+                self.wind_channeling_mask = wind_channeling_mask
+                self.wind_amplification = wind_amplification
+                self.wind_direction_modification = wind_direction_modification
+            else:
+                # Regular models need transpose to match coordinate system
+                self.terrain_elevation = elevation.T
+                self.terrain_slope = slope.T
+                self.terrain_aspect = aspect.T
+                
+                # Load barranco detection results
+                self.barranco_mask = barranco_mask.T
+                self.barranco_directions = barranco_directions.T
+                self.depression_mask = depression_mask.T
+                
+                # Load wind channeling data
+                self.wind_channeling_mask = wind_channeling_mask.T
+                self.wind_amplification = wind_amplification.T
+                self.wind_direction_modification = wind_direction_modification.T
             
             logger.info(f"✅ Successfully loaded preprocessed terrain data from {preprocessed_dir}")
             logger.info(f"📊 Final grid size: {self.terrain_elevation.shape}")
@@ -2213,8 +2235,8 @@ class MemoryOptimizedForestModel(ForestModel):
             self.state_layers.append(state_layer)
         
         # Create minimal dense arrays for terrain/wind (these are 2D only, much smaller)
-        # NOTE: Terrain data gets transposed during loading, so we need to match that shape
-        terrain_shape = (self.height, self.width)  # Transposed to match loaded terrain data
+        # For sparse models, use original grid dimensions without transpose
+        terrain_shape = (self.width, self.height)  # Use original grid dimensions for sparse models
         self.wind_direction = np.zeros(terrain_shape, dtype=np.float32)
         self.wind_speed = np.zeros(terrain_shape, dtype=np.float32)  
         self.terrain_elevation = np.zeros(terrain_shape, dtype=np.float32)
