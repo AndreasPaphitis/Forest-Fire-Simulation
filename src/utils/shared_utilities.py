@@ -352,8 +352,12 @@ def optimize_numexpr_threading(max_threads: Optional[int] = None, force_threads:
         elif max_threads is not None:
             numexpr_threads = min(max_threads, cpu_count)
         else:
-            # Default: use up to 64 threads or CPU count, whichever is smaller
-            numexpr_threads = min(64, cpu_count)
+            # Default: use up to CPU count, but cap at 128 for stability
+            # For HPC systems with 128+ cores, use all available
+            if cpu_count >= 128:
+                numexpr_threads = min(128, cpu_count)
+            else:
+                numexpr_threads = min(64, cpu_count)
         
         # Set NumExpr environment variables
         os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr_threads)
