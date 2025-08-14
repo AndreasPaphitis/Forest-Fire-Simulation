@@ -133,7 +133,11 @@ class FireSimulationEngine:
         
         # Load terrain data if available (must be done before wind initialization)
         # Skip if terrain was already loaded during sparse initialization
-        if hasattr(self.forest_model, 'terrain_elevation') and self.forest_model.terrain_elevation is not None:
+        terrain_already_loaded = (hasattr(self.forest_model, 'terrain_elevation') and 
+                                 self.forest_model.terrain_elevation is not None and 
+                                 np.any(self.forest_model.terrain_elevation))
+        
+        if terrain_already_loaded:
             logger.info("🏔️  Terrain data already loaded during model initialization")
             # Log terrain statistics for verification
             elev_min = np.min(self.forest_model.terrain_elevation)
@@ -147,9 +151,22 @@ class FireSimulationEngine:
                 logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
         elif (hasattr(self.config, 'use_preprocessed_terrain') and self.config.use_preprocessed_terrain and
             hasattr(self.config, 'preprocessed_terrain_dir') and self.config.preprocessed_terrain_dir):
-            logger.info(f"Loading preprocessed terrain data from: {self.config.preprocessed_terrain_dir}")
-            # Try to load preprocessed terrain (will fall back to flat terrain if it fails)
-            success = self.forest_model.load_terrain_data("")  # Empty string for preprocessed-only loading
+            # Check if this is a memory-optimized model that was initialized directly as sparse
+            is_sparse_model = (hasattr(self.forest_model, 'use_sparse_storage') and 
+                             self.forest_model.use_sparse_storage and
+                             hasattr(self.forest_model, '_sparse_initialized') and
+                             self.forest_model._sparse_initialized)
+            
+            if is_sparse_model:
+                logger.info("🏔️  Memory-optimized sparse model detected - loading terrain data directly into sparse model")
+                # For sparse models, load terrain data directly without going through standard load_terrain_data
+                # which might try to create dense arrays
+                success = self.forest_model._load_preprocessed_terrain_data(self.config.preprocessed_terrain_dir)
+            else:
+                logger.info(f"Loading preprocessed terrain data from: {self.config.preprocessed_terrain_dir}")
+                # Try to load preprocessed terrain (will fall back to flat terrain if it fails)
+                success = self.forest_model.load_terrain_data("")  # Empty string for preprocessed-only loading
+            
             if success:
                 logger.info("✅ Successfully loaded preprocessed terrain data")
                 # Log terrain statistics for verification
