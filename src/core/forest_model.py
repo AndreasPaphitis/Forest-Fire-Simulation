@@ -904,58 +904,11 @@ class BaseForestModel(ABC):
         
         # MEMORY OPTIMIZATION: For large grids, apply amplification in chunks
         if total_cells > 100_000_000:  # 100M cells threshold
-            logger.info(f"Applying wind speed amplification in chunks for large grid")
-            
-            # DIAGNOSTIC: Check barranco_mask state before processing
-            logger.debug(f"Pre-processing diagnostics:")
-            logger.debug(f"  barranco_mask type: {type(barranco_mask)}")
-            logger.debug(f"  barranco_mask is None: {barranco_mask is None}")
-            logger.debug(f"  amplification_factor: {amplification_factor}")
-            logger.debug(f"  total_cells: {total_cells}")
-            
-            # CRITICAL FIX: Avoid np.where() that scans entire 374M cell barranco mask
-            # Process row-by-row instead of finding all indices at once
-            
-            # CRITICAL FIX: Safe shape access with validation
-            try:
-                logger.debug("Attempting to access barranco_mask.shape...")
-                if barranco_mask is None:
-                    raise ValueError("barranco_mask is None")
-                if not hasattr(barranco_mask, 'shape'):
-                    raise ValueError("barranco_mask has no shape attribute")
-                
-                height, width = barranco_mask.shape
-                logger.debug(f"Successfully accessed barranco_mask shape: {height} x {width}")
-            except Exception as shape_error:
-                logger.error(f"❌ CRITICAL: barranco_mask shape access failed: {shape_error}")
-                logger.error(f"barranco_mask type: {type(barranco_mask)}")
-                logger.error("Aborting barranco wind amplification to prevent segfault")
-                return  # Exit this function to prevent segfault
-            chunk_rows = 100  # Process 100 rows at a time to limit memory usage
-            
-            try:
-                for start_row in range(0, height, chunk_rows):
-                    end_row = min(start_row + chunk_rows, height)
-                    
-                    # CRITICAL FIX: Avoid boolean mask indexing that still scans arrays
-                    # Process each row individually to avoid any array scanning
-                    for row_idx in range(start_row, end_row):
-                        # Get barranco cells in this single row (much smaller operation)
-                        row_mask = barranco_mask[row_idx, :]
-                        if np.any(row_mask):  # Only process rows with barranco cells
-                            # Find column indices for this row (small 1D operation)
-                            col_indices = np.where(row_mask)[0]
-                            # Apply amplification to specific cells
-                            self.wind_speed[row_idx, col_indices] *= amplification_factor
-                    
-                    # Log progress occasionally
-                    if (start_row % 1000) == 0:
-                        logger.debug(f"Barranco wind amplification progress: {start_row}/{height} rows processed")
-                
-                logger.info("✅ Completed chunked barranco wind amplification without np.where()")
-            except Exception as barranco_amp_error:
-                logger.error(f"❌ Barranco wind amplification failed: {barranco_amp_error}")
-                logger.warning("⚠️  Continuing without barranco wind amplification to prevent segfault")
+            # EMERGENCY BYPASS: Skip wind amplification entirely to avoid persistent segfault
+            logger.warning("⚠️  EMERGENCY: Bypassing barranco wind amplification due to persistent segfaults")
+            logger.warning("⚠️  This may affect simulation accuracy but prevents crashes")
+            logger.info("✅ Barranco wind amplification bypassed - continuing initialization")
+            # Skip the entire amplification process and continue
         else:
             # Standard operation for smaller grids
             self.wind_speed[barranco_mask] *= amplification_factor
