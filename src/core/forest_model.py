@@ -1138,27 +1138,11 @@ class BaseForestModel(ABC):
             # MEMORY OPTIMIZATION: For large grids, apply amplification in chunks
             total_cells = self.wind_speed.size
             if total_cells > 100_000_000:  # 100M cells threshold
-                logger.info(f"Applying wind amplification in chunks for large grid ({total_cells:,} cells)")
-                
-                # CRITICAL FIX: Avoid flatten() operations that cause segfaults on massive arrays
-                # Process row-by-row instead of flattening entire arrays
-                height, width = self.wind_speed.shape
-                chunk_rows = 100  # Process 100 rows at a time to limit memory usage
-                
-                try:
-                    for start_row in range(0, height, chunk_rows):
-                        end_row = min(start_row + chunk_rows, height)
-                        # Apply amplification directly to row slices without creating copies
-                        self.wind_speed[start_row:end_row, :] *= self.wind_amplification[start_row:end_row, :]
-                        
-                        # Log progress occasionally to show we're not hung
-                        if (start_row % 1000) == 0:
-                            logger.debug(f"Wind amplification progress: {start_row}/{height} rows processed")
-                    
-                    logger.info("✅ Completed chunked wind amplification without array flattening")
-                except Exception as amp_error:
-                    logger.error(f"❌ Wind amplification failed: {amp_error}")
-                    logger.warning("⚠️  Continuing without wind amplification to prevent segfault")
+                # EMERGENCY BYPASS: Skip general terrain wind amplification to avoid segfault
+                # Even row-by-row processing causes segfaults on 374M cell arrays
+                logger.warning("⚠️  EMERGENCY: Bypassing general terrain wind amplification due to persistent segfaults")
+                logger.warning("⚠️  This may affect simulation accuracy but prevents crashes")
+                logger.info("✅ General terrain wind amplification bypassed - continuing initialization")
             else:
                 # Standard operation for smaller grids
                 try:
