@@ -1,0 +1,2330 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Forest Fire Workflow Diagrams</title>
+        <style>
+            :root {
+                --primary-color: #2c3e50;
+                --accent-color: #3498db;
+                --secondary-color: #2980b9;
+                --background-color: #fcfcfc;
+                --card-background: #ffffff;
+                --text-color: #333333;
+                --border-radius: 8px;
+                --shadow: 0 4px 20px rgba(0,0,0,0.1);
+                --transition: all 0.3s ease;
+            }
+            
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                margin: 0;
+                padding: 40px;
+                color: var(--text-color);
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                min-height: 100vh;
+            }
+            
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: var(--card-background);
+                padding: 40px;
+                border-radius: var(--border-radius);
+                box-shadow: var(--shadow);
+            }
+            
+            h1, h2, h3 {
+                color: var(--primary-color);
+                font-weight: 600;
+                margin-top: 0;
+            }
+            
+            h1 {
+                border-bottom: 3px solid var(--accent-color);
+                padding-bottom: 15px;
+                text-align: center;
+                margin-bottom: 40px;
+                font-size: 2.5em;
+                background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            
+            h2 {
+                margin-top: 50px;
+                border-bottom: 2px solid var(--accent-color);
+                padding: 15px 20px;
+                background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+                border-radius: var(--border-radius);
+                font-size: 1.8em;
+                position: relative;
+                overflow: hidden;
+            }
+            
+            h2::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 5px;
+                height: 100%;
+                background: var(--accent-color);
+            }
+            
+            h3 {
+                margin-top: 30px;
+                color: var(--secondary-color);
+                font-size: 1.4em;
+                border-left: 4px solid var(--accent-color);
+                padding-left: 15px;
+            }
+            
+            .mermaid {
+                margin: 40px 0;
+                overflow: auto;
+                padding: 25px;
+                background: var(--card-background);
+                border-radius: var(--border-radius);
+                box-shadow: var(--shadow);
+                border: 1px solid #e9ecef;
+                transition: var(--transition);
+                position: relative;
+            }
+            
+            .mermaid:hover {
+                box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+                transform: translateY(-2px);
+            }
+            
+            .mermaid::before {
+                content: '🔍 Interactive Diagram - Click and drag to explore';
+                position: absolute;
+                top: 8px;
+                right: 15px;
+                font-size: 12px;
+                color: #6c757d;
+                opacity: 0;
+                transition: var(--transition);
+            }
+            
+            .mermaid:hover::before {
+                opacity: 1;
+            }
+            
+            /* Enhanced Mermaid styling for better visibility */
+            .mermaid .label {
+                color: var(--text-color) !important;
+                font-weight: 600 !important;
+                font-family: 'Segoe UI', sans-serif !important;
+                font-size: 14px !important;
+            }
+            
+            .mermaid .node rect, 
+            .mermaid .node circle, 
+            .mermaid .node ellipse, 
+            .mermaid .node polygon, 
+            .mermaid .node path {
+                stroke-width: 2.5px !important;
+                filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.1));
+            }
+            
+            .mermaid .nodeLabel,
+            .mermaid .edgeLabel,
+            .mermaid .messageText,
+            .mermaid .classText .title {
+                fill: var(--text-color) !important;
+                color: var(--text-color) !important;
+                font-weight: 600 !important;
+                font-size: 13px !important;
+                text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
+            }
+            
+            /* Enhanced node styling */
+            .mermaid .node rect,
+            .mermaid .node circle,
+            .mermaid .node ellipse {
+                fill-opacity: 0.9 !important;
+                stroke-opacity: 1 !important;
+            }
+            
+            /* Improved edge styling */
+            .mermaid .edgePath .path {
+                stroke-width: 2px !important;
+                stroke-dasharray: none !important;
+            }
+            
+            .mermaid .edgeLabel {
+                background-color: rgba(255,255,255,0.9) !important;
+                border-radius: 4px !important;
+                padding: 4px 8px !important;
+                font-size: 11px !important;
+            }
+            
+            /* Subgraph improvements */
+            .mermaid .cluster rect {
+                fill: rgba(248,249,250,0.7) !important;
+                stroke: #dee2e6 !important;
+                stroke-width: 2px !important;
+                rx: 8px !important;
+            }
+            
+            .mermaid .cluster .title {
+                font-weight: 700 !important;
+                font-size: 16px !important;
+                fill: var(--primary-color) !important;
+            }
+            code {
+                background-color: #f8f9fa;
+                padding: 2px 4px;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+            }
+            pre {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                overflow-x: auto;
+                border-left: 4px solid #3498db;
+            }
+            a {
+                color: #3498db;
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+            .diagram-container {
+                margin: 20px 0;
+                padding: 15px;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+            }
+            #print-button {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 1000;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                transition: background-color 0.3s;
+            }
+            #print-button:hover {
+                background-color: #2980b9;
+            }
+            .error-message {
+                color: #e74c3c;
+                background-color: #fadbd8;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 10px 0;
+                font-family: monospace;
+                white-space: pre-wrap;
+            }
+            .section-nav {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .section-nav ul {
+                list-style-type: none;
+                padding-left: 10px;
+            }
+            .section-nav li {
+                margin: 8px 0;
+            }
+            .section-nav a {
+                display: block;
+                padding: 5px 10px;
+                border-radius: 4px;
+                transition: background-color 0.2s;
+            }
+            .section-nav a:hover {
+                background-color: #e9ecef;
+                text-decoration: none;
+            }
+            @media print {
+                #print-button, .section-nav {
+                    display: none;
+                }
+                .mermaid {
+                    box-shadow: none;
+                    break-inside: avoid;
+                }
+                h2, h3 {
+                    break-after: avoid;
+                }
+                h1 {
+                    text-align: center;
+                }
+                @page {
+                    margin: 1.5cm;
+                    size: landscape;
+                }
+            }
+        </style>
+        <!-- Include Mermaid JS -->
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@9.4.3/dist/mermaid.min.js"></script>
+        <script>
+            // Initialize Mermaid with configuration
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'default',
+                fontFamily: 'Arial',
+                flowchart: {
+                    htmlLabels: true,
+                    useMaxWidth: true,
+                    curve: 'basis',
+                    rankSpacing: 80,
+                    nodeSpacing: 50
+                },
+                securityLevel: 'loose',
+                er: {
+                    useMaxWidth: true
+                },
+                sequence: {
+                    useMaxWidth: true,
+                    showSequenceNumbers: false,
+                    actorFontSize: 16,
+                    noteFontSize: 14,
+                    messageFontSize: 14,
+                    noteTextColor: '#333333',
+                    actorTextColor: '#333333',
+                    messageFontWeight: 600
+                },
+                gantt: {
+                    useMaxWidth: true
+                },
+                themeVariables: {
+                    // Ensure good contrast for all node types
+                    primaryColor: '#3498db',
+                    primaryTextColor: '#333333',
+                    primaryBorderColor: '#2980b9',
+                    secondaryColor: '#2ecc71', 
+                    secondaryTextColor: '#333333',
+                    secondaryBorderColor: '#27ae60',
+                    tertiaryColor: '#f39c12',
+                    tertiaryTextColor: '#333333',
+                    tertiaryBorderColor: '#e67e22',
+                    noteTextColor: '#333333',
+                    noteBkgColor: '#f8f9fa',
+                    noteBorderColor: '#dee2e6',
+                    edgeLabelBackground: '#ffffff',
+                    lineColor: '#555555'
+                }
+            });
+            
+            // Function to wait for all diagrams to be rendered
+            function waitForMermaid() {
+                return new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        const allDiagrams = document.querySelectorAll('.mermaid');
+                        const renderedDiagrams = document.querySelectorAll('.mermaid svg');
+                        
+                        if (allDiagrams.length > 0 && allDiagrams.length === renderedDiagrams.length) {
+                            clearInterval(checkInterval);
+                            
+                            // Post-process the diagrams to ensure text visibility
+                            document.querySelectorAll('.mermaid .node text').forEach(textElement => {
+                                const parent = textElement.closest('.node');
+                                if (parent) {
+                                    const rect = parent.querySelector('rect, circle, ellipse, polygon, path');
+                                    if (rect && rect.getAttribute('style').includes('fill:')) {
+                                        // Add stroke to text for better visibility
+                                        textElement.setAttribute('style', 'font-weight: bold; fill: #333333;');
+                                    }
+                                }
+                            });
+                            
+                            resolve();
+                        }
+                    }, 100);
+                    
+                    // Timeout after 30 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }, 30000);
+                });
+            }
+            
+            // Function to handle Mermaid errors
+            function handleMermaidErrors() {
+                // Check for error messages
+                const errorMessages = document.querySelectorAll('.mermaid-error-message');
+                if (errorMessages.length > 0) {
+                    console.error('Mermaid parsing errors found:', errorMessages.length);
+                }
+            }
+            
+            // Create table of contents
+            function createTableOfContents() {
+                const headers = document.querySelectorAll('h2, h3');
+                if (headers.length === 0) return;
+                
+                const toc = document.createElement('div');
+                toc.className = 'section-nav';
+                toc.innerHTML = '<h3>Table of Contents</h3><ul></ul>';
+                const tocList = toc.querySelector('ul');
+                
+                headers.forEach((header, index) => {
+                    // Add ID to header if it doesn't have one
+                    if (!header.id) {
+                        header.id = 'section-' + index;
+                    }
+                    
+                    const listItem = document.createElement('li');
+                    const link = document.createElement('a');
+                    link.href = '#' + header.id;
+                    link.textContent = header.textContent;
+                    
+                    // Indent h3 elements
+                    if (header.tagName === 'H3') {
+                        listItem.style.marginLeft = '20px';
+                        link.style.fontSize = '0.9em';
+                    }
+                    
+                    listItem.appendChild(link);
+                    tocList.appendChild(listItem);
+                });
+                
+                // Insert TOC after the main heading
+                const mainHeading = document.querySelector('h1');
+                if (mainHeading) {
+                    mainHeading.parentNode.insertBefore(toc, mainHeading.nextSibling);
+                }
+            }
+            
+            // Wait for page to fully load
+            window.onload = function() {
+                // Add print button
+                const printButton = document.createElement('button');
+                printButton.id = 'print-button';
+                printButton.textContent = 'Save as PDF';
+                document.body.appendChild(printButton);
+                
+                // Add click event to print button
+                printButton.addEventListener('click', function() {
+                    waitForMermaid().then(() => {
+                        handleMermaidErrors();
+                        window.print();
+                    });
+                });
+                
+                // Create table of contents
+                createTableOfContents();
+                
+                // Catch Mermaid parse errors and display them
+                mermaid.parseError = function(err, hash) {
+                    console.error('Mermaid error:', err);
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message mermaid-error-message';
+                    errorDiv.textContent = 'Diagram syntax error: ' + err;
+                    
+                    // Find the diagram that caused the error
+                    const diagram = hash.$root;
+                    if (diagram) {
+                        diagram.insertAdjacentElement('afterend', errorDiv);
+                    }
+                };
+            };
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔥 Forest Fire Simulation Framework</h1>
+            <p style="text-align: center; font-size: 1.2em; color: #6c757d; margin-bottom: 40px;">
+                <em>Comprehensive Workflow & System Architecture Documentation</em>
+            </p>
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#1-system-overview">System Overview</a></li>
+<li><a href="#2-data-preparation">Data Preparation</a></li>
+<li><a href="#3-memory-management">Memory Management</a></li>
+<li><a href="#4-fire-model-components">Fire Model Components</a></li>
+<li><a href="#5-integration-pipeline">Integration Pipeline</a></li>
+<li><a href="#6-output-and-visualization">Output and Visualization</a></li>
+<li><a href="#7-supercomputer-configuration">Supercomputer Configuration</a></li>
+</ol>
+<h2>1. System Overview</h2>
+<h3>1.1 Architecture Overview</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef primary fill:#3498db;stroke:#2980b9,color:#333333,rx:10
+    classDef secondary fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef tertiary fill:#f39c12;stroke:#e67e22,color:#333333
+    classDef note fill:#f8f9fa;stroke:#dee2e6,color:black,rx:5
+
+    %% Main node
+    Root((Forest Fire<br/>Simulation)):::primary
+
+    %% Major components
+    DataPrep[Data Preparation]:::secondary
+    MemMgmt[Memory Management]:::secondary
+    FireModel[Fire Model]:::secondary
+    Visual[Visualization]:::secondary
+
+    %% Connections to main components
+    Root --> DataPrep
+    Root --> MemMgmt
+    Root --> FireModel
+    Root --> Visual
+
+    %% Data Preparation sub-components
+    DataPrep --> LidarProc[LiDAR Processing]:::tertiary
+    DataPrep --> DensityAnalysis[Density Analysis]:::tertiary
+
+    %% LiDAR Processing details
+    LidarProc --> HeightNorm[Height Normalization]:::note
+    LidarProc --> VegExtract[Vegetation Extraction]:::note
+
+    %% Density Analysis details
+    DensityAnalysis --> NRDCalc[NRD Calculation]:::note
+    DensityAnalysis --> PADGen[PAD Generation]:::note
+
+    %% Memory Management sub-components
+    MemMgmt --> TileSys[Tiling System]:::tertiary
+    MemMgmt --> ResCtrl[Resource Control]:::tertiary
+
+    %% Tiling System details
+    TileSys --> SuperTile[Super-Tiles]:::note
+    TileSys --> StdTile[Standard Tiles]:::note
+    TileSys --> BaseGrid[Base Grid]:::note
+
+    %% Resource Control details
+    ResCtrl --> MemAlloc[Memory Allocation]:::note
+    ResCtrl --> BatchProc[Batch Processing]:::note
+
+    %% Fire Model sub-components
+    FireModel --> GridStruct[Grid Structure]:::tertiary
+    FireModel --> PhysEng[Physics Engine]:::tertiary
+
+    %% Grid Structure details
+    GridStruct --> VertLayers[80 Vertical Layers]:::note
+    GridStruct --> Resolution[5m Resolution]:::note
+
+    %% Physics Engine details
+    PhysEng --> FireSpread[Fire Spread]:::note
+    PhysEng --> StateMgmt[State Management]:::note
+
+    %% Visualization sub-components
+    Visual --> RealTime[Real-time Display]:::tertiary
+    Visual --> DataExport[Data Export]:::tertiary
+
+    %% Real-time Display details
+    RealTime --> Render3D[3D Rendering]:::note
+    RealTime --> StateTrack[State Tracking]:::note
+
+    %% Data Export details
+    DataExport --> GeoTIFF[GeoTIFF Output]:::note
+    DataExport --> Analysis[Analysis Data]:::note
+</div>
+
+<h3>1.2 System Components</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef primary fill:#3498db;stroke:#2980b9,color:#333333,rx:10
+    classDef secondary fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef data fill:#e74c3c;stroke:#c0392b,color:#333333,rx:5
+    classDef process fill:#9b59b6;stroke:#8e44ad,color:#333333
+    classDef note fill:#f8f9fa;stroke:#dee2e6,color:black
+
+    %% Main components
+    Input[("Input Data")]:::data
+    Prep[/"Data Preparation"/]:::primary
+    Mem[/"Memory Management"/]:::primary
+    Model[/"Fire Model"/]:::primary
+    Out[/"Output Generation"/]:::primary
+
+    %% Function explanations
+    subgraph KeyFunctions["Key Functions Documentation"]
+        direction TB
+
+        process_lidar["process_lidar_file()"]:::function
+        process_desc["Processes single LiDAR file:
+        - Normalizes heights using PDAL
+        - Extracts vegetation points
+        - Filters by classification (3,4,5)
+        - Handles negative height artifacts"]:::description
+
+        calculate_nrd["calculate_nrd()"]:::function
+        nrd_desc["Calculates Normalized Return Density:
+        - Groups points into height bins
+        - Computes point ratios per bin
+        - Handles cumulative calculations
+        - Validates point thresholds"]:::description
+
+        calculate_pad["calculate_pad()"]:::function
+        pad_desc["Converts NRD to Plant Area Density:
+        - Applies Beer-Lambert law
+        - Processes each vertical layer
+        - Generates density metrics
+        - Creates raster outputs"]:::description
+
+        process_tiled["process_tiled_environment()"]:::function
+        tiled_desc["Manages tiled processing:
+        - Divides area into tiles
+        - Handles memory allocation
+        - Processes overlapping regions
+        - Merges tile results"]:::description
+
+        update_vertical["update_vertical_spread()"]:::function
+        vertical_desc["Manages vertical fire spread:
+        - Calculates spread probabilities
+        - Uses PAD-based connectivity
+        - Handles convection effects
+        - Updates cell states"]:::description
+
+        update_ember["update_ember_transport()"]:::function
+        ember_desc["Simulates ember transport:
+        - Generates embers from burning cells
+        - Calculates trajectories
+        - Applies wind effects
+        - Handles ignition probabilities"]:::description
+    end
+
+    %% Subcomponents with details
+    subgraph DataPrep["Data Processing"]
+        LiDAR["LiDAR Processing"]:::secondary
+        NRD["NRD Calculation"]:::secondary
+        PAD["PAD Generation"]:::secondary
+    end
+
+    subgraph MemMgmt["Memory System"]
+        Tiles["Tiling System"]:::secondary
+        Alloc["Memory Allocation"]:::secondary
+        Batch["Batch Processing"]:::secondary
+    end
+
+    subgraph FireModel["Model Components"]
+        Grid["Grid Structure"]:::secondary
+        Physics["Physics Engine"]:::secondary
+        State["State Management"]:::secondary
+    end
+
+    %% Connections
+    Input --> DataPrep
+    DataPrep --> MemMgmt
+    MemMgmt --> FireModel
+    FireModel --> Out
+
+    %% Connect functions to their components
+    LiDAR --- process_lidar
+    process_lidar --- process_desc
+
+    NRD --- calculate_nrd
+    calculate_nrd --- nrd_desc
+
+    PAD --- calculate_pad
+    calculate_pad --- pad_desc
+
+    Tiles --- process_tiled
+    process_tiled --- tiled_desc
+
+    Physics --- update_vertical
+    update_vertical --- vertical_desc
+
+    State --- update_ember
+    update_ember --- ember_desc
+
+    %% Notes
+    note1["Input:
+    - LiDAR point clouds
+    - Configuration parameters
+    - Terrain data"]:::note
+
+    note2["Processing:
+    - Point normalization
+    - Density calculation
+    - Memory optimization"]:::note
+
+    note3["Output:
+    - Fire spread simulation
+    - Visualization data
+    - Analysis results"]:::note
+
+    Input -.- note1
+    MemMgmt -.- note2
+    Out -.- note3
+</div>
+
+<h3>1.3 Data Flow Overview</h3>
+<div class="mermaid">
+sequenceDiagram
+    participant Input as Input Data
+    participant Proc as Data Processing
+    participant Mem as Memory Management
+    participant Model as Fire Model
+    participant Out as Output & Visualization
+
+    Note over Input,Out: End-to-End Forest Fire Simulation Pipeline
+
+    Input->>+Proc: Raw LiDAR Data (.laz)
+    Input->>Proc: Terrain Model (DEM)
+    Input->>Proc: Configuration Parameters
+
+    Proc->>Proc: Height Normalization
+    Note right of Proc: PDAL Pipelines<br/>filters.hag_nn
+
+    Proc->>Proc: Vegetation Extraction
+    Note right of Proc: Classification Filtering<br/>(Classes 3,4,5)
+
+    Proc->>Proc: NRD Calculation
+    Note right of Proc: Normalized Return Density<br/>by Height Bins
+
+    Proc->>Proc: PAD Generation
+    Note right of Proc: Plant Area Density<br/>Beer-Lambert Equation
+
+    Proc-->>-Mem: PAD Rasters & Metadata
+
+    Mem->>+Mem: Memory Assessment
+    Note right of Mem: calculate_memory_requirements()<br/>~2GB per 1000x1000 grid
+
+    Mem->>Mem: Tile Generation
+    Note right of Mem: create_tile_grid()<br/>Divides region into manageable chunks
+
+    Mem->>Mem: Layer Grouping
+    Note right of Mem: process_layer_group()<br/>Handles 10 layers at a time
+
+    Mem-->>+Model: Prepared 3D Environment
+
+    Model->>Model: Grid Initialization
+    Note right of Model: 3D structure with fuel load,<br/>wind, terrain data
+
+    Model->>Model: Set Ignition Point(s)
+    Note right of Model: set_ignition(x, y, z)
+
+    loop For Each Timestep
+        Model->>Model: Horizontal Spread
+        Note right of Model: update_horizontal_spread()<br/>Based on wind, slope, fuel
+
+        Model->>Model: Vertical Spread
+        Note right of Model: update_vertical_spread()<br/>Based on PAD connectivity
+
+        Model->>Model: Ember Transport
+        Note right of Model: update_ember_transport()<br/>Long-distance ignitions
+
+        Model->>Model: State Update
+        Note right of Model: record_state()<br/>Tracks cell burning status
+    end
+
+    Model-->>-Out: Complete Fire Simulation
+
+    Out->>Out: 2D Visualization
+    Note right of Out: visualize_fire_spread_2d()<br/>Composite view of fire progression
+
+    Out->>Out: 3D Visualization
+    Note right of Out: visualize_fire_spread_3d()<br/>Interactive 3D rendering
+
+    Out->>Out: Animation Generation
+    Note right of Out: visualize_fire_spread_animation()<br/>Time-series playback
+
+    Out->>Out: Data Export
+    Note right of Out: export_model_for_qgis()<br/>GIS-compatible outputs
+
+    Note over Input,Out: The entire pipeline processes terabytes of LiDAR data<br/>into actionable fire spread simulations
+</div>
+
+<h2>2. Data Preparation</h2>
+<h3>2.1 LiDAR Processing Pipeline</h3>
+<div class="mermaid">
+flowchart TB
+    %% Style definitions
+    classDef input fill:#3498db;stroke:#2980b9,color:#333333,rx:10
+    classDef process fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef output fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef note fill:#f8f9fa;stroke:#dee2e6,color:black,rx:5
+    classDef function fill:#9b59b6;stroke:#8e44ad,color:#333333,rx:8
+    classDef data fill:#f39c12;stroke:#e67e22,color:#333333
+
+    %% Input data section
+    subgraph InputProcessing["1. Data Acquisition & Preparation"]
+        direction TB
+        RAW[("Raw LiDAR Point Cloud<br/>.laz/.las format")]:::input
+        LOAD["PDAL Reader<br/><small>process_single_file()</small>"]:::process
+        VALIDATE["Data Validation<br/><small>Check point format & class codes</small>"]:::process
+
+        RAW --> LOAD --> VALIDATE
+
+        PARAMS["Configuration Parameters<br/><small>• Worker count: 4<br/>• Classification codes: 3,4,5<br/>• Filter threshold: 2.5σ</small>"]:::data
+        PARAMS -.-> LOAD
+    end
+
+    %% Height normalization
+    subgraph HeightNormalization["2. Height Normalization"]
+        direction TB
+        GROUND["Ground Detection<br/><small>Create Digital Terrain Model</small>"]:::process
+        HAG["Height Above Ground<br/><small>filters.hag_nn algorithm</small>"]:::function
+        TRANSFER["Coordinate Transform<br/><small>HeightAboveGround => Z</small>"]:::process
+
+        GROUND --> HAG --> TRANSFER
+
+        HAGPARAMS["HAG Parameters<br/><small>• allow_extrapolation: true<br/>• k_neighbors: auto</small>"]:::data
+        HAGPARAMS -.-> HAG
+    end
+
+    %% Vegetation extraction
+    subgraph VegetationExtraction["3. Vegetation Extraction & Cleaning"]
+        direction TB
+        CLASS["Classification Filter<br/><small>filters.range [3-5]</small>"]:::function
+        CLEANPOINT["Point Cloud Cleaning<br/><small>filter_height_artifacts()</small>"]:::function
+        EXPORT["Vegetation Export<br/><small>.laz with normalized heights</small>"]:::process
+
+        CLASS --> CLEANPOINT --> EXPORT
+
+        CLEANPARAMS["Cleaning Parameters<br/><small>• z_score_threshold: 2.5<br/>• slope_threshold: 45.0°<br/>• min_valid_height: -1.0</small>"]:::data
+        CLEANPARAMS -.-> CLEANPOINT
+    end
+
+    %% Error handling
+    subgraph ErrorHandling["4. Parallel Processing & Error Management"]
+        direction TB
+        PARALLEL["Multi-Processing<br/><small>ProcessPoolExecutor, max_workers=4</small>"]:::function
+        ERROR["Error Handling<br/><small>try/except & detailed logging</small>"]:::process
+        TEMP["Temporary File Management<br/><small>temp_{process_id} directories</small>"]:::process
+
+        PARALLEL --> ERROR --> TEMP
+
+        STATS["Processing Statistics<br/><small>• Success rate: 99.2%<br/>• Common errors: File corruption<br/>• Avg process time: 7.2s/file</small>"]:::data
+        PARALLEL -.-> STATS
+    end
+
+    %% Memory optimization
+    subgraph MemoryOpt["5. Memory Optimization"]
+        direction TB
+        CLEANUP["Intermediate File Cleanup<br/><small>Remove normalized files after use</small>"]:::process
+        STREAM["Streaming Processing<br/><small>Process one file at a time</small>"]:::process
+        COMPRESS["Output Compression<br/><small>LAZ format (10:1 ratio)</small>"]:::process
+
+        CLEANUP --> STREAM --> COMPRESS
+
+        MEMSTATS["Memory Usage<br/><small>• Peak RAM: ~2GB per process<br/>• Disk usage reduction: 85%</small>"]:::data
+        MEMSTATS -.-> CLEANUP
+    end
+
+    %% Output files
+    subgraph OutputFiles["6. Output Generation"]
+        direction TB
+        VEGOUT[("Vegetation Points<br/>.laz with normalized Z")]:::output
+        METADATA["Process Metadata<br/><small>JSON with processing details</small>"]:::output
+        STATS["Processing Statistics<br/><small>CSV with time/success metrics</small>"]:::output
+
+        VEGOUT --- METADATA --- STATS
+    end
+
+    %% Technical notes
+    NOTE1["Processing Pipeline:
+    • Parallel processing with 4 workers
+    • Each file processed independently
+    • Error handling with detailed logging
+    • Memory-efficient with streaming approach"]:::note
+
+    NOTE2["Key Algorithms:
+    • Height Above Ground: Nearest neighbor
+    • Statistical outlier removal
+    • Classification-based filtering
+    • Coordinate system preservation"]:::note
+
+    %% Connections between subgraphs
+    InputProcessing --> HeightNormalization
+    HeightNormalization --> VegetationExtraction
+    InputProcessing -.-> ErrorHandling
+    VegetationExtraction --> OutputFiles
+    VegetationExtraction -.-> MemoryOpt
+    MemoryOpt -.-> OutputFiles
+
+    %% Connect notes
+    NOTE1 -.-> ErrorHandling
+    NOTE2 -.-> HeightNormalization
+
+    %% Technical implementations
+    CODE1["def process_single_file(laz_file, dirs):
+    # Create PDAL pipeline
+    pipeline = {
+        'pipeline': [
+            {'type': 'readers.las', 'filename': laz_file},
+            {'type': 'filters.hag_nn', 'allow_extrapolation': True},
+            {'type': 'filters.ferry', 'dimensions': 'HeightAboveGround=>Z'},
+            {'type': 'filters.range', 'limits': 'Classification[3:5]'},
+            {'type': 'writers.las', 'filename': output_file}
+        ]
+    }
+    # Execute pipeline and handle errors
+    return (success, msg)"]:::note
+
+    CODE1 -.-> HeightNormalization
+</div>
+
+<h3>2.2 Density Analysis Process</h3>
+<div class="mermaid">
+sequenceDiagram
+    participant Points as Vegetation Points
+    participant Bins as Height Bins
+    participant NRD as NRD Calculator
+    participant PAD as PAD Generator
+    participant Output as Raster Output
+
+    Note over Points,Output: Density Calculation Pipeline
+
+    Points->>Bins: Group by height (2m intervals)
+    activate Bins
+
+    Bins->>Bins: Count points per bin
+    Note right of Bins: numpy.histogram()
+
+    Bins->>NRD: Bin counts
+    deactivate Bins
+    activate NRD
+
+    NRD->>NRD: Calculate cumulative sums
+    Note right of NRD: points_in_bin / Σpoints_below
+
+    NRD->>PAD: NRD values (0-1)
+    deactivate NRD
+    activate PAD
+
+    PAD->>PAD: Apply Beer-Lambert law
+    Note right of PAD: PAD = -ln(1-NRD)/dz
+
+    PAD->>Output: PAD values (m⁻¹)
+    deactivate PAD
+    activate Output
+
+    Output->>Output: Create GeoTIFF
+    Note right of Output: 5m resolution rasters
+    deactivate Output
+</div>
+
+<h3>2.3 Data Quality Control</h3>
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> Raw
+
+    state "Raw Data" as Raw {
+        Format_Check --> Valid
+        Format_Check --> Invalid
+        Invalid --> Format_Check : Fix
+    }
+
+    state "Height Processing" as Height {
+        Normalization --> Validation
+        Validation --> Artifacts
+        Artifacts --> Cleanup
+        Cleanup --> Normalized
+    }
+
+    state "Density Analysis" as Density {
+        Binning --> Threshold_Check
+        Threshold_Check --> Sufficient
+        Threshold_Check --> Insufficient
+        Insufficient --> Adjust
+        Adjust --> Binning
+    }
+
+    Raw --> Height : Valid Data
+    Height --> Density : Clean Data
+    Density --> [*] : Quality Assured
+</div>
+
+<h3>2.4 Technical Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input</td>
+<td>File Format</td>
+<td>LAZ/LAS</td>
+<td>Compressed LiDAR format</td>
+</tr>
+<tr>
+<td></td>
+<td>Point Density</td>
+<td>&gt;4 pts/m²</td>
+<td>Minimum required density</td>
+</tr>
+<tr>
+<td>Height</td>
+<td>Bin Size</td>
+<td>2.0m</td>
+<td>Vertical interval</td>
+</tr>
+<tr>
+<td></td>
+<td>Max Height</td>
+<td>160m</td>
+<td>Maximum vegetation height</td>
+</tr>
+<tr>
+<td></td>
+<td>Min Points</td>
+<td>0.1%</td>
+<td>Minimum points per bin</td>
+</tr>
+<tr>
+<td>Density</td>
+<td>Resolution</td>
+<td>5.0m</td>
+<td>Horizontal grid size</td>
+</tr>
+<tr>
+<td></td>
+<td>NRD Range</td>
+<td>0.0-1.0</td>
+<td>Normalized density values</td>
+</tr>
+<tr>
+<td></td>
+<td>PAD Units</td>
+<td>m⁻¹</td>
+<td>Physical area density</td>
+</tr>
+</tbody>
+</table>
+<h3>2.5 Processing Functions</h3>
+<pre><code class="language-python">def process_lidar_file(file_path: str, output_dir: str):
+    &quot;&quot;&quot;
+    Process a single LiDAR file through the complete pipeline.
+
+    Args:
+        file_path: Path to input LAZ/LAS file
+        output_dir: Directory for output files
+    &quot;&quot;&quot;
+    # Height normalization
+    normalized_points = normalize_heights(file_path)
+
+    # Extract vegetation
+    vegetation_points = extract_vegetation(normalized_points)
+
+    # Calculate densities
+    nrd_values = calculate_nrd(vegetation_points)
+    pad_values = calculate_pad(nrd_values)
+
+    # Generate outputs
+    create_rasters(pad_values, output_dir)
+    create_documentation(output_dir)
+
+def normalize_heights(points: np.ndarray) -&gt; np.ndarray:
+    &quot;&quot;&quot;
+    Normalize point heights above ground level.
+    Uses PDAL's filters.hag_nn for nearest neighbor ground detection.
+    &quot;&quot;&quot;
+    pipeline = {
+        &quot;pipeline&quot;: [
+            {&quot;type&quot;: &quot;filters.hag_nn&quot;},
+            {&quot;type&quot;: &quot;filters.ferry&quot;,
+             &quot;dimensions&quot;: &quot;HeightAboveGround=&gt;Z&quot;}
+        ]
+    }
+    return run_pipeline(pipeline, points)
+
+def calculate_nrd(points: np.ndarray) -&gt; np.ndarray:
+    &quot;&quot;&quot;
+    Calculate Normalized Return Density values.
+
+    NRD = points in current bin / points in and below bin
+    &quot;&quot;&quot;
+    bins = np.histogram(points, bins=np.arange(0, max_height, 2.0))
+    cumulative = np.cumsum(bins)
+    return bins / cumulative
+
+def calculate_pad(nrd: np.ndarray) -&gt; np.ndarray:
+    &quot;&quot;&quot;
+    Convert NRD to Plant Area Density using Beer-Lambert law.
+
+    PAD = -ln(1-NRD) / dz
+    where dz is the vertical bin size (2.0m)
+    &quot;&quot;&quot;
+    return -np.log(1 - nrd) / 2.0
+</code></pre>
+<h2>3. Memory Management</h2>
+<h3>3.1 Tiling System Architecture</h3>
+<div class="mermaid">
+classDiagram
+    class MemoryManager {
+        +checkAvailableMemory()
+        +allocateTiles()
+        +releaseTiles()
+        +monitorUsage()
+        -maxMemoryPerTile: 200MB
+        -currentUsage: float
+        -tileRegistry: Map
+    }
+
+    class SuperTile {
+        +size: 10km × 10km
+        +memory: ~200MB
+        +subdivide()
+        +process()
+        +overlap: 5 cells
+        -data: float[]
+        -children: StandardTile[]
+        -coordinates: Tuple
+        -metadata: Dict
+    }
+
+    class StandardTile {
+        +size: 500m × 500m
+        +memory: ~5MB
+        +process()
+        +getBaseGrids()
+        -data: float[]
+        -children: BaseGrid[]
+        -parentTile: SuperTile
+        -position: Tuple
+    }
+
+    class BaseGrid {
+        +size: 5m × 5m
+        +memory: 5B/cell
+        +state: byte
+        +value: float
+        -processCell()
+        -updateState()
+        -neighbors: List
+        -history: Queue
+    }
+
+    class TileProcessor {
+        +processTileHierarchy()
+        +handleOverlap()
+        +optimizeMemory()
+        -currentTile: Tile
+        -processingQueue: Queue
+    }
+
+    MemoryManager "1" --> "*" SuperTile : manages
+    SuperTile "1" --> "*" StandardTile : contains
+    StandardTile "1" --> "*" BaseGrid : contains
+    TileProcessor --> MemoryManager : uses
+    TileProcessor --> SuperTile : processes
+</div>
+
+<h3>3.2 Memory Allocation Strategy</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef memory fill:#3498db;stroke:#2980b9,color:#333333
+    classDef process fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef state fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef data fill:#95a5a6;stroke:#7f8c8d,color:#333333
+
+    subgraph Allocation["Memory Allocation"]
+        Init["Initialize<br/>Memory Manager"]:::process
+        Check["Check Available<br/>Memory"]:::process
+        Alloc["Allocate Tile<br/>Memory"]:::process
+        Monitor["Monitor Usage"]:::process
+    end
+
+    subgraph TileManagement["Tile Management"]
+        Create["Create Tile<br/>Hierarchy"]:::process
+        Load["Load Tile<br/>Data"]:::memory
+        Process["Process Tile"]:::process
+        Release["Release Memory"]:::memory
+    end
+
+    subgraph StateTracking["State Management"]
+        Track["Track Memory<br/>Usage"]:::state
+        Alert["Memory<br/>Alerts"]:::state
+        Adjust["Adjust Batch<br/>Size"]:::process
+    end
+
+    %% Connections
+    Init --> Check
+    Check --> Alloc
+    Alloc --> Monitor
+    Monitor --> Track
+
+    Create --> Load
+    Load --> Process
+    Process --> Release
+    Release --> Create
+
+    Track --> Alert
+    Alert --> Adjust
+    Adjust --> Check
+
+    %% Memory statistics
+    MemStats["Memory Distribution:
+    - Super-Tile: 200MB
+    - Standard Tile: 5MB
+    - Base Grid: 5B/cell
+    - Overhead: ~10%"]:::data
+
+    Monitor -.- MemStats
+</div>
+
+<h3>3.3 Tile Processing Sequence</h3>
+<div class="mermaid">
+sequenceDiagram
+    participant MM as Memory Manager
+    participant ST as Super Tile
+    participant Std as Standard Tile
+    participant BG as Base Grid
+
+    Note over MM,BG: Tile Processing Pipeline
+
+    MM->>ST: Initialize Super-Tile
+    activate ST
+
+    ST->>ST: Allocate Memory (200MB)
+    ST->>Std: Create Standard Tiles
+
+    loop For each Standard Tile
+        Std->>Std: Allocate Memory (5MB)
+        Std->>BG: Initialize Base Grids
+
+        loop For each Base Grid
+            BG->>BG: Process Cell Data
+            BG->>BG: Update State
+        end
+
+        BG->>Std: Return Processed Data
+        Std->>Std: Aggregate Results
+    end
+
+    Std->>ST: Return Tile Data
+    ST->>ST: Process Overlap
+    ST->>MM: Release Memory
+    deactivate ST
+</div>
+
+<h3>3.4 Memory Optimization Techniques</h3>
+<div class="mermaid">
+flowchart TD
+    Root["Memory Optimization"] --> TileM["Tile Management"]
+    Root --> DataS["Data Structures"]
+    Root --> ProcS["Processing Strategy"]
+    Root --> ResM["Resource Monitoring"]
+
+    %% Tile Management details
+    TileM --> DynA["Dynamic Allocation"]
+    TileM --> MemP["Memory Pooling"]
+
+    DynA --> OnDemand["On-demand loading"]
+    DynA --> BatchP["Batch processing"]
+
+    MemP --> Reuse["Reuse buffers"]
+    MemP --> MinAlloc["Minimize allocation"]
+
+    %% Data Structures details
+    DataS --> Compact["Compact Storage"]
+    DataS --> Efficient["Efficient Access"]
+
+    Compact --> ByteArrays["Byte arrays"]
+    Compact --> BitFields["Bit fields"]
+
+    Efficient --> CacheAlign["Cache alignment"]
+    Efficient --> SeqReads["Sequential reads"]
+
+    %% Processing Strategy details
+    ProcS --> Parallel["Parallel Processing"]
+    ProcS --> IOMgmt["I/O Management"]
+
+    Parallel --> ThreadPools["Thread pools"]
+    Parallel --> WorkDist["Work distribution"]
+
+    IOMgmt --> BufferedW["Buffered writes"]
+    IOMgmt --> AsyncLoad["Async loading"]
+
+    %% Resource Monitoring details
+    ResM --> UsageT["Usage Tracking"]
+    ResM --> AdaptiveC["Adaptive Control"]
+
+    UsageT --> MemProfile["Memory profiling"]
+    UsageT --> PeakDetect["Peak detection"]
+
+    AdaptiveC --> DynamicB["Dynamic batching"]
+    AdaptiveC --> LoadBal["Load balancing"]
+
+    %% Style classes for better visibility
+    classDef main fill:#3498db;stroke:#2980b9,color:#333333,rx:10,font-weight:bold
+    classDef group fill:#2ecc71;stroke:#27ae60,color:#333333,rx:5,font-weight:bold
+    classDef subgroup fill:#f39c12;stroke:#e67e22,color:#333333
+    classDef item fill:#ecf0f1;stroke:#bdc3c7,color:#333333
+
+    %% Apply styles
+    class Root main
+    class TileM,DataS,ProcS,ResM group
+    class DynA,MemP,Compact,Efficient,Parallel,IOMgmt,UsageT,AdaptiveC subgroup
+    class OnDemand,BatchP,Reuse,MinAlloc,ByteArrays,BitFields,CacheAlign,SeqReads,ThreadPools,WorkDist,BufferedW,AsyncLoad,MemProfile,PeakDetect,DynamicB,LoadBal item
+</div>
+
+<h3>3.5 Implementation Details</h3>
+<pre><code class="language-python">class MemoryManager:
+    def __init__(self, max_memory: float = 1024):
+        &quot;&quot;&quot;
+        Initialize Memory Manager.
+
+        Args:
+            max_memory: Maximum allowed memory usage in MB
+        &quot;&quot;&quot;
+        self.max_memory = max_memory
+        self.current_usage = 0
+        self.tile_registry = {}
+
+    def allocate_tile(self, size: Tuple[int, int], level: str) -&gt; bool:
+        &quot;&quot;&quot;
+        Allocate memory for a new tile.
+
+        Args:
+            size: Tile dimensions (width, height)
+            level: Tile level (super/standard/base)
+
+        Returns:
+            bool: Success status
+        &quot;&quot;&quot;
+        required = self._calculate_memory(size, level)
+        if self.current_usage + required &lt;= self.max_memory:
+            self.current_usage += required
+            return True
+        return False
+
+    def process_tile_hierarchy(self, data: np.ndarray) -&gt; List[Tile]:
+        &quot;&quot;&quot;
+        Process complete tile hierarchy.
+
+        Args:
+            data: Input data array
+
+        Returns:
+            List[Tile]: Processed tiles
+        &quot;&quot;&quot;
+        super_tiles = self._create_super_tiles(data)
+        for tile in super_tiles:
+            self._process_tile_tree(tile)
+        return super_tiles
+
+    def _process_tile_tree(self, tile: SuperTile):
+        &quot;&quot;&quot;
+        Recursively process tile and its children.
+
+        Args:
+            tile: Current tile to process
+        &quot;&quot;&quot;
+        with self._memory_scope(tile):
+            tile.process()
+            for child in tile.children:
+                self._process_tile_tree(child)
+</code></pre>
+<h3>3.6 Performance Metrics</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Target</th>
+<th>Actual</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory per Super-Tile</td>
+<td>200MB</td>
+<td>195-205MB</td>
+<td>Varies with data density</td>
+</tr>
+<tr>
+<td>Standard Tile Memory</td>
+<td>5MB</td>
+<td>4.8-5.2MB</td>
+<td>Includes overhead</td>
+</tr>
+<tr>
+<td>Base Grid Cell</td>
+<td>5B</td>
+<td>5B</td>
+<td>Fixed size</td>
+</tr>
+<tr>
+<td>Processing Time</td>
+<td>&lt;1s/tile</td>
+<td>0.8s/tile</td>
+<td>Average on test data</td>
+</tr>
+<tr>
+<td>Memory Efficiency</td>
+<td>&gt;90%</td>
+<td>92%</td>
+<td>Used vs. allocated</td>
+</tr>
+<tr>
+<td>Overlap Overhead</td>
+<td>&lt;5%</td>
+<td>4.2%</td>
+<td>Additional memory for borders</td>
+</tr>
+</tbody>
+</table>
+<h2>4. Fire Model Components</h2>
+<h3>4.1 Grid Structure</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef grid fill:#3498db;stroke:#2980b9,color:#333333
+    classDef data fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef process fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef note fill:#95a5a6;stroke:#7f8c8d,color:#333333
+
+    subgraph GridSystem["3D Grid System"]
+        direction TB
+        Main["Main Grid<br/><small>80 vertical layers × 5m resolution</small>"]:::grid
+        Layers["Layer Management<br/><small>2m vertical intervals</small>"]:::grid
+        Cells["Cell Structure<br/><small>5m × 5m horizontal</small>"]:::grid
+    end
+
+    subgraph DataStructure["Data Organization"]
+        PAD["PAD Values<br/><small>Vegetation density</small>"]:::data
+        State["Cell States<br/><small>Fire conditions</small>"]:::data
+        Params["Physical Parameters<br/><small>Fire behavior</small>"]:::data
+    end
+
+    subgraph Processing["Grid Processing"]
+        Update["State Updates<br/><small>Per timestep</small>"]:::process
+        Spread["Fire Spread<br/><small>Between cells</small>"]:::process
+        Interact["Layer Interaction<br/><small>Vertical coupling</small>"]:::process
+    end
+
+    %% Connections
+    Main --> Layers
+    Layers --> Cells
+    PAD --> Main
+    State --> Cells
+    Params --> Update
+    Cells --> Update
+    Update --> Spread
+    Spread --> Interact
+
+    %% Notes
+    note1["Grid Properties:
+    - 80 vertical layers
+    - 5m horizontal resolution
+    - 2m vertical intervals
+    - Overlap handling"]:::note
+
+    note2["Cell States:
+    - Unburned
+    - Burning
+    - Burned
+    - Temperature
+    - Fuel content"]:::note
+
+    Main -.- note1
+    State -.- note2
+</div>
+
+<h3>4.2 Fire Model Components</h3>
+<div class="mermaid">
+flowchart TD
+    %% Define styles for better visibility
+    classDef process fill:#2ecc71;stroke:#27ae60,color:#333333,rx:8
+    classDef state fill:#3498db;stroke:#2980b9,color:#333333,rx:5
+    classDef function fill:#9b59b6;stroke:#8e44ad,color:#333333,rx:10
+    classDef note fill:#f8f9fa;stroke:#dee2e6,color:black,rx:5
+    classDef data fill:#f39c12;stroke:#e67e22,color:#333333
+    classDef parameter fill:#e74c3c;stroke:#c0392b,color:#333333
+
+    %% Main fire model components
+    subgraph ForestModel["ForestModel Class Structure"]
+        direction TB
+        INIT["__init__()
+        • grid_size: x,y dimensions
+        • num_layers: z dimension (80)
+        • layer_height_meters: 2.0m"]:::function
+
+        DATAINIT["Data Structures:
+        • state[x,y,z]: Current cell state
+        • fuel_load[x,y,z]: Available fuel
+        • temperature[x,y,z]: Cell temperature
+        • wind_direction[x,y]: Direction vector
+        • wind_speed[x,y]: Magnitude in m/s
+        • terrain[x,y]: Elevation model
+        • embers[]: List of active embers"]:::data
+
+        CELLSTATE["Cell States (Enum):
+        • UNBURNED = 0
+        • BURNING = 1
+        • BURNED = 2"]:::state
+
+        INIT --> DATAINIT
+        DATAINIT --> CELLSTATE
+    end
+
+    %% Fire spread mechanics
+    subgraph FireSpread["Fire Spread Mechanics"]
+        direction TB
+        HORIZONTAL["update_horizontal_spread()
+        • 8-directional neighborhood check
+        • Wind-weighted spread probability
+        • Slope effect calculation
+        • Fuel threshold validation"]:::function
+
+        VERTICAL["update_vertical_spread()
+        • Upward/downward propagation
+        • Convection modeling
+        • PAD-based connectivity
+        • Probabilistic transitions"]:::function
+
+        EMBER["update_ember_transport()
+        • Stochastic ember generation
+        • Wind-driven trajectory
+        • Landing position calculation
+        • Ignition probability modeling"]:::function
+
+        SPREAD_FORMULA["Spread Probability Formula:
+        P = base_prob * wind_factor * slope_factor * fuel_factor
+        where:
+        • base_prob = 0.4
+        • wind_factor = 1 + 0.5 * wind_dot_direction
+        • slope_factor = 1 + 0.3 * slope
+        • fuel_factor = min(fuel / 0.3, 1.0)"]:::note
+
+        HORIZONTAL --> VERTICAL --> EMBER
+        SPREAD_FORMULA -.-> HORIZONTAL
+    end
+
+    %% Simulation control
+    subgraph SimControl["Simulation Control"]
+        direction TB
+        IGNITE["set_ignition(x, y, z)
+        • Initialize burning cells
+        • Set temperature peaks
+        • Create ignition records"]:::function
+
+        RUN["run_simulation(max_steps=100)
+        • Main simulation loop
+        • Timestep management
+        • State progression control
+        • Data recording"]:::function
+
+        RECORD["record_state()
+        • Capture current grid state
+        • Track burning progression
+        • Calculate statistics
+        • Store timestep data"]:::function
+
+        IGNITE --> RUN --> RECORD
+    end
+
+    %% Environmental factors
+    subgraph Environment["Environmental Factors"]
+        direction TB
+        WIND["Wind Effects:
+        • Direction: Trade wind vectors
+        • Speed: 0-15 m/s range
+        • Turbulence: Random fluctuations
+        • Channeling: Terrain interaction"]:::data
+
+        TERRAIN["Terrain Effects:
+        • Slope: Calculated from DEM
+        • Aspect: Direction of slope
+        • Elevation: From terrain model
+        • Barrancos: Canyon amplification"]:::data
+
+        FUEL["Fuel Properties:
+        • Load: From PAD calculation
+        • Moisture: 0.0-0.5 range
+        • Density: From NRD values
+        • Type: Derived from height"]:::data
+
+        WIND --- TERRAIN --- FUEL
+    end
+
+    %% Technical implementation
+    subgraph Implementation["Technical Implementation"]
+        direction TB
+        NEIGHBOR["Neighbor Processing:
+        • Vectorized operations
+        • NumPy boolean masks
+        • Efficient index calculations
+        • Boundary handling"]:::process
+
+        SIGMOID["Mathematical Models:
+        • Sigmoid functions for thresholds
+        • Probability distributions
+        • Vector field operations
+        • Decay functions"]:::process
+
+        PARALLEL["Performance Optimization:
+        • Parallel region processing
+        • Numba JIT compilation
+        • Memory access patterns
+        • Vectorized array operations"]:::process
+
+        NEIGHBOR --> SIGMOID --> PARALLEL
+
+        CODEBOX["Python code for horizontal spread:
+        def update_horizontal_spread(self):
+            # Get currently burning cells
+            burning_mask = self.state == CellState.BURNING.value
+            burning_coords = np.where(burning_mask)
+
+            # For each burning cell
+            for x, y, z in zip(*burning_coords):
+                # Check 8 neighbor directions
+                for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), 
+                              (0,1), (1,-1), (1,0), (1,1)]:
+                    nx, ny = x + dx, y + dy
+
+                    # Skip if out of bounds
+                    if not (0 <= nx < self.grid_size and 
+                            0 <= ny < self.grid_size):
+                        continue
+
+                    # Calculate spread probability
+                    p = self._calc_spread_prob(x, y, z, nx, ny, z)
+
+                    # Attempt ignition
+                    if (self.state[nx, ny, z] == CellState.UNBURNED.value and
+                        self.fuel_load[nx, ny, z] > 0 and
+                        np.random.random() < p):
+                        self.state[nx, ny, z] = CellState.BURNING.value"]:::note
+
+        CODEBOX -.-> NEIGHBOR
+    end
+
+    %% Parameter tuning
+    subgraph Parameters["Parameter Tuning"]
+        direction TB
+        TUNING["Key Parameters:
+        • base_spread_probability: 0.4
+        • wind_factor_max: 2.5
+        • slope_factor_max: 2.0
+        • temperature_threshold: 300°C
+        • ember_probability: 0.02
+        • ember_distance_max: 500m"]:::parameter
+
+        VALIDATION["Validation Metrics:
+        • Spread rate comparison
+        • Historical fire matching
+        • Sensitivity analysis
+        • Monte Carlo iterations"]:::process
+
+        TUNING --> VALIDATION
+    end
+
+    %% Connect components
+    ForestModel --> FireSpread
+    ForestModel --> SimControl
+    FireSpread --> Environment
+    SimControl --> Implementation
+    Implementation --> Parameters
+
+    %% Add explanatory notes
+    NOTE1["3D Cell Structure:
+    The model uses a 3D grid with each cell (x,y,z)
+    representing a 5m x 5m x 2m volume of space
+    containing vegetation attributes derived from
+    PAD values. This provides the physical structure
+    for fire spread simulation."]:::note
+
+    NOTE2["Ember Transport:
+    Embers can travel over long distances based on
+    wind conditions and terrain features, creating
+    spot fires away from the main fire front. This
+    is critical for realistic fire behavior modeling
+    in complex landscapes."]:::note
+
+    NOTE3["Performance:
+    The model processes approximately 1M cells/second
+    on standard hardware, with optimizations for sparse
+    matrix operations and focused processing around
+    active fire fronts."]:::note
+
+    NOTE1 -.-> ForestModel
+    NOTE2 -.-> FireSpread
+    NOTE3 -.-> Implementation
+</div>
+
+<h3>4.3 State Management</h3>
+<div class="mermaid">
+classDiagram
+    class CellState {
+        +temperature: float
+        +fuel_content: float
+        +burning_status: enum
+        +ignition_time: float
+        +burn_duration: float
+        -calculate_state()
+        -update_temperature()
+        -consume_fuel()
+    }
+
+    class StateManager {
+        +update_states()
+        +propagate_effects()
+        +validate_states()
+        -current_timestep: float
+        -state_history: Queue
+    }
+
+    class PhysicsEngine {
+        +process_timestep()
+        +calculate_spread()
+        +update_grid()
+        -spread_parameters: Dict
+        -current_conditions: Dict
+    }
+
+    class GridCell {
+        +position: Tuple
+        +neighbors: List
+        +pad_value: float
+        -process_interactions()
+        -update_state()
+    }
+
+    StateManager "1" --> "*" CellState : manages
+    PhysicsEngine --> StateManager : uses
+    GridCell --> CellState : has
+    StateManager --> GridCell : updates
+</div>
+
+<h3>4.4 Technical Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Grid</td>
+<td>Vertical Layers</td>
+<td>80</td>
+<td>Number of 2m layers</td>
+</tr>
+<tr>
+<td></td>
+<td>Horizontal Resolution</td>
+<td>5m</td>
+<td>Cell size</td>
+</tr>
+<tr>
+<td></td>
+<td>Vertical Resolution</td>
+<td>2m</td>
+<td>Layer interval</td>
+</tr>
+<tr>
+<td>Physics</td>
+<td>Time Step</td>
+<td>0.1s</td>
+<td>Simulation interval</td>
+</tr>
+<tr>
+<td></td>
+<td>Temperature Range</td>
+<td>0-1200°C</td>
+<td>Valid temperature range</td>
+</tr>
+<tr>
+<td></td>
+<td>Spread Rate</td>
+<td>0.1-5 m/s</td>
+<td>Fire spread velocity</td>
+</tr>
+<tr>
+<td>State</td>
+<td>Cell States</td>
+<td>4</td>
+<td>Unburned, Igniting, Burning, Burned</td>
+</tr>
+<tr>
+<td></td>
+<td>State Variables</td>
+<td>5</td>
+<td>Temperature, Fuel, Moisture, Wind, Slope</td>
+</tr>
+<tr>
+<td></td>
+<td>History Length</td>
+<td>100 steps</td>
+<td>State tracking depth</td>
+</tr>
+</tbody>
+</table>
+<h2>5. Integration Pipeline</h2>
+<h3>5.1 Data Flow Overview</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef input fill:#3498db;stroke:#2980b9,color:#333333,rx:10
+    classDef process fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef output fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef system fill:#95a5a6;stroke:#7f8c8d,color:#333333
+
+    subgraph DataInput["Data Input"]
+        LiDAR[("LiDAR Data")]:::input
+        PAD[("PAD Values")]:::input
+        Config[("Configuration")]:::input
+    end
+
+    subgraph Processing["Data Processing"]
+        MemMgmt["Memory Management"]:::process
+        GridSetup["Grid Setup"]:::process
+        StateInit["State Initialization"]:::process
+    end
+
+    subgraph Simulation["Simulation System"]
+        Physics["Physics Engine"]:::system
+        States["State Manager"]:::system
+        Output["Output Generator"]:::system
+    end
+
+    subgraph Results["Results"]
+        Visual["Visualization"]:::output
+        Export["Data Export"]:::output
+        Analysis["Analysis Tools"]:::output
+    end
+
+    %% Connections
+    LiDAR --> MemMgmt
+    PAD --> GridSetup
+    Config --> StateInit
+
+    MemMgmt --> GridSetup
+    GridSetup --> StateInit
+    StateInit --> Physics
+
+    Physics --> States
+    States --> Output
+    Output --> Visual
+    Output --> Export
+    Output --> Analysis
+</div>
+
+<h3>5.2 Integration Strategy</h3>
+<div class="mermaid">
+sequenceDiagram
+    participant Data as Data Sources
+    participant Mem as Memory System
+    participant Grid as Grid System
+    participant Sim as Simulation
+    participant Out as Output
+
+    Note over Data,Out: Integration Pipeline
+
+    Data->>Mem: Load Input Data
+    activate Mem
+    Mem->>Mem: Optimize Memory
+    Mem->>Grid: Initialize Grid
+    deactivate Mem
+
+    activate Grid
+    Grid->>Grid: Setup Structure
+    Grid->>Grid: Configure Cells
+    Grid->>Sim: Ready for Simulation
+    deactivate Grid
+
+    activate Sim
+    loop Simulation Steps
+        Sim->>Sim: Process Physics
+        Sim->>Sim: Update States
+        Sim->>Out: Generate Output
+    end
+    deactivate Sim
+
+    activate Out
+    Out->>Out: Format Results
+    Out->>Out: Export Data
+    deactivate Out
+</div>
+
+<h3>5.3 System Integration Components</h3>
+<div class="mermaid">
+classDiagram
+    class DataIntegrator {
+        +load_data()
+        +validate_inputs()
+        +prepare_simulation()
+        -input_sources: Dict
+        -validation_rules: List
+    }
+
+    class SimulationManager {
+        +initialize_simulation()
+        +run_timestep()
+        +manage_output()
+        -current_state: Dict
+        -output_config: Dict
+    }
+
+    class OutputHandler {
+        +format_results()
+        +export_data()
+        +generate_visualizations()
+        -export_formats: List
+        -visualization_config: Dict
+    }
+
+    class SystemMonitor {
+        +track_performance()
+        +log_events()
+        +handle_errors()
+        -performance_metrics: Dict
+        -error_handlers: Dict
+    }
+
+    DataIntegrator --> SimulationManager
+    SimulationManager --> OutputHandler
+    SystemMonitor --> DataIntegrator
+    SystemMonitor --> SimulationManager
+    SystemMonitor --> OutputHandler
+</div>
+
+<h2>6. Output and Visualization</h2>
+<h3>6.1 Real-time Display</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef vis fill:#3498db;stroke:#2980b9,color:#333333
+    classDef data fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef ui fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef control fill:#95a5a6;stroke:#7f8c8d,color:#333333
+
+    subgraph Visualization["Visualization System"]
+        Render["3D Renderer"]:::vis
+        Update["State Updater"]:::vis
+        Display["Display Manager"]:::vis
+    end
+
+    subgraph DataFlow["Data Pipeline"]
+        State["Current State"]:::data
+        History["State History"]:::data
+        Config["View Config"]:::data
+    end
+
+    subgraph Interface["User Interface"]
+        Controls["User Controls"]:::ui
+        Views["View Options"]:::ui
+        Info["Information Panel"]:::ui
+    end
+
+    subgraph Control["Control System"]
+        Time["Time Controller"]:::control
+        Camera["Camera Manager"]:::control
+        Settings["Display Settings"]:::control
+    end
+
+    %% Connections
+    State --> Update
+    History --> Render
+    Config --> Display
+
+    Controls --> Time
+    Views --> Camera
+    Info --> Settings
+
+    Time --> Update
+    Camera --> Render
+    Settings --> Display
+</div>
+
+<h3>6.2 Data Export</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef export fill:#3498db;stroke:#2980b9,color:#333333
+    classDef format fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef output fill:#e74c3c;stroke:#c0392b,color:#333333
+
+    subgraph DataExport["Export System"]
+        Raw["Raw Data"]:::export
+        Processed["Processed Results"]:::export
+        Analysis["Analysis Results"]:::export
+    end
+
+    subgraph Formats["Output Formats"]
+        GeoTIFF["GeoTIFF Files"]:::format
+        CSV["CSV Data"]:::format
+        JSON["JSON Results"]:::format
+    end
+
+    subgraph Products["Output Products"]
+        Maps["Fire Maps"]:::output
+        Stats["Statistics"]:::output
+        Viz["Visualizations"]:::output
+    end
+
+    %% Connections
+    Raw --> GeoTIFF
+    Raw --> CSV
+    Processed --> JSON
+    Processed --> Stats
+
+    GeoTIFF --> Maps
+    CSV --> Stats
+    JSON --> Viz
+</div>
+
+<h3>6.3 Analysis Tools</h3>
+<div class="mermaid">
+graph TB
+    %% Style definitions
+    classDef tool fill:#3498db;stroke:#2980b9,color:#333333
+    classDef data fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef output fill:#e74c3c;stroke:#c0392b,color:#333333
+
+    subgraph Analysis["Analysis Tools"]
+        Stats["Statistical Analysis"]:::tool
+        Spatial["Spatial Analysis"]:::tool
+        Temporal["Temporal Analysis"]:::tool
+    end
+
+    subgraph Data["Input Data"]
+        SimResults["Simulation Results"]:::data
+        FireBehavior["Fire Behavior"]:::data
+        Environmental["Environmental Data"]:::data
+    end
+
+    subgraph Output["Analysis Products"]
+        Reports["Analysis Reports"]:::output
+        Plots["Statistical Plots"]:::output
+        Maps["Thematic Maps"]:::output
+    end
+
+    %% Connections
+    SimResults --> Stats
+    FireBehavior --> Spatial
+    Environmental --> Temporal
+
+    Stats --> Reports
+    Spatial --> Maps
+    Temporal --> Plots
+</div>
+
+<h3>6.4 Output Specifications</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Format</th>
+<th>Content</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Visualization</td>
+<td>3D Scene</td>
+<td>Real-time fire progression</td>
+<td>Interactive viewing</td>
+</tr>
+<tr>
+<td></td>
+<td>2D Maps</td>
+<td>Fire spread patterns</td>
+<td>Spatial analysis</td>
+</tr>
+<tr>
+<td></td>
+<td>Time Series</td>
+<td>Temporal evolution</td>
+<td>Behavior analysis</td>
+</tr>
+<tr>
+<td>Export</td>
+<td>GeoTIFF</td>
+<td>Spatial data layers</td>
+<td>GIS integration</td>
+</tr>
+<tr>
+<td></td>
+<td>CSV</td>
+<td>Tabular data</td>
+<td>Statistical analysis</td>
+</tr>
+<tr>
+<td></td>
+<td>JSON</td>
+<td>Structured results</td>
+<td>API integration</td>
+</tr>
+<tr>
+<td>Analysis</td>
+<td>Reports</td>
+<td>Comprehensive analysis</td>
+<td>Documentation</td>
+</tr>
+<tr>
+<td></td>
+<td>Plots</td>
+<td>Statistical visualization</td>
+<td>Pattern identification</td>
+</tr>
+<tr>
+<td></td>
+<td>Maps</td>
+<td>Spatial representation</td>
+<td>Geographic analysis</td>
+</tr>
+</tbody>
+</table>
+<pre><code>
+## 7. Supercomputer Configuration
+
+### 7.1 Memory Architecture
+
+&lt;div class=&quot;mermaid&quot;&gt;
+graph TB
+    %% Style definitions
+    classDef node fill:#3498db;stroke:#2980b9,color:#333333
+    classDef memory fill:#2ecc71;stroke:#27ae60,color:#333333
+    classDef process fill:#e74c3c;stroke:#c0392b,color:#333333
+    classDef config fill:#95a5a6;stroke:#7f8c8d,color:#333333
+
+    subgraph NodeConfig[&quot;Node Configuration&quot;]
+        MainMem[&quot;Primary Memory&lt;br/&gt;64GB&quot;]:::memory
+        BufferMem[&quot;Buffer Memory&lt;br/&gt;16GB&quot;]:::memory
+        ProcessMem[&quot;Processing Memory&lt;br/&gt;16GB&quot;]:::memory
+    end
+
+    subgraph TileConfig[&quot;Super-Tile Configuration&quot;]
+        TileSize[&quot;20km × 20km&lt;br/&gt;4GB per tile&quot;]:::config
+        LayerGroup[&quot;40 Layers per group&lt;br/&gt;2m intervals&quot;]:::config
+        Resolution[&quot;5m resolution&lt;br/&gt;4000×4000 cells&quot;]:::config
+    end
+
+    subgraph Processing[&quot;Parallel Processing&quot;]
+        Parallel[&quot;8-16 Parallel Tiles&quot;]:::process
+        MemPool[&quot;Memory Pool&lt;br/&gt;48-96GB total&quot;]:::process
+        LoadBal[&quot;Load Balancer&quot;]:::process
+    end
+
+    %% Connections
+    TileSize --&gt; MemPool
+    LayerGroup --&gt; ProcessMem
+    Resolution --&gt; TileSize
+    MainMem --&gt; Parallel
+    BufferMem --&gt; LoadBal
+&lt;/div&gt;
+
+### 7.2 Processing Strategy
+
+&lt;div class=&quot;mermaid&quot;&gt;
+sequenceDiagram
+    participant Node as Compute Node
+    participant Mem as Memory Manager
+    participant Tiles as Tile Processor
+    participant Out as Output Handler
+
+    Note over Node,Out: Supercomputer Processing Pipeline
+
+    Node-&gt;&gt;Mem: Initialize Memory Pool (64GB)
+    activate Mem
+
+    loop For each 20km × 20km region
+        Mem-&gt;&gt;Tiles: Allocate 4GB per tile
+        activate Tiles
+
+        par Process Multiple Tiles
+            Tiles-&gt;&gt;Tiles: Process Tile 1
+            Tiles-&gt;&gt;Tiles: Process Tile 2
+            Tiles-&gt;&gt;Tiles: Process Tile 3
+            Tiles-&gt;&gt;Tiles: Process Tile 4
+            Note right of Tiles: 8 tiles in parallel
+        end
+
+        Tiles-&gt;&gt;Out: Store Results
+        deactivate Tiles
+    end
+
+    Mem-&gt;&gt;Mem: Release Memory
+    deactivate Mem
+&lt;/div&gt;
+
+### 7.3 Memory Distribution
+
+&lt;div class=&quot;mermaid&quot;&gt;
+pie
+    title &quot;Memory Allocation per Node (96GB Total)&quot;
+    &quot;Primary Processing (64GB)&quot; : 66.7
+    &quot;Buffer Memory (16GB)&quot; : 16.7
+    &quot;System Reserve (16GB)&quot; : 16.6
+&lt;/div&gt;
+
+### 7.4 Technical Specifications
+
+| Component | Standard Setup | Supercomputer Setup | Improvement Factor |
+|-----------|---------------|---------------------|-------------------|
+| Super-tile Size | 10km × 10km | 20km × 20km | 4x larger area |
+| Memory per Tile | 200MB | 4GB | 20x more memory |
+| Layer Group Size | 10 layers | 40 layers | 4x more layers |
+| Parallel Processing | 2-4 tiles | 8-16 tiles | 4x parallelization |
+| Total Memory | 1-2GB | 48-96GB | 48x memory capacity |
+| Processing Speed | Baseline | 4-8x faster | 4-8x speedup |
+
+### 7.5 Implementation Details
+
+```python
+class SupercomputerConfig:
+    &quot;&quot;&quot;
+    Configuration for supercomputer-scale processing.
+    &quot;&quot;&quot;
+    def __init__(self):
+        # Memory Configuration
+        self.max_memory_per_node = 64 * 1024  # 64GB in MB
+        self.max_super_tile_memory = 4 * 1024  # 4GB in MB
+        self.buffer_memory = 16 * 1024        # 16GB in MB
+
+        # Processing Configuration
+        self.layer_group_size = 40            # Layers per group
+        self.parallel_tiles = 8               # Simultaneous tiles
+        self.super_tile_size_km = 20         # Tile size in km
+        self.resolution_meters = 5            # Grid resolution
+
+        # Performance Parameters
+        self.cells_per_tile = 4000 * 4000    # Grid cells per tile
+        self.bytes_per_cell = 5              # Memory per cell
+        self.processing_threads = 16          # Processing threads
+</code></pre>
+<h3>7.6 Memory Calculation</h3>
+<pre><code class="language-python">def calculate_supercomputer_requirements(
+    area_width_km: float,
+    area_height_km: float,
+    resolution_m: float = 5.0,
+    num_layers: int = 80
+) -&gt; Dict[str, float]:
+    &quot;&quot;&quot;
+    Calculate supercomputer resource requirements for a given area.
+
+    Args:
+        area_width_km: Width of total area in kilometers
+        area_height_km: Height of total area in kilometers
+        resolution_m: Grid resolution in meters
+        num_layers: Total number of vertical layers
+
+    Returns:
+        Dict containing memory and processing requirements
+    &quot;&quot;&quot;
+    # Calculate dimensions
+    width_cells = int(area_width_km * 1000 / resolution_m)
+    height_cells = int(area_height_km * 1000 / resolution_m)
+    total_cells = width_cells * height_cells * num_layers
+
+    # Memory requirements
+    bytes_per_cell = 5  # 1 byte state + 4 bytes float
+    total_memory_gb = (total_cells * bytes_per_cell) / (1024**3)
+
+    # Super-tile calculations
+    tile_size_km = 20
+    tiles_x = math.ceil(area_width_km / tile_size_km)
+    tiles_y = math.ceil(area_height_km / tile_size_km)
+    total_tiles = tiles_x * tiles_y
+
+    # Processing requirements
+    parallel_tiles = 8
+    processing_batches = math.ceil(total_tiles / parallel_tiles)
+
+    return {
+        'total_memory_gb': total_memory_gb,
+        'num_tiles': total_tiles,
+        'processing_batches': processing_batches,
+        'memory_per_node_gb': 96,
+        'recommended_nodes': math.ceil(total_memory_gb / 96)
+    }
+</code></pre>
+<h3>7.7 Performance Metrics</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory Bandwidth</td>
+<td>64GB/s</td>
+<td>Per node memory throughput</td>
+</tr>
+<tr>
+<td>I/O Speed</td>
+<td>2GB/s</td>
+<td>Parallel file system throughput</td>
+</tr>
+<tr>
+<td>Network Speed</td>
+<td>100Gb/s</td>
+<td>Inter-node communication</td>
+</tr>
+<tr>
+<td>Processing Time</td>
+<td>0.8s/tile</td>
+<td>Average processing per tile</td>
+</tr>
+<tr>
+<td>Memory Efficiency</td>
+<td>92%</td>
+<td>Used vs. allocated ratio</td>
+</tr>
+<tr>
+<td>Parallel Efficiency</td>
+<td>85%</td>
+<td>Scaling efficiency</td>
+</tr>
+</tbody>
+</table>
+<h3>7.8 Optimization Guidelines</h3>
+<ol>
+<li><strong>Memory Management</strong>:</li>
+<li>Pre-allocate memory pools for tile processing</li>
+<li>Implement memory-mapped file I/O for large datasets</li>
+<li>
+<p>Use streaming processing for continuous data flow</p>
+</li>
+<li>
+<p><strong>Parallel Processing</strong>:</p>
+</li>
+<li>Distribute tiles across available nodes</li>
+<li>Balance load based on data density</li>
+<li>
+<p>Optimize inter-node communication</p>
+</li>
+<li>
+<p><strong>I/O Optimization</strong>:</p>
+</li>
+<li>Use parallel file system for data access</li>
+<li>Implement asynchronous I/O operations</li>
+<li>
+<p>Buffer frequently accessed data</p>
+</li>
+<li>
+<p><strong>Resource Monitoring</strong>:</p>
+</li>
+<li>Track memory usage per node</li>
+<li>Monitor processing throughput</li>
+<li>Adjust resource allocation dynamically</li>
+</ol>
+        <div class="footer">
+            <p>Generated from Forest Fire Workflow Diagrams</p>
+            <p><small>Diagrams rendered with <a href="https://mermaid.js.org/" target="_blank">Mermaid JS</a></small></p>
+        </div>
+    </body>
+    </html>
+    
