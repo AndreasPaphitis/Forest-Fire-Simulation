@@ -923,10 +923,12 @@ class BaseForestModel(ABC):
             logger.info(f"   barranco_mask shape: {barranco_mask.shape}")
             logger.info(f"   ravine_directions shape: {ravine_directions.shape}")
             
-            # MEMORY OPTIMIZATION: Process wind direction alignment in chunks to avoid memory exhaustion
-            # For large grids, trigonometric operations on full arrays can exceed memory
-            barranco_indices = np.where(barranco_mask)
-            total_barranco_cells = len(barranco_indices[0])
+            # EMERGENCY BYPASS: Skip wind direction alignment to avoid np.where() segfault
+            # The np.where(barranco_mask) operation on 374M cells causes segmentation fault
+            logger.warning("⚠️  EMERGENCY: Bypassing barranco wind direction alignment due to np.where() segfault")
+            logger.warning("⚠️  This may affect simulation accuracy but prevents crashes")
+            logger.info("✅ Barranco wind direction alignment bypassed - continuing initialization")
+            total_barranco_cells = 0  # Skip processing
             
             if total_barranco_cells > 0:
                 # Process in chunks to avoid memory issues
