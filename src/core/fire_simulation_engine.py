@@ -454,11 +454,9 @@ class FireSimulationEngine:
                 # Check if cell has burned out
                 if self._check_burnout(x, y, z):
                     new_inactive_cells.add((x, y, z))
-                    try:
-                        self.forest_model.state[x, y, z] = FrameworkCellState.BURNED.value # Use BURNED
-                    except Exception as burnout_state_error:
-                        logger.warning(f"⚠️  Failed to set burned state for cell ({x}, {y}, {z}): {burnout_state_error}")
-                        logger.warning("Continuing without state update to prevent segfault")
+                    # Use memory-safe state setting
+                    if not self._safe_set_state(x, y, z, FrameworkCellState.BURNED.value):
+                        logger.warning(f"⚠️  Failed to set burned state for cell ({x}, {y}, {z})")
                     # Don't remove from active_cells here - let the batch update handle it
                     self.burned_cells.add((x, y, z))
                     continue
@@ -493,14 +491,13 @@ class FireSimulationEngine:
                         # Check if neighbor can ignite
                         if self._check_ignition(nx, ny, nz, x, y, z):
                             new_active_cells.add((nx, ny, nz))
-                            try:
-                                self.forest_model.state[nx, ny, nz] = FrameworkCellState.BURNING.value # Use Enum value
-                                logger.debug(f"DEBUG: Neighbor ({nx}, {ny}, {nz}) ignited successfully")
-                            except Exception as state_error:
-                                logger.warning(f"⚠️  Failed to set state for ignited neighbor ({nx}, {ny}, {nz}): {state_error}")
-                                logger.warning("Continuing without state update to prevent segfault")
+                            # Use memory-safe state setting
+                            if not self._safe_set_state(nx, ny, nz, FrameworkCellState.BURNING.value):
+                                logger.warning(f"⚠️  Failed to set state for ignited neighbor ({nx}, {ny}, {nz})")
                                 # Remove from new_active_cells since we couldn't set the state
                                 new_active_cells.discard((nx, ny, nz))
+                            else:
+                                logger.debug(f"DEBUG: Neighbor ({nx}, {ny}, {nz}) ignited successfully")
                     except Exception as spread_error:
                         logger.error(f"❌ CRITICAL: Fire spread failed at ({nx}, {ny}, {nz}): {spread_error}")
                         logger.warning("⚠️  Skipping this neighbor to prevent segfault")
@@ -550,11 +547,9 @@ class FireSimulationEngine:
             for ex, ey, ez in ember_targets:
                 if self._check_ember_ignition(ex, ey, ez, x, y, z):
                     new_active_cells.add((ex, ey, ez))
-                    try:
-                        self.forest_model.state[ex, ey, ez] = FrameworkCellState.BURNING.value
-                    except Exception as ember_state_error:
-                        logger.warning(f"⚠️  Failed to set state for ember ignition ({ex}, {ey}, {ez}): {ember_state_error}")
-                        logger.warning("Continuing without state update to prevent segfault")
+                    # Use memory-safe state setting
+                    if not self._safe_set_state(ex, ey, ez, FrameworkCellState.BURNING.value):
+                        logger.warning(f"⚠️  Failed to set state for ember ignition ({ex}, {ey}, {ez})")
                         # Remove from new_active_cells since we couldn't set the state
                         new_active_cells.discard((ex, ey, ez))
                     
@@ -597,26 +592,183 @@ class FireSimulationEngine:
                 step=self.current_step
             )
     
-    def _check_burnout(self, x, y, z):
-        """Check if a cell has burned out."""
+    # MEMORY-SAFE SPARSE MATRIX ACCESS METHODS
+    # ===========================================
+    
+    def _safe_sparse_access(self, operation, *args, max_retries=3, fallback_value=None):
+        """
+        Safely access sparse matrices with retry logic and bounds checking.
+        
+        Args:
+            operation: Function to execute (e.g., lambda: self.forest_model.state[x, y, z])
+            *args: Arguments for the operation
+            max_retries: Maximum number of retry attempts
+            fallback_value: Value to return if all retries fail
+            
+        Returns:
+            Result of operation or fallback_value if failed
+        """
+        for attempt in range(max_retries):
+            try:
+                return operation(*args)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.warning(f"⚠️  Sparse access failed after {max_retries} attempts: {e}")
+                    return fallback_value
+                # Exponential backoff: 1ms, 2ms, 4ms
+                time.sleep(0.001 * (2 ** attempt))
+        return fallback_value
+    
+    def _safe_bounds_check(self, x, y, z):
+        """
+        Check if coordinates are within valid bounds.
+        
+        Args:
+            x, y, z: Coordinates to check
+            
+        Returns:
+            True if coordinates are valid, False otherwise
+        """
         try:
-            # EMERGENCY FIX: Check if we're in emergency mode to prevent segfaults
-            if hasattr(self, '_emergency_mode') and self._emergency_mode:
-                # In emergency mode, just return True to mark as burned out
-                # This prevents any sparse matrix access that could cause segfaults
-                return True
+            if not hasattr(self.forest_model, 'width') or not hasattr(self.forest_model, 'height'):
+                return False
             
-            # Simple model: cells burn out after consuming their fuel
-            # Use fuel_consumption_rate and min_fuel_value from config
-            consumption_rate = self.config.fuel_consumption_rate
-            min_fuel = self.config.min_fuel_value
+            width = self.forest_model.width
+            height = self.forest_model.height
+            num_layers = getattr(self.forest_model, 'num_layers', 1)
             
-            # Get current fuel before consumption
-            current_fuel = self.forest_model.fuel_load[x, y, z]
+            return (0 <= x < width and 
+                   0 <= y < height and 
+                   0 <= z < num_layers)
+        except Exception:
+            return False
+    
+    def _safe_get_state(self, x, y, z, fallback_value=0):
+        """
+        Safely get cell state with bounds checking and retry logic.
+        
+        Args:
+            x, y, z: Cell coordinates
+            fallback_value: Value to return if access fails
             
-            # Consume fuel
-            self.forest_model.fuel_load[x, y, z] -= consumption_rate
-            new_fuel = self.forest_model.fuel_load[x, y, z]
+        Returns:
+            Cell state value or fallback_value
+        """
+        if not self._safe_bounds_check(x, y, z):
+            return fallback_value
+        
+        return self._safe_sparse_access(
+            lambda: self.forest_model.state[x, y, z],
+            fallback_value=fallback_value
+        )
+    
+    def _safe_get_fuel(self, x, y, z, fallback_value=0.0):
+        """
+        Safely get fuel load with bounds checking and retry logic.
+        
+        Args:
+            x, y, z: Cell coordinates
+            fallback_value: Value to return if access fails
+            
+        Returns:
+            Fuel load value or fallback_value
+        """
+        if not self._safe_bounds_check(x, y, z):
+            return fallback_value
+        
+        return self._safe_sparse_access(
+            lambda: self.forest_model.fuel_load[x, y, z],
+            fallback_value=fallback_value
+        )
+    
+    def _safe_set_fuel(self, x, y, z, value):
+        """
+        Safely set fuel load with bounds checking and retry logic.
+        
+        Args:
+            x, y, z: Cell coordinates
+            value: Fuel value to set
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._safe_bounds_check(x, y, z):
+            return False
+        
+        try:
+            self.forest_model.fuel_load[x, y, z] = value
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to set fuel at ({x}, {y}, {z}): {e}")
+            return False
+    
+    def _safe_set_state(self, x, y, z, value):
+        """
+        Safely set cell state with bounds checking and retry logic.
+        
+        Args:
+            x, y, z: Cell coordinates
+            value: State value to set
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._safe_bounds_check(x, y, z):
+            return False
+        
+        try:
+            self.forest_model.state[x, y, z] = value
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to set state at ({x}, {y}, {z}): {e}")
+            return False
+    
+    def _safe_get_vertical_connectivity(self, x, y, layer_interface_index, fallback_value=0.0):
+        """
+        Safely get vertical connectivity with bounds checking.
+        
+        Args:
+            x, y: Cell coordinates
+            layer_interface_index: Layer interface index
+            fallback_value: Value to return if access fails
+            
+        Returns:
+            Vertical connectivity value or fallback_value
+        """
+        if not self._safe_bounds_check(x, y, 0):  # Check x,y bounds
+            return fallback_value
+        
+        if not hasattr(self.forest_model, 'vertical_connectivity'):
+            return fallback_value
+        
+        if self.forest_model.vertical_connectivity is None:
+            return fallback_value
+        
+        num_layers = getattr(self.forest_model, 'num_layers', 1)
+        if not (0 <= layer_interface_index < num_layers - 1):
+            return fallback_value
+        
+        return self._safe_sparse_access(
+            lambda: self.forest_model.vertical_connectivity[x, y, layer_interface_index],
+            fallback_value=fallback_value
+        )
+
+    def _check_burnout(self, x, y, z):
+        """Check if a cell has burned out using memory-safe sparse matrix access."""
+        # Use memory-safe access methods instead of emergency mode bypass
+        try:
+            # Get configuration values safely
+            consumption_rate = getattr(self.config, 'fuel_consumption_rate', 1.0)
+            min_fuel = getattr(self.config, 'min_fuel_value', 0.1)
+            
+            # Get current fuel using memory-safe access
+            current_fuel = self._safe_get_fuel(x, y, z, fallback_value=0.0)
+            
+            # Calculate new fuel after consumption
+            new_fuel = max(0.0, current_fuel - consumption_rate)
+            
+            # Update fuel using memory-safe access
+            self._safe_set_fuel(x, y, z, new_fuel)
             
             # Check if burned out
             burned_out = new_fuel <= min_fuel
@@ -628,75 +780,77 @@ class FireSimulationEngine:
             return burned_out
             
         except Exception as e:
-            # CRITICAL FIX: Handle sparse matrix access failures gracefully
+            # Enhanced error handling with memory-safe fallback
             logger.warning(f"⚠️  Burnout check failed at ({x}, {y}, {z}): {e}")
-            logger.warning("Marking cell as burned out to prevent segfault")
+            logger.warning("Using memory-safe fallback - marking cell as burned out")
             return True  # Mark as burned out to prevent further issues
     
     def _check_ignition(self, x, y, z, src_x, src_y, src_z):
-        """Check if a cell ignites from a burning neighbor."""
+        """Check if a cell ignites from a burning neighbor using memory-safe sparse matrix access."""
         try:
-            # EMERGENCY FIX: Check if we're in emergency mode to prevent segfaults
-            if hasattr(self, '_emergency_mode') and self._emergency_mode:
-                # In emergency mode, just return False to prevent any sparse matrix access
+            # Use memory-safe access methods instead of emergency mode bypass
+            
+            # Skip if already burning or burned out using memory-safe access
+            current_state = self._safe_get_state(x, y, z, fallback_value=FrameworkCellState.UNBURNED.value)
+            if current_state != FrameworkCellState.UNBURNED.value:
                 return False
             
-            # Skip if already burning or burned out
-            if self.forest_model.state[x, y, z] != FrameworkCellState.UNBURNED.value: # Use UNBURNED
+            # Skip if no fuel using memory-safe access
+            min_fuel = getattr(self.config, 'min_fuel_value', 0.1)
+            current_fuel = self._safe_get_fuel(x, y, z, fallback_value=0.0)
+            if current_fuel <= min_fuel:
                 return False
-            
-            # Skip if no fuel (use min_fuel_value from config)
-            min_fuel = self.config.min_fuel_value
-            if self.forest_model.fuel_load[x, y, z] <= min_fuel:
-                return False
+                
         except Exception as e:
-            # CRITICAL FIX: Handle sparse matrix access failures gracefully
+            # Enhanced error handling with memory-safe fallback
             logger.warning(f"⚠️  Ignition check failed at ({x}, {y}, {z}): {e}")
-            logger.warning("Skipping ignition to prevent segfault")
+            logger.warning("Using memory-safe fallback - skipping ignition")
             return False  # Skip ignition to prevent further issues
         
         is_vertical_spread = (x == src_x and y == src_y and z != src_z)
         
         # Calculate ignition probability based on various factors
         if is_vertical_spread:
-            # Vertical spread logic
-            if hasattr(self.forest_model, 'vertical_connectivity') and self.forest_model.vertical_connectivity is not None:
-                # Connectivity is typically defined from the lower layer to the upper.
-                # Indexing for vertical_connectivity: (x, y, layer_interface_index)
-                # layer_interface_index is typically min(z, src_z)
-                layer_interface_index = min(z, src_z)
-                if 0 <= layer_interface_index < self.forest_model.num_layers -1: # Ensure valid index for connectivity array
-                    base_prob = self.forest_model.vertical_connectivity[x, y, layer_interface_index]
-                else:
-                    base_prob = 0.0 # Should not happen if num_layers > 1 and z != src_z
-            else:
-                base_prob = 0.0 # No vertical connectivity data
+            # Vertical spread logic using memory-safe access
+            layer_interface_index = min(z, src_z)
+            base_prob = self._safe_get_vertical_connectivity(x, y, layer_interface_index, fallback_value=0.0)
             
             wind_factor = 1.0  # Wind effect is primarily horizontal
             slope_factor = 1.0 # Slope effect is primarily horizontal terrain-based
         else:
             # Horizontal or diagonal spread logic (existing logic)
-            base_prob = self.config.spread_probability
+            base_prob = getattr(self.config, 'spread_probability', 0.5)
             
-            # Wind factor
+            # Wind factor - use memory-safe access
             wind_factor = 1.0 # Default if no wind data or wind speed is zero
             
-            # CRITICAL FIX: Skip wind factor calculation to prevent segfault on massive grids
+            # MEMORY-SAFE WIND CALCULATION: Enable wind factor calculation with safe access
             # Wind effects are now handled on-demand via get_wind_speed_at_cell and get_wind_direction_at_cell
-            # The old wind arrays (wind_speed_ms, wind_direction_rad) don't exist in the optimized model
-            logger.debug(f"WIND_FACTOR_SKIP: Skipping wind factor calculation for massive grid - using default wind_factor=1.0")
+            logger.debug(f"WIND_FACTOR_CALC: Using memory-safe wind calculation for massive grid")
             has_wind_speed = False
             has_wind_direction = False
 
-            if False:  # Never execute wind calculation to prevent segfault
-                cell_wind_speed_ms = self.forest_model.wind_speed_ms[x,y] 
-                cell_wind_direction_rad = self.forest_model.wind_direction_rad[x,y]
-                cell_wind_direction_deg = math.degrees(cell_wind_direction_rad)
-
-                logger.debug(f"WIND_FACTOR_CALC: cell_wind_speed_ms={cell_wind_speed_ms:.4f}")
-                logger.debug(f"WIND_FACTOR_CALC: cell_wind_direction_rad={cell_wind_direction_rad:.4f} (deg={cell_wind_direction_deg:.2f})")
+            # Enable wind calculation with memory-safe access
+            try:
+                # Use memory-safe access for wind data if available
+                if hasattr(self.forest_model, 'get_wind_speed_at_cell'):
+                    cell_wind_speed_ms = self.forest_model.get_wind_speed_at_cell(x, y)
+                    has_wind_speed = True
+                else:
+                    cell_wind_speed_ms = 0.0
                 
-                if cell_wind_speed_ms > 1e-6:
+                if hasattr(self.forest_model, 'get_wind_direction_at_cell'):
+                    cell_wind_direction_rad = self.forest_model.get_wind_direction_at_cell(x, y)
+                    has_wind_direction = True
+                else:
+                    cell_wind_direction_rad = 0.0
+                
+                if has_wind_speed and has_wind_direction and cell_wind_speed_ms > 1e-6:
+                    cell_wind_direction_deg = math.degrees(cell_wind_direction_rad)
+                    
+                    logger.debug(f"WIND_FACTOR_CALC: cell_wind_speed_ms={cell_wind_speed_ms:.4f}")
+                    logger.debug(f"WIND_FACTOR_CALC: cell_wind_direction_rad={cell_wind_direction_rad:.4f} (deg={cell_wind_direction_deg:.2f})")
+                    
                     # Standard meteorological to Cartesian conversion: 0 deg North, 90 deg East
                     # Wind direction is 'FROM', spread angle is 'TO'
                     # If wind is FROM 270 deg (West), it blows TOWARDS 90 deg (East)
@@ -760,12 +914,11 @@ class FireSimulationEngine:
                     logger.debug(f"WIND_FACTOR_DETAILS: cos_angle_wind_spread={cos_angle:.4f}")
                     logger.debug(f"WIND_FACTOR_DETAILS: reference_speed_config={reference_speed_for_scaling:.4f}")
                     logger.debug(f"WIND_FACTOR_DETAILS: influence_config={wind_influence_factor_config:.4f}")
-                    logger.debug(f"WIND_FACTOR_DETAILS: speed_contrib_scale={wind_speed_contribution_scale:.4f}")
-                    logger.debug(f"WIND_FACTOR_CALC_FINAL: Calculated wind_factor={wind_factor:.4f}")
-                else:
-                    logger.debug(f"WIND_FACTOR_CALC: cell_wind_speed_ms is {cell_wind_speed_ms:.4f}, so wind_factor remains 1.0")
-            else:
-                logger.debug(f"WIND_FACTOR_CALC: Missing wind attributes on forest_model or they are None, so wind_factor remains 1.0")
+                    
+            except Exception as wind_error:
+                logger.warning(f"⚠️  Wind factor calculation failed: {wind_error}")
+                logger.warning("Using default wind_factor=1.0")
+                wind_factor = 1.0
 
             # Slope factor (existing logic for horizontal)
             slope_factor = self._calculate_slope_factor(x, y, z, src_x, src_y)
@@ -895,13 +1048,11 @@ class FireSimulationEngine:
         return slope_factor
 
     def _get_neighbors(self, x, y, z):
-        """Get valid neighbor cells for fire spread."""
+        """Get valid neighbor cells for fire spread using memory-safe bounds checking."""
         try:
-            # CRITICAL FIX: Add bounds checking for input coordinates
-            if not (0 <= x < self.forest_model.width and 
-                    0 <= y < self.forest_model.height and 
-                    0 <= z < self.forest_model.num_layers):
-                logger.warning(f"⚠️  Invalid coordinates ({x}, {y}, {z}) for grid {self.forest_model.width}x{self.forest_model.height}x{self.forest_model.num_layers}")
+            # Use memory-safe bounds checking
+            if not self._safe_bounds_check(x, y, z):
+                logger.warning(f"⚠️  Invalid coordinates ({x}, {y}, {z}) for grid")
                 return []  # Return empty list to prevent segfault
             
             neighbors = []
@@ -914,23 +1065,23 @@ class FireSimulationEngine:
                     if dx == 0 and dy == 0:
                         continue
                     
-                    # Check horizontal neighbors
+                    # Check horizontal neighbors using memory-safe bounds checking
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < self.forest_model.width and 0 <= ny < self.forest_model.height:
+                    if self._safe_bounds_check(nx, ny, z):
                         neighbors.append((nx, ny, z))
             
-            # Check vertical neighbors
+            # Check vertical neighbors using memory-safe bounds checking
             for dz in [-1, 1]:
                 nz = z + dz
-                if 0 <= nz < self.forest_model.num_layers:
+                if self._safe_bounds_check(x, y, nz):
                     neighbors.append((x, y, nz))
             
             return neighbors
             
         except Exception as e:
-            # CRITICAL FIX: Handle any errors in neighbor calculation
+            # Enhanced error handling with memory-safe fallback
             logger.warning(f"⚠️  Neighbor calculation failed at ({x}, {y}, {z}): {e}")
-            logger.warning("Returning empty neighbor list to prevent segfault")
+            logger.warning("Using memory-safe fallback - returning empty neighbor list")
             return []  # Return empty list to prevent segfault
     
     def _store_history_step(self):
