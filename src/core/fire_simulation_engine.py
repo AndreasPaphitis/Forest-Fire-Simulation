@@ -306,12 +306,11 @@ class FireSimulationEngine:
         
         # Monitor memory usage if in debug mode
         self.debug = getattr(self.config, 'debug', False) # Safer attribute access
-        if self.debug: # SHARED_IMPORTS_SUCCESS flag removed
-            # Ensure monitor_memory_usage can be called if needed or handle its potential absence
-            try:
-                monitor_memory_usage()
-            except NameError: # If monitor_memory_usage itself was not imported due to some issue (should not happen with direct imports)
-                logger.warning("monitor_memory_usage utility not available.")
+        
+        # CRITICAL FIX: Skip debug memory monitoring to avoid potential segfaults
+        # Memory monitoring might trigger operations that cause segfaults on massive grids
+        if self.debug:
+            logger.debug("Debug mode active - skipping memory monitoring to prevent segfaults")
         
         # CRITICAL FIX: Add initialization completion marker
         # This helps identify if segfault occurs during __init__ or after
