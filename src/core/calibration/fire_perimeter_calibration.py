@@ -962,11 +962,16 @@ class TenerifeFirePerimeterCalibrator:
                 print(f"🎯 Best objective value: None (no valid results)")
             
             # Validate on test data
-            validation_results = self._validate_on_test_data(
-                best_parameters=results.get_best_parameters(),
-                test_data=test_data,
-                calibration_config=calibration_config
-            )
+            best_parameters = results.get_best_parameters()
+            if best_parameters is None:
+                print("⚠️  No valid parameters found - skipping validation")
+                validation_results = {'status': 'skipped', 'reason': 'no_valid_parameters'}
+            else:
+                validation_results = self._validate_on_test_data(
+                    best_parameters=best_parameters,
+                    test_data=test_data,
+                    calibration_config=calibration_config
+                )
             
             # Save results
             self._save_calibration_results(results, validation_results, runtime)
@@ -984,8 +989,8 @@ class TenerifeFirePerimeterCalibrator:
                 'calibration_results': results,
                 'validation_results': validation_results,
                 'runtime_hours': runtime,
-                'best_parameters': results.get_best_parameters(),
-                'best_objective_value': results.get_best_objective_value() or 0.0 or 0.0
+                'best_parameters': results.get_best_parameters() or {},
+                'best_objective_value': results.get_best_objective_value() or 0.0
             }
             
         except Exception as e:
@@ -1156,6 +1161,11 @@ class TenerifeFirePerimeterCalibrator:
         print(f"\n🧪 VALIDATING ON TEST DATA")
         print(f"=" * 40)
         
+        # Safety check for None parameters
+        if best_parameters is None:
+            print("⚠️  No best parameters provided - skipping validation")
+            return {'status': 'skipped', 'reason': 'no_best_parameters'}
+        
         validation_results = {}
         
         for i, test_fp in enumerate(test_data, 1):
@@ -1212,7 +1222,7 @@ class TenerifeFirePerimeterCalibrator:
                 'successful_evaluations': results.successful_evaluations,
                 'best_objective_value': results.get_best_objective_value() or 0.0
             },
-            'best_parameters': results.get_best_parameters(),
+            'best_parameters': results.get_best_parameters() or {},
             'validation_summary': {
                 'test_cases': len(validation_results),
                 'status': 'completed'
