@@ -59,6 +59,10 @@ try:
         TenerifeFirePerimeterCalibrator
     )
     from src.utils.logging_utils import get_logger
+    from src.utils.production_memory_manager import (
+        setup_production_memory_protection,
+        ProductionMemoryThresholds
+    )
 except ImportError as e:
     print(f"❌ Error importing modules: {e}")
     print("Make sure you're running this from the project root directory")
@@ -68,7 +72,7 @@ logger = get_logger(__name__)
 
 
 def validate_system_resources(memory_gb: int, workers: int) -> bool:
-    """Validate that system has sufficient resources."""
+    """Validate that system has sufficient resources for 9.3B cell simulation."""
     try:
         import psutil
         
@@ -76,10 +80,17 @@ def validate_system_resources(memory_gb: int, workers: int) -> bool:
         total_memory_gb = psutil.virtual_memory().total / (1024**3)
         available_memory_gb = psutil.virtual_memory().available / (1024**3)
         
-        print(f"🔍 SYSTEM RESOURCE CHECK:")
+        print(f"🔍 SYSTEM RESOURCE CHECK FOR 9.3B CELL SIMULATION:")
         print(f"   Total memory: {total_memory_gb:.1f} GB")
         print(f"   Available memory: {available_memory_gb:.1f} GB")
         print(f"   Required memory: {memory_gb} GB")
+        
+        # Enhanced memory requirements for full Tenerife
+        minimum_memory_gb = 512  # Minimum for 9.3B cells
+        recommended_memory_gb = 1024  # Recommended for comfortable operation
+        
+        print(f"   Minimum for 9.3B cells: {minimum_memory_gb} GB")
+        print(f"   Recommended: {recommended_memory_gb} GB")
         
         # Check CPU cores
         cpu_count = psutil.cpu_count(logical=False)
@@ -89,31 +100,38 @@ def validate_system_resources(memory_gb: int, workers: int) -> bool:
         print(f"   Logical CPU cores: {logical_cores}")
         print(f"   Requested workers: {workers}")
         
-        # Validate memory
-        if total_memory_gb < memory_gb * 0.9:
-            print(f"❌ Insufficient memory: {total_memory_gb:.1f} GB < {memory_gb} GB required")
+        # Enhanced validation for massive scale
+        if total_memory_gb < minimum_memory_gb:
+            print(f"❌ CRITICAL: Insufficient memory for 9.3B cell simulation")
+            print(f"   Required: {minimum_memory_gb}+ GB, Available: {total_memory_gb:.1f} GB")
+            print(f"   This will cause OOM kills. Use emergency config instead:")
+            print(f"   python scripts/run_tenerife_calibration.py --emergency-small-scale")
             return False
         
-        if available_memory_gb < memory_gb * 0.5:
-            print(f"⚠️  WARNING: Low available memory: {available_memory_gb:.1f} GB")
+        if total_memory_gb < recommended_memory_gb:
+            print(f"⚠️  WARNING: Memory below recommended level")
+            print(f"   Available: {total_memory_gb:.1f} GB < Recommended: {recommended_memory_gb} GB")
+            print(f"   Consider reducing worker count or using more memory")
+        
+        if available_memory_gb < total_memory_gb * 0.7:
+            print(f"⚠️  WARNING: High memory usage before starting")
+            print(f"   Available: {available_memory_gb:.1f} GB ({available_memory_gb/total_memory_gb*100:.1f}%)")
             print(f"   Consider closing other applications")
         
-        # Validate CPU
-        if workers > logical_cores:
-            print(f"⚠️  WARNING: Workers ({workers}) > logical cores ({logical_cores})")
-            print(f"   This may cause performance degradation")
+        # Validate CPU for massive scale
+        recommended_workers = min(cpu_count, int(total_memory_gb / 60))  # 60GB per worker
+        if workers > recommended_workers:
+            print(f"⚠️  WARNING: Too many workers for available memory")
+            print(f"   Requested: {workers}, Recommended: {recommended_workers}")
+            print(f"   Each worker needs ~60GB for 9.3B cell operations")
         
-        if workers > cpu_count * 1.5:
-            print(f"❌ Excessive workers: {workers} workers for {cpu_count} physical cores")
-            print(f"   Recommended maximum: {int(cpu_count * 1.5)}")
-            return False
-        
-        print(f"✅ System resources validated")
+        print(f"✅ System resources validated for massive scale simulation")
         return True
         
     except ImportError:
         print(f"⚠️  Cannot validate system resources (psutil not available)")
         print(f"   Proceeding with user-specified configuration")
+        print(f"   WARNING: This is risky for 9.3B cell simulation without monitoring")
         return True
 
 
@@ -288,9 +306,9 @@ Examples:
     parser.add_argument(
         '--memory',
         type=int,
-        default=64,
-        choices=[64, 128],
-        help='Available memory in GB (default: 64)'
+        default=512,
+        choices=[64, 128, 256, 512, 1024],
+        help='Available memory in GB (default: 512 for full Tenerife scale)'
     )
     
     parser.add_argument(
@@ -357,11 +375,25 @@ Examples:
         help='Enable verbose output'
     )
     
+    parser.add_argument(
+        '--emergency-small-scale',
+        action='store_true',
+        help='Use emergency small-scale configuration (1000x1000 grid) for testing'
+    )
+    
+    parser.add_argument(
+        '--enable-memory-protection',
+        action='store_true',
+        default=True,
+        help='Enable production memory protection (default: enabled)'
+    )
+    
     args = parser.parse_args()
     
-    # Set default workers based on memory (restored to optimal levels with sparse initialization)
+    # Set default workers based on memory for massive scale (conservative for 9.3B cells)
     if args.workers is None:
-        args.workers = 60 if args.memory == 64 else 120  # Restored to optimal levels
+        worker_map = {64: 8, 128: 16, 256: 24, 512: 32, 1024: 48}
+        args.workers = worker_map.get(args.memory, 32)
     
     # Set default experiment name
     if args.experiment_name is None:
@@ -389,10 +421,56 @@ Examples:
     print(f"Parameters: {len(args.parameters)} parameters")
     
     try:
+        # Step 0: Handle emergency small-scale mode
+        if args.emergency_small_scale:
+            print(f"🚨 EMERGENCY SMALL-SCALE MODE ACTIVATED")
+            print(f"   Using 1000x1000 grid instead of full Tenerife")
+            print(f"   This is for testing and validation only")
+            # Override memory settings for small scale
+            args.memory = 16
+            args.workers = min(args.workers, 8)
+        
+        # Step 0.5: Setup production memory protection
+        memory_manager = None
+        if args.enable_memory_protection and not args.emergency_small_scale:
+            print(f"🛡️  SETTING UP PRODUCTION MEMORY PROTECTION")
+            print(f"=" * 60)
+            
+            # Production thresholds for massive scale
+            thresholds = ProductionMemoryThresholds(
+                process_warning_gb=60.0,
+                process_critical_gb=80.0,
+                process_emergency_gb=100.0,
+                system_warning_percent=75.0,
+                system_critical_percent=90.0,
+                system_emergency_percent=95.0
+            )
+            
+            memory_manager = setup_production_memory_protection(
+                thresholds=thresholds,
+                monitor_interval=15.0  # Check every 15 seconds
+            )
+            
+            # Add emergency callback for calibration
+            def calibration_emergency_callback(stats):
+                print(f"🚨 CALIBRATION EMERGENCY: Process memory {stats.process_rss_gb:.1f}GB")
+                print(f"🚨 Consider reducing workers or using emergency cleanup")
+                # Could trigger emergency checkpoint/save here
+            
+            memory_manager.add_callback('emergency', calibration_emergency_callback)
+            
+            print(f"✅ Production memory protection active")
+            print(f"   Process limits: {thresholds.process_warning_gb}/{thresholds.process_critical_gb}/{thresholds.process_emergency_gb} GB")
+            print(f"   System limits: {thresholds.system_warning_percent}/{thresholds.system_critical_percent}/{thresholds.system_emergency_percent}%")
+        
         # Step 1: Validate system resources
         if not validate_system_resources(args.memory, args.workers):
             print(f"❌ System resource validation failed")
-            print(f"   Consider using --memory 128 --workers 120 or reducing worker count")
+            if args.emergency_small_scale:
+                print(f"   Even emergency mode requires basic resources")
+            else:
+                print(f"   Consider using --emergency-small-scale for testing")
+                print(f"   Or increase memory allocation: --memory 512 --workers 16")
             sys.exit(1)
         
         # Step 2: Discover and validate fire perimeters
@@ -410,13 +488,20 @@ Examples:
             test_days=args.test_days
         )
         
-        # Step 4: Create calibrator
-        calibrator = TenerifeFirePerimeterCalibrator(
-            memory_gb=args.memory,
-            workers=args.workers,
-            grid_search_points=args.grid_points,
-            experiment_name=args.experiment_name
-        )
+        # Step 4: Create calibrator with enhanced configuration
+        calibrator_kwargs = {
+            'memory_gb': args.memory,
+            'workers': args.workers,
+            'grid_search_points': args.grid_points,
+            'experiment_name': args.experiment_name
+        }
+        
+        # Add emergency configuration if needed
+        if args.emergency_small_scale:
+            calibrator_kwargs['emergency_mode'] = True
+            calibrator_kwargs['grid_size'] = (1000, 1000)  # Override grid size
+        
+        calibrator = TenerifeFirePerimeterCalibrator(**calibrator_kwargs)
         
         # Step 5: Set up training/test split
         training_data, test_data = calibrator.setup_training_test_split(
@@ -456,14 +541,30 @@ Examples:
                 print(f"❌ Calibration cancelled by user")
                 return
         
-        # Run calibration
+        # Run calibration with memory monitoring
         print(f"\n🔥 STARTING CALIBRATION EXECUTION")
         print(f"⏱️  Estimated completion: {estimates['parallel_time_hours']:.1f} hours")
         print(f"📁 Monitor progress in: {calibrator.results_dir}")
         
+        if memory_manager:
+            print(f"🛡️  Memory protection active - monitoring every 15 seconds")
+            print(f"📊 Initial memory status:")
+            status = memory_manager.check_memory_status()
+            stats = status['stats']
+            print(f"   Process: {stats.process_rss_gb:.1f}GB, System: {stats.system_percent:.1f}%")
+        
         start_time = time.time()
         
-        results = calibrator.run_calibration(calib_config, test_data)
+        try:
+            results = calibrator.run_calibration(calib_config, test_data)
+        except Exception as e:
+            if memory_manager:
+                print(f"\n🚨 CALIBRATION FAILED - CHECKING MEMORY STATE")
+                final_status = memory_manager.check_memory_status()
+                final_stats = final_status['stats']
+                print(f"   Final memory: Process={final_stats.process_rss_gb:.1f}GB, System={final_stats.system_percent:.1f}%")
+                print(f"   Emergency mode: {final_status.get('emergency_mode', False)}")
+            raise
         
         end_time = time.time()
         actual_runtime = (end_time - start_time) / 3600  # hours
@@ -490,12 +591,35 @@ Examples:
         print(f"3. Validate results on independent fire data")
         print(f"4. Consider refining parameter ranges for focused calibration")
         
+        # Final memory report
+        if memory_manager:
+            print(f"\n📊 FINAL MEMORY REPORT:")
+            report = memory_manager.get_memory_report()
+            print(f"   Peak process memory: {report['statistics']['process_memory']['max_gb']:.1f} GB")
+            print(f"   Average process memory: {report['statistics']['process_memory']['avg_gb']:.1f} GB")
+            print(f"   Peak system usage: {report['statistics']['system_memory']['max_percent']:.1f}%")
+            print(f"   Emergency activations: {'Yes' if report['emergency_mode'] else 'No'}")
+            
+            # Stop monitoring
+            memory_manager.stop_monitoring()
+        
     except KeyboardInterrupt:
         print(f"\n⚠️  Calibration interrupted by user")
+        if 'memory_manager' in locals() and memory_manager:
+            print(f"🛡️  Stopping memory monitoring...")
+            memory_manager.stop_monitoring()
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Calibration failed: {e}")
         logger.error(f"Calibration failed: {e}")
+        
+        # Emergency memory cleanup on failure
+        if 'memory_manager' in locals() and memory_manager:
+            print(f"🚨 PERFORMING EMERGENCY MEMORY CLEANUP")
+            emergency_status = memory_manager.check_memory_status()
+            print(f"   Error-time memory: {emergency_status['stats'].process_rss_gb:.1f} GB")
+            memory_manager.stop_monitoring()
+        
         sys.exit(1)
 
 
