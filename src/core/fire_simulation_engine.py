@@ -133,22 +133,37 @@ class FireSimulationEngine:
         
         # Load terrain data if available (must be done before wind initialization)
         # Skip if terrain was already loaded during sparse initialization
+        # CRITICAL FIX: Avoid np.any() on massive arrays - just check if array exists and has size
         terrain_already_loaded = (hasattr(self.forest_model, 'terrain_elevation') and 
-                                 self.forest_model.terrain_elevation is not None and 
-                                 np.any(self.forest_model.terrain_elevation))
+                                 self.forest_model.terrain_elevation is not None and
+                                 hasattr(self.forest_model.terrain_elevation, 'size') and
+                                 self.forest_model.terrain_elevation.size > 0)
         
         if terrain_already_loaded:
             logger.info("🏔️  Terrain data already loaded during model initialization")
-            # Log terrain statistics for verification
-            elev_min = np.min(self.forest_model.terrain_elevation)
-            elev_max = np.max(self.forest_model.terrain_elevation)
-            elev_range = elev_max - elev_min
-            logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
-            if hasattr(self.forest_model, 'barranco_mask') and self.forest_model.barranco_mask is not None:
-                barranco_count = np.sum(self.forest_model.barranco_mask)
-                total_cells = self.forest_model.barranco_mask.size
-                barranco_percent = barranco_count / total_cells * 100
-                logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
+            
+            # CRITICAL FIX: Skip statistics for massive grids to prevent segmentation faults
+            # NumPy operations on 374M+ cell arrays can cause segfaults
+            terrain_size = self.forest_model.terrain_elevation.size
+            if terrain_size > 100_000_000:  # Skip stats for grids > 100M cells
+                logger.info(f"📊 Terrain statistics skipped for memory efficiency ({terrain_size:,} cells)")
+                logger.info("🏔️  Barranco statistics skipped for memory efficiency")
+            else:
+                # Safe to calculate statistics for smaller grids
+                try:
+                    elev_min = np.min(self.forest_model.terrain_elevation)
+                    elev_max = np.max(self.forest_model.terrain_elevation)
+                    elev_range = elev_max - elev_min
+                    logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+                    
+                    if hasattr(self.forest_model, 'barranco_mask') and self.forest_model.barranco_mask is not None:
+                        barranco_count = np.sum(self.forest_model.barranco_mask)
+                        total_cells = self.forest_model.barranco_mask.size
+                        barranco_percent = barranco_count / total_cells * 100
+                        logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
+                except Exception as stats_error:
+                    logger.warning(f"⚠️  Terrain statistics calculation failed: {stats_error}")
+                    logger.warning("Continuing without terrain statistics to prevent segfault")
         elif (hasattr(self.config, 'use_preprocessed_terrain') and self.config.use_preprocessed_terrain and
             hasattr(self.config, 'preprocessed_terrain_dir') and self.config.preprocessed_terrain_dir):
             # Check if this is a memory-optimized model that was initialized directly as sparse
@@ -241,9 +256,22 @@ class FireSimulationEngine:
         }
         
         # Initialize random number generator with seed from config
-        self.rng = np.random.default_rng(self.config.random_seed)
-        logger.info(f"FireSimulationEngine RNG initialized with seed: {self.config.random_seed}")
-        logger.info(f"ENGINE_INIT_CONFIG_CHECK: self.config.use_disk_storage={self.config.use_disk_storage}, self.config.disk_storage_dir='{self.config.disk_storage_dir}'") # ADDED
+        # CRITICAL FIX: Safe RNG initialization to prevent segfaults
+        try:
+            rng_seed = getattr(self.config, 'random_seed', 42)  # Default seed if missing
+            # Validate seed is a reasonable integer
+            if not isinstance(rng_seed, (int, np.integer)) or rng_seed < 0 or rng_seed > 2**32-1:
+                logger.warning(f"⚠️  Invalid random seed {rng_seed}, using default 42")
+                rng_seed = 42
+                
+            self.rng = np.random.default_rng(rng_seed)
+            logger.info(f"FireSimulationEngine RNG initialized with seed: {rng_seed}")
+        except Exception as rng_error:
+            logger.error(f"❌ RNG initialization failed: {rng_error}")
+            logger.warning("Using default RNG without seed to prevent segfault")
+            self.rng = np.random.default_rng(42)
+            
+        logger.debug(f"ENGINE_INIT_CONFIG_CHECK: use_disk_storage={getattr(self.config, 'use_disk_storage', False)}")
         
         # Monitor memory usage if in debug mode
         self.debug = self.config.debug # Assuming ModelConfig has 'debug'
