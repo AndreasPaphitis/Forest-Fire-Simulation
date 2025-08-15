@@ -431,6 +431,7 @@ class GridSearchCalibrator:
                 )
                 
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
+                logger.info("🎯 FireSimulationEngine created successfully - proceeding to ignition setup")
                 
             except MemoryError as me:
                 logger.error(f"Memory error creating model with {total_model_cells:,} cells: {me}")

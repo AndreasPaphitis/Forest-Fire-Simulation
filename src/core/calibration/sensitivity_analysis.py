@@ -256,6 +256,7 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         )
         
         engine = FireSimulationEngine(forest_model=forest_model, config=config)
+        logger.info("🎯 FireSimulationEngine created successfully - proceeding to ignition setup")
         
         # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
         ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)
@@ -891,6 +892,7 @@ class SensitivityAnalyzer:
         )
         
         engine = FireSimulationEngine(forest_model=forest_model, config=config)
+        logger.info("🎯 FireSimulationEngine created successfully - proceeding to ignition setup")
         
         # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
         ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)

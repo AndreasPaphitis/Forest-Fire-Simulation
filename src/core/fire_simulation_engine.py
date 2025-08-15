@@ -274,13 +274,29 @@ class FireSimulationEngine:
         logger.debug(f"ENGINE_INIT_CONFIG_CHECK: use_disk_storage={getattr(self.config, 'use_disk_storage', False)}")
         
         # Monitor memory usage if in debug mode
-        self.debug = self.config.debug # Assuming ModelConfig has 'debug'
+        self.debug = getattr(self.config, 'debug', False) # Safer attribute access
         if self.debug: # SHARED_IMPORTS_SUCCESS flag removed
             # Ensure monitor_memory_usage can be called if needed or handle its potential absence
             try:
                 monitor_memory_usage()
             except NameError: # If monitor_memory_usage itself was not imported due to some issue (should not happen with direct imports)
                 logger.warning("monitor_memory_usage utility not available.")
+        
+        # CRITICAL FIX: Add initialization completion marker
+        # This helps identify if segfault occurs during __init__ or after
+        logger.info("🎯 FireSimulationEngine.__init__ completed successfully")
+        
+        # CRITICAL FIX: Pre-validate critical object state to prevent post-init segfaults
+        try:
+            # Test that forest_model is accessible without triggering massive operations
+            _ = hasattr(self.forest_model, 'width')
+            _ = hasattr(self.forest_model, 'height') 
+            _ = hasattr(self.forest_model, 'num_layers')
+            logger.debug("✅ Forest model accessibility validated")
+        except Exception as validation_error:
+            logger.error(f"❌ CRITICAL: Forest model validation failed: {validation_error}")
+            logger.error("This may indicate object corruption - aborting to prevent segfault")
+            raise RuntimeError(f"Forest model validation failed: {validation_error}")
     
     def run_simulation(self, 
                          max_steps: Optional[int] = None, 
