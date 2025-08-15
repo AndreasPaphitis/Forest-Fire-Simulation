@@ -1170,7 +1170,8 @@ class BaseForestModel(ABC):
                 try:
                     # Store wind amplification data for on-demand application
                     if not hasattr(self, '_terrain_wind_amplification'):
-                        self._terrain_wind_amplification = self.wind_amplification.copy() if hasattr(self, 'wind_amplification') else None
+                        # CRITICAL FIX: Use reference instead of copy to avoid segfault on 374M arrays
+                        self._terrain_wind_amplification = self.wind_amplification if hasattr(self, 'wind_amplification') else None
                         logger.info("✅ Terrain wind amplification configured for on-demand application")
                     else:
                         logger.debug("Terrain wind amplification already configured")
@@ -1208,7 +1209,8 @@ class BaseForestModel(ABC):
                 try:
                     # Store wind direction modification data for on-demand application
                     if not hasattr(self, '_wind_direction_modifications'):
-                        self._wind_direction_modifications = self.wind_direction_modification.copy() if hasattr(self, 'wind_direction_modification') else None
+                        # CRITICAL FIX: Use reference instead of copy to avoid segfault on 374M arrays
+                        self._wind_direction_modifications = self.wind_direction_modification if hasattr(self, 'wind_direction_modification') else None
                         logger.info("✅ Wind direction modifications configured for on-demand application")
                     else:
                         logger.debug("Wind direction modifications already configured")
