@@ -914,9 +914,17 @@ class BaseForestModel(ABC):
             try:
                 for start_row in range(0, height, chunk_rows):
                     end_row = min(start_row + chunk_rows, height)
-                    # Apply amplification directly to barranco cells in row chunks
-                    row_barranco_mask = barranco_mask[start_row:end_row, :]
-                    self.wind_speed[start_row:end_row, :][row_barranco_mask] *= amplification_factor
+                    
+                    # CRITICAL FIX: Avoid boolean mask indexing that still scans arrays
+                    # Process each row individually to avoid any array scanning
+                    for row_idx in range(start_row, end_row):
+                        # Get barranco cells in this single row (much smaller operation)
+                        row_mask = barranco_mask[row_idx, :]
+                        if np.any(row_mask):  # Only process rows with barranco cells
+                            # Find column indices for this row (small 1D operation)
+                            col_indices = np.where(row_mask)[0]
+                            # Apply amplification to specific cells
+                            self.wind_speed[row_idx, col_indices] *= amplification_factor
                     
                     # Log progress occasionally
                     if (start_row % 1000) == 0:
