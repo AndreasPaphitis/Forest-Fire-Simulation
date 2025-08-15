@@ -455,7 +455,21 @@ class FireSimulationEngine:
                 neighbors = self._get_neighbors(x, y, z)
                 logger.debug(f"DEBUG: Processing {len(neighbors)} neighbors for cell ({x}, {y}, {z})")
                 
-                for i, (nx, ny, nz) in enumerate(neighbors):
+                # CRITICAL FIX: Validate neighbor list before iteration
+                if not isinstance(neighbors, list):
+                    logger.error(f"❌ CRITICAL: Neighbors is not a list: {type(neighbors)}")
+                    continue
+                
+                # CRITICAL FIX: Validate each neighbor tuple before processing
+                for i, neighbor in enumerate(neighbors):
+                    try:
+                        if not isinstance(neighbor, tuple) or len(neighbor) != 3:
+                            logger.error(f"❌ CRITICAL: Invalid neighbor {i}: {neighbor}")
+                            continue
+                        nx, ny, nz = neighbor
+                    except Exception as unpack_error:
+                        logger.error(f"❌ CRITICAL: Failed to unpack neighbor {i}: {unpack_error}")
+                        continue
                     # CRITICAL FIX: Add emergency protection around sparse matrix access
                     try:
                         logger.debug(f"DEBUG: Processing neighbor {i+1}/{len(neighbors)}: ({nx}, {ny}, {nz})")
