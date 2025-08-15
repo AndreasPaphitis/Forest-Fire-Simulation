@@ -451,21 +451,32 @@ class FireSimulationEngine:
                 continue
             
             # Spread fire to neighbors
-            neighbors = self._get_neighbors(x, y, z)
-            for nx, ny, nz in neighbors:
-                # CRITICAL FIX: Add emergency protection around sparse matrix access
-                try:
-                    # Check if neighbor can ignite
-                    if self._check_ignition(nx, ny, nz, x, y, z):
-                        new_active_cells.add((nx, ny, nz))
-                        self.forest_model.state[nx, ny, nz] = FrameworkCellState.BURNING.value # Use Enum value
-                except Exception as spread_error:
-                    logger.error(f"❌ CRITICAL: Fire spread failed at ({nx}, {ny}, {nz}): {spread_error}")
-                    logger.warning("⚠️  Skipping this neighbor to prevent segfault")
-                    continue
-                    
-                    # Track spread statistics for visualization
-                    if hasattr(self.forest_model, 'increment_spread_stat'):
+            try:
+                neighbors = self._get_neighbors(x, y, z)
+                logger.debug(f"DEBUG: Processing {len(neighbors)} neighbors for cell ({x}, {y}, {z})")
+                
+                for i, (nx, ny, nz) in enumerate(neighbors):
+                    # CRITICAL FIX: Add emergency protection around sparse matrix access
+                    try:
+                        logger.debug(f"DEBUG: Processing neighbor {i+1}/{len(neighbors)}: ({nx}, {ny}, {nz})")
+                        # Check if neighbor can ignite
+                        if self._check_ignition(nx, ny, nz, x, y, z):
+                            new_active_cells.add((nx, ny, nz))
+                            self.forest_model.state[nx, ny, nz] = FrameworkCellState.BURNING.value # Use Enum value
+                            logger.debug(f"DEBUG: Neighbor ({nx}, {ny}, {nz}) ignited successfully")
+                    except Exception as spread_error:
+                        logger.error(f"❌ CRITICAL: Fire spread failed at ({nx}, {ny}, {nz}): {spread_error}")
+                        logger.warning("⚠️  Skipping this neighbor to prevent segfault")
+                        continue
+                        
+                logger.debug(f"DEBUG: Completed neighbor processing for cell ({x}, {y}, {z})")
+            except Exception as neighbor_error:
+                logger.error(f"❌ CRITICAL: Neighbor processing failed for cell ({x}, {y}, {z}): {neighbor_error}")
+                logger.warning("⚠️  Skipping neighbor processing to prevent segfault")
+                continue
+            
+            # Track spread statistics for visualization (moved outside neighbor loop)
+            if hasattr(self.forest_model, 'increment_spread_stat'):
                         if nz != z:  # Vertical spread
                             self.forest_model.increment_spread_stat('vertical_spread')
                         else:  # Horizontal spread
