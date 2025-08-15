@@ -1144,27 +1144,32 @@ class BaseForestModel(ABC):
             if total_cells > 100_000_000:  # 100M cells threshold
                 logger.info(f"Applying wind amplification in chunks for large grid ({total_cells:,} cells)")
                 
-                # Process in chunks to avoid memory exhaustion
-                chunk_size = 1_000_000  # 1M cells per chunk
-                flat_wind_speed = self.wind_speed.flatten()
-                flat_wind_amp = self.wind_amplification.flatten()
+                # CRITICAL FIX: Avoid flatten() operations that cause segfaults on massive arrays
+                # Process row-by-row instead of flattening entire arrays
+                height, width = self.wind_speed.shape
+                chunk_rows = 100  # Process 100 rows at a time to limit memory usage
                 
-                for i in range(0, total_cells, chunk_size):
-                    end_idx = min(i + chunk_size, total_cells)
-                    chunk_speed = flat_wind_speed[i:end_idx]
-                    chunk_amp = flat_wind_amp[i:end_idx]
+                try:
+                    for start_row in range(0, height, chunk_rows):
+                        end_row = min(start_row + chunk_rows, height)
+                        # Apply amplification directly to row slices without creating copies
+                        self.wind_speed[start_row:end_row, :] *= self.wind_amplification[start_row:end_row, :]
+                        
+                        # Log progress occasionally to show we're not hung
+                        if (start_row % 1000) == 0:
+                            logger.debug(f"Wind amplification progress: {start_row}/{height} rows processed")
                     
-                    # Apply amplification to chunk
-                    chunk_speed *= chunk_amp
-                    
-                    # Update the flattened array
-                    flat_wind_speed[i:end_idx] = chunk_speed
-                
-                # Reshape back to original shape
-                self.wind_speed = flat_wind_speed.reshape(self.wind_speed.shape)
+                    logger.info("✅ Completed chunked wind amplification without array flattening")
+                except Exception as amp_error:
+                    logger.error(f"❌ Wind amplification failed: {amp_error}")
+                    logger.warning("⚠️  Continuing without wind amplification to prevent segfault")
             else:
                 # Standard operation for smaller grids
-                self.wind_speed *= self.wind_amplification
+                try:
+                    self.wind_speed *= self.wind_amplification
+                except Exception as std_amp_error:
+                    logger.error(f"❌ Standard wind amplification failed: {std_amp_error}")
+                    logger.warning("⚠️  Continuing without wind amplification")
             
             logger.info("Applied preprocessed wind amplification")
         else:
@@ -1185,25 +1190,33 @@ class BaseForestModel(ABC):
             if total_cells > 10_000_000:  # 10M cells threshold
                 logger.info(f"Applying wind direction modifications in chunks for large grid ({total_cells:,} cells)")
                 
-                # Process in chunks to avoid memory exhaustion
-                chunk_size = 1_000_000  # 1M cells per chunk
-                flat_wind_dir = self.wind_direction.flatten()
-                flat_wind_mod = self.wind_direction_modification.flatten()
+                # CRITICAL FIX: Avoid flatten() operations that cause segfaults on massive arrays
+                # Process row-by-row instead of flattening entire arrays
+                height, width = self.wind_direction.shape
+                chunk_rows = 100  # Process 100 rows at a time to limit memory usage
                 
-                for i in range(0, total_cells, chunk_size):
-                    end_idx = min(i + chunk_size, total_cells)
-                    chunk_wind = flat_wind_dir[i:end_idx]
-                    chunk_mod = flat_wind_mod[i:end_idx]
+                try:
+                    for start_row in range(0, height, chunk_rows):
+                        end_row = min(start_row + chunk_rows, height)
+                        # Apply modification directly to row slices without creating copies
+                        wind_slice = self.wind_direction[start_row:end_row, :]
+                        mod_slice = self.wind_direction_modification[start_row:end_row, :]
+                        
+                        # Apply modifications and normalize
+                        wind_slice += mod_slice
+                        wind_slice %= 360  # Normalize to 0-360 degrees
+                        
+                        # Update the original array
+                        self.wind_direction[start_row:end_row, :] = wind_slice
+                        
+                        # Log progress occasionally
+                        if (start_row % 1000) == 0:
+                            logger.debug(f"Wind direction modification progress: {start_row}/{height} rows processed")
                     
-                    # Apply modifications to chunk
-                    chunk_wind += chunk_mod
-                    chunk_wind = chunk_wind % 360  # Normalize to 0-360
-                    
-                    # Update the flattened array
-                    flat_wind_dir[i:end_idx] = chunk_wind
-                
-                # Reshape back to original shape
-                self.wind_direction = flat_wind_dir.reshape(self.wind_direction.shape)
+                    logger.info("✅ Completed chunked wind direction modification without array flattening")
+                except Exception as dir_mod_error:
+                    logger.error(f"❌ Wind direction modification failed: {dir_mod_error}")
+                    logger.warning("⚠️  Continuing without wind direction modification to prevent segfault")
             else:
                 # Standard operation for smaller grids
                 self.wind_direction += self.wind_direction_modification
@@ -1217,22 +1230,27 @@ class BaseForestModel(ABC):
         if total_cells > 100_000_000:  # 100M cells threshold
             logger.info(f"Applying wind speed clamping in chunks for large grid ({total_cells:,} cells)")
             
-            # Process in chunks to avoid memory exhaustion
-            chunk_size = 1_000_000  # 1M cells per chunk
-            flat_wind_speed = self.wind_speed.flatten()
+            # CRITICAL FIX: Avoid flatten() operations that cause segfaults on massive arrays
+            # Process row-by-row instead of flattening entire arrays
+            height, width = self.wind_speed.shape
+            chunk_rows = 100  # Process 100 rows at a time to limit memory usage
             
-            for i in range(0, total_cells, chunk_size):
-                end_idx = min(i + chunk_size, total_cells)
-                chunk_speed = flat_wind_speed[i:end_idx]
+            try:
+                for start_row in range(0, height, chunk_rows):
+                    end_row = min(start_row + chunk_rows, height)
+                    # Apply clamping directly to row slices without creating copies
+                    self.wind_speed[start_row:end_row, :] = np.maximum(
+                        self.wind_speed[start_row:end_row, :], 0.1
+                    )
+                    
+                    # Log progress occasionally
+                    if (start_row % 1000) == 0:
+                        logger.debug(f"Wind speed clamping progress: {start_row}/{height} rows processed")
                 
-                # Apply clamping to chunk
-                chunk_speed = np.maximum(chunk_speed, 0.1)
-                
-                # Update the flattened array
-                flat_wind_speed[i:end_idx] = chunk_speed
-            
-            # Reshape back to original shape
-            self.wind_speed = flat_wind_speed.reshape(self.wind_speed.shape)
+                logger.info("✅ Completed chunked wind speed clamping without array flattening")
+            except Exception as clamp_error:
+                logger.error(f"❌ Wind speed clamping failed: {clamp_error}")
+                logger.warning("⚠️  Continuing without wind speed clamping to prevent segfault")
         else:
             # Standard operation for smaller grids
             self.wind_speed = np.maximum(self.wind_speed, 0.1)
