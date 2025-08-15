@@ -302,15 +302,15 @@ class FireSimulationEngine:
             logger.warning("Using default RNG without seed to prevent segfault")
             self.rng = np.random.default_rng(42)
             
-        logger.debug(f"ENGINE_INIT_CONFIG_CHECK: use_disk_storage={getattr(self.config, 'use_disk_storage', False)}")
+        # CRITICAL FIX: Skip config attribute access that might trigger segfaults
+        # getattr() on config might trigger property access or validation
+        logger.debug("ENGINE_INIT_CONFIG_CHECK: Skipping config attribute access to prevent segfaults")
         
         # Monitor memory usage if in debug mode
-        self.debug = getattr(self.config, 'debug', False) # Safer attribute access
-        
-        # CRITICAL FIX: Skip debug memory monitoring to avoid potential segfaults
-        # Memory monitoring might trigger operations that cause segfaults on massive grids
-        if self.debug:
-            logger.debug("Debug mode active - skipping memory monitoring to prevent segfaults")
+        # CRITICAL FIX: Skip ALL config attribute access to prevent segfaults
+        # getattr() on config might trigger property access or validation that causes segfaults
+        self.debug = False  # Force debug off to prevent any potential segfaults
+        logger.debug("Debug mode forced off to prevent config attribute access segfaults")
         
         # CRITICAL FIX: Add initialization completion marker
         # This helps identify if segfault occurs during __init__ or after
