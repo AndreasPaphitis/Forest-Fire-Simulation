@@ -436,21 +436,33 @@ class FireSimulationEngine:
         
         # Process each active cell
         for x, y, z in current_active_cells:
-            # Check if cell has burned out
-            if self._check_burnout(x, y, z):
-                new_inactive_cells.add((x, y, z))
-                self.forest_model.state[x, y, z] = FrameworkCellState.BURNED.value # Use BURNED
-                # Don't remove from active_cells here - let the batch update handle it
-                self.burned_cells.add((x, y, z))
+            # CRITICAL FIX: Add emergency protection around burnout check
+            try:
+                # Check if cell has burned out
+                if self._check_burnout(x, y, z):
+                    new_inactive_cells.add((x, y, z))
+                    self.forest_model.state[x, y, z] = FrameworkCellState.BURNED.value # Use BURNED
+                    # Don't remove from active_cells here - let the batch update handle it
+                    self.burned_cells.add((x, y, z))
+                    continue
+            except Exception as burnout_error:
+                logger.error(f"❌ CRITICAL: Burnout check failed at ({x}, {y}, {z}): {burnout_error}")
+                logger.warning("⚠️  Skipping burnout check to prevent segfault")
                 continue
             
             # Spread fire to neighbors
             neighbors = self._get_neighbors(x, y, z)
             for nx, ny, nz in neighbors:
-                # Check if neighbor can ignite
-                if self._check_ignition(nx, ny, nz, x, y, z):
-                    new_active_cells.add((nx, ny, nz))
-                    self.forest_model.state[nx, ny, nz] = FrameworkCellState.BURNING.value # Use Enum value
+                # CRITICAL FIX: Add emergency protection around sparse matrix access
+                try:
+                    # Check if neighbor can ignite
+                    if self._check_ignition(nx, ny, nz, x, y, z):
+                        new_active_cells.add((nx, ny, nz))
+                        self.forest_model.state[nx, ny, nz] = FrameworkCellState.BURNING.value # Use Enum value
+                except Exception as spread_error:
+                    logger.error(f"❌ CRITICAL: Fire spread failed at ({nx}, {ny}, {nz}): {spread_error}")
+                    logger.warning("⚠️  Skipping this neighbor to prevent segfault")
+                    continue
                     
                     # Track spread statistics for visualization
                     if hasattr(self.forest_model, 'increment_spread_stat'):
