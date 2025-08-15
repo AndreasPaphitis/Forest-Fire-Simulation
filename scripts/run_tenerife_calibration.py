@@ -82,9 +82,9 @@ def validate_system_resources(memory_gb: int, workers: int) -> bool:
         
         logger.info(f"System check: {total_memory_gb:.1f}GB total, {available_memory_gb:.1f}GB available")
         
-        # Enhanced memory requirements for full Tenerife
-        minimum_memory_gb = 512  # Minimum for 9.3B cells
-        recommended_memory_gb = 1024  # Recommended for comfortable operation
+        # Enhanced memory requirements for full Tenerife (corrected estimates)
+        minimum_memory_gb = 64   # Minimum for 9.3B cells (can run 4-8 workers)
+        recommended_memory_gb = 128  # Recommended for good performance (48 workers)
         
         logger.debug(f"Memory requirements: {minimum_memory_gb}GB min, {recommended_memory_gb}GB recommended")
         
@@ -439,13 +439,12 @@ Examples:
             
             # Add emergency callback for calibration
             def calibration_emergency_callback(stats):
-                print(f"🚨 CALIBRATION EMERGENCY: Process memory {stats.process_rss_gb:.1f}GB")
-                print(f"🚨 Consider reducing workers or using emergency cleanup")
+                logger.critical(f"🚨 CALIBRATION EMERGENCY: Process memory {stats.process_rss_gb:.1f}GB")
                 # Could trigger emergency checkpoint/save here
             
             memory_manager.add_callback('emergency', calibration_emergency_callback)
             
-            logger.info("✅ Production memory protection active")
+            logger.debug("✅ Production memory protection active")
         
         # Step 1: Validate system resources
         if not validate_system_resources(args.memory, args.workers):

@@ -133,7 +133,7 @@ class ProductionMemoryManager:
         self.emergency_mode = False
         self.emergency_callbacks_executed = False
         
-        logger.info("🛡️  Production Memory Manager initialized")
+        logger.debug("🛡️  Production Memory Manager initialized")
         
         if enable_monitoring:
             self.start_monitoring()
@@ -215,7 +215,7 @@ class ProductionMemoryManager:
         """Add callback for memory alerts."""
         if alert_type in self.callbacks:
             self.callbacks[alert_type].append(callback)
-            logger.info(f"📞 Added {alert_type} memory callback")
+            logger.debug(f"📞 Added {alert_type} memory callback")
     
     def check_memory_status(self) -> Dict[str, Any]:
         """Check memory status and trigger appropriate responses."""
@@ -605,6 +605,6 @@ def setup_production_memory_protection(
         monitor_interval=monitor_interval
     )
     
-    logger.info("🛡️  Production memory protection activated")
+    logger.debug("🛡️  Production memory protection activated")
     
     return manager
