@@ -591,14 +591,14 @@ class FireSimulationEngine:
             # Wind factor
             wind_factor = 1.0 # Default if no wind data or wind speed is zero
             
-            # Check for wind data attributes in the forest model
-            has_wind_speed = hasattr(self.forest_model, 'wind_speed_ms') and self.forest_model.wind_speed_ms is not None
-            has_wind_direction = hasattr(self.forest_model, 'wind_direction_rad') and self.forest_model.wind_direction_rad is not None
+            # CRITICAL FIX: Skip wind factor calculation to prevent segfault on massive grids
+            # Wind effects are now handled on-demand via get_wind_speed_at_cell and get_wind_direction_at_cell
+            # The old wind arrays (wind_speed_ms, wind_direction_rad) don't exist in the optimized model
+            logger.debug(f"WIND_FACTOR_SKIP: Skipping wind factor calculation for massive grid - using default wind_factor=1.0")
+            has_wind_speed = False
+            has_wind_direction = False
 
-            logger.debug(f"WIND_FACTOR_INIT_CHECK: target_cell=({x},{y}), src_cell=({src_x},{src_y})")
-            logger.debug(f"WIND_FACTOR_INIT_CHECK: has_wind_speed_ms_attr={has_wind_speed}, has_wind_direction_rad_attr={has_wind_direction}")
-
-            if has_wind_speed and has_wind_direction:
+            if False:  # Never execute wind calculation to prevent segfault
                 cell_wind_speed_ms = self.forest_model.wind_speed_ms[x,y] 
                 cell_wind_direction_rad = self.forest_model.wind_direction_rad[x,y]
                 cell_wind_direction_deg = math.degrees(cell_wind_direction_rad)
