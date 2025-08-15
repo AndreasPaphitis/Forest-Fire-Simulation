@@ -80,52 +80,38 @@ def validate_system_resources(memory_gb: int, workers: int) -> bool:
         total_memory_gb = psutil.virtual_memory().total / (1024**3)
         available_memory_gb = psutil.virtual_memory().available / (1024**3)
         
-        print(f"🔍 SYSTEM RESOURCE CHECK FOR 9.3B CELL SIMULATION:")
-        print(f"   Total memory: {total_memory_gb:.1f} GB")
-        print(f"   Available memory: {available_memory_gb:.1f} GB")
-        print(f"   Required memory: {memory_gb} GB")
+        logger.info(f"System check: {total_memory_gb:.1f}GB total, {available_memory_gb:.1f}GB available")
         
         # Enhanced memory requirements for full Tenerife
         minimum_memory_gb = 512  # Minimum for 9.3B cells
         recommended_memory_gb = 1024  # Recommended for comfortable operation
         
-        print(f"   Minimum for 9.3B cells: {minimum_memory_gb} GB")
-        print(f"   Recommended: {recommended_memory_gb} GB")
+        logger.debug(f"Memory requirements: {minimum_memory_gb}GB min, {recommended_memory_gb}GB recommended")
         
         # Check CPU cores
         cpu_count = psutil.cpu_count(logical=False)
         logical_cores = psutil.cpu_count(logical=True)
         
-        print(f"   Physical CPU cores: {cpu_count}")
-        print(f"   Logical CPU cores: {logical_cores}")
-        print(f"   Requested workers: {workers}")
+        logger.debug(f"CPU: {cpu_count} physical, {logical_cores} logical cores, {workers} workers requested")
         
         # Enhanced validation for massive scale
         if total_memory_gb < minimum_memory_gb:
-            print(f"❌ CRITICAL: Insufficient memory for 9.3B cell simulation")
-            print(f"   Required: {minimum_memory_gb}+ GB, Available: {total_memory_gb:.1f} GB")
-            print(f"   This will cause OOM kills. Use emergency config instead:")
-            print(f"   python scripts/run_tenerife_calibration.py --emergency-small-scale")
+            logger.error(f"Insufficient memory: need {minimum_memory_gb}GB, have {total_memory_gb:.1f}GB")
+            logger.info("Use --emergency-small-scale for testing")
             return False
         
         if total_memory_gb < recommended_memory_gb:
-            print(f"⚠️  WARNING: Memory below recommended level")
-            print(f"   Available: {total_memory_gb:.1f} GB < Recommended: {recommended_memory_gb} GB")
-            print(f"   Consider reducing worker count or using more memory")
+            logger.warning(f"Memory below recommended: {total_memory_gb:.1f}GB < {recommended_memory_gb}GB")
         
         if available_memory_gb < total_memory_gb * 0.7:
-            print(f"⚠️  WARNING: High memory usage before starting")
-            print(f"   Available: {available_memory_gb:.1f} GB ({available_memory_gb/total_memory_gb*100:.1f}%)")
-            print(f"   Consider closing other applications")
+            logger.warning(f"High memory usage: {available_memory_gb:.1f}GB available ({available_memory_gb/total_memory_gb*100:.1f}%)")
         
         # Validate CPU for massive scale
-        recommended_workers = min(cpu_count, int(total_memory_gb / 60))  # 60GB per worker
+        recommended_workers = min(cpu_count, int(total_memory_gb / 12))  # 12GB per worker (corrected)
         if workers > recommended_workers:
-            print(f"⚠️  WARNING: Too many workers for available memory")
-            print(f"   Requested: {workers}, Recommended: {recommended_workers}")
-            print(f"   Each worker needs ~60GB for 9.3B cell operations")
+            logger.warning(f"Too many workers: {workers} requested, {recommended_workers} recommended")
         
-        print(f"✅ System resources validated for massive scale simulation")
+        logger.info("✅ System resources validated")
         return True
         
     except ImportError:
@@ -459,18 +445,13 @@ Examples:
             
             memory_manager.add_callback('emergency', calibration_emergency_callback)
             
-            print(f"✅ Production memory protection active")
-            print(f"   Process limits: {thresholds.process_warning_gb}/{thresholds.process_critical_gb}/{thresholds.process_emergency_gb} GB")
-            print(f"   System limits: {thresholds.system_warning_percent}/{thresholds.system_critical_percent}/{thresholds.system_emergency_percent}%")
+            logger.info("✅ Production memory protection active")
         
         # Step 1: Validate system resources
         if not validate_system_resources(args.memory, args.workers):
-            print(f"❌ System resource validation failed")
-            if args.emergency_small_scale:
-                print(f"   Even emergency mode requires basic resources")
-            else:
-                print(f"   Consider using --emergency-small-scale for testing")
-                print(f"   Or increase memory allocation: --memory 512 --workers 16")
+            logger.error("System resource validation failed")
+            if not args.emergency_small_scale:
+                logger.info("Consider using --emergency-small-scale for testing")
             sys.exit(1)
         
         # Step 2: Discover and validate fire perimeters
@@ -523,11 +504,10 @@ Examples:
         estimates = estimate_calibration_time(args.parameters, args.grid_points, args.workers)
         
         if args.dry_run:
-            print(f"✅ DRY RUN COMPLETE - Configuration validated successfully")
-            print(f"📊 Estimated runtime: {estimates['parallel_time_hours']:.1f} hours")
-            print(f"💾 Estimated peak memory: {estimates['peak_memory_gb']:.1f} GB")
-            print(f"📁 Results directory: {calibrator.results_dir}")
-            print(f"\nTo run actual calibration, remove --dry-run flag")
+            logger.info(f"✅ DRY RUN COMPLETE - Configuration validated successfully")
+            logger.info(f"📊 Runtime: {estimates['parallel_time_hours']:.1f}h, Peak memory: {estimates['peak_memory_gb']:.1f}GB")
+            logger.info(f"📁 Results dir: {calibrator.results_dir}")
+            logger.info("To run actual calibration, remove --dry-run flag")
             return
         
         # Final user confirmation for long-running calibration
@@ -547,11 +527,10 @@ Examples:
         print(f"📁 Monitor progress in: {calibrator.results_dir}")
         
         if memory_manager:
-            print(f"🛡️  Memory protection active - monitoring every 15 seconds")
-            print(f"📊 Initial memory status:")
+            logger.info("🛡️  Memory protection active")
             status = memory_manager.check_memory_status()
             stats = status['stats']
-            print(f"   Process: {stats.process_rss_gb:.1f}GB, System: {stats.system_percent:.1f}%")
+            logger.debug(f"Memory check: {stats.process_rss_gb:.1f}GB process, {stats.system_percent:.1f}% system")
         
         start_time = time.time()
         
@@ -559,11 +538,10 @@ Examples:
             results = calibrator.run_calibration(calib_config, test_data)
         except Exception as e:
             if memory_manager:
-                print(f"\n🚨 CALIBRATION FAILED - CHECKING MEMORY STATE")
+                logger.critical("🚨 CALIBRATION FAILED - CHECKING MEMORY STATE")
                 final_status = memory_manager.check_memory_status()
                 final_stats = final_status['stats']
-                print(f"   Final memory: Process={final_stats.process_rss_gb:.1f}GB, System={final_stats.system_percent:.1f}%")
-                print(f"   Emergency mode: {final_status.get('emergency_mode', False)}")
+                logger.error(f"Final memory: {final_stats.process_rss_gb:.1f}GB process, {final_stats.system_percent:.1f}% system")
             raise
         
         end_time = time.time()
@@ -593,12 +571,9 @@ Examples:
         
         # Final memory report
         if memory_manager:
-            print(f"\n📊 FINAL MEMORY REPORT:")
+            logger.info("📊 Final memory report:")
             report = memory_manager.get_memory_report()
-            print(f"   Peak process memory: {report['statistics']['process_memory']['max_gb']:.1f} GB")
-            print(f"   Average process memory: {report['statistics']['process_memory']['avg_gb']:.1f} GB")
-            print(f"   Peak system usage: {report['statistics']['system_memory']['max_percent']:.1f}%")
-            print(f"   Emergency activations: {'Yes' if report['emergency_mode'] else 'No'}")
+            logger.info(f"Memory stats: {report['statistics']['process_memory']['max_gb']:.1f}GB peak, {report['statistics']['system_memory']['max_percent']:.1f}% max system")
             
             # Stop monitoring
             memory_manager.stop_monitoring()
@@ -615,9 +590,9 @@ Examples:
         
         # Emergency memory cleanup on failure
         if 'memory_manager' in locals() and memory_manager:
-            print(f"🚨 PERFORMING EMERGENCY MEMORY CLEANUP")
+            logger.critical("🚨 PERFORMING EMERGENCY MEMORY CLEANUP")
             emergency_status = memory_manager.check_memory_status()
-            print(f"   Error-time memory: {emergency_status['stats'].process_rss_gb:.1f} GB")
+            logger.critical(f"Error-time memory: {emergency_status['stats'].process_rss_gb:.1f}GB")
             memory_manager.stop_monitoring()
         
         sys.exit(1)

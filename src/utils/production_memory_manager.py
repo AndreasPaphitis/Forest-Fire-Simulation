@@ -134,9 +134,6 @@ class ProductionMemoryManager:
         self.emergency_callbacks_executed = False
         
         logger.info("🛡️  Production Memory Manager initialized")
-        logger.info(f"   Target grid: 15,121 × 24,741 × 25 = 9.3B cells")
-        logger.info(f"   Process thresholds: {self.thresholds.process_warning_gb}GB / "
-                   f"{self.thresholds.process_critical_gb}GB / {self.thresholds.process_emergency_gb}GB")
         
         if enable_monitoring:
             self.start_monitoring()
@@ -493,7 +490,7 @@ class ProductionMemoryManager:
             logger.warning("⚠️  Memory monitoring already active")
             return
         
-        logger.info(f"👁️  Starting production memory monitoring (interval: {self.monitor_interval}s)")
+        logger.debug(f"👁️  Starting production memory monitoring (interval: {self.monitor_interval}s)")
         self.monitoring = True
         
         def monitor_loop():
@@ -608,8 +605,6 @@ def setup_production_memory_protection(
         monitor_interval=monitor_interval
     )
     
-    logger.info("🛡️  Production memory protection activated for 9.3B cell simulation")
-    logger.info(f"   Process limits: {thresholds.process_warning_gb}/{thresholds.process_critical_gb}/{thresholds.process_emergency_gb} GB")
-    logger.info(f"   System limits: {thresholds.system_warning_percent}/{thresholds.system_critical_percent}/{thresholds.system_emergency_percent}%")
+    logger.info("🛡️  Production memory protection activated")
     
     return manager
