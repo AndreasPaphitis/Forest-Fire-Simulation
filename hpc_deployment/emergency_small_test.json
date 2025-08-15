@@ -1,0 +1,45 @@
+{
+  "simulation_name": "emergency_small_test",
+  "description": "Emergency small-scale test to prevent OOM",
+  
+  "grid_configuration": {
+    "grid_size": [1000, 1000],
+    "num_layers": 10,
+    "layer_height_meters": 2.0,
+    "model_resolution": 10.0
+  },
+  
+  "memory_optimization": {
+    "memory_optimization_level": 2,
+    "use_sparse_storage": true,
+    "use_shared_terrain": false,
+    "max_memory_gb": 16
+  },
+  
+  "terrain_configuration": {
+    "use_preprocessed_terrain": false,
+    "generate_flat_terrain": true
+  },
+  
+  "simulation_parameters": {
+    "max_timesteps": 100,
+    "timestep_minutes": 1.0,
+    "save_interval": 20,
+    "store_full_states": false
+  },
+  
+  "fire_parameters": {
+    "spread_rate": 0.3,
+    "wind_speed_ms": 3.0,
+    "wind_direction_degrees": 0.0,
+    "moisture_content": 0.2,
+    "initial_fuel_load": 1.0
+  },
+  
+  "output_configuration": {
+    "output_dir": "emergency_test_output",
+    "export_formats": ["pickle"],
+    "create_animations": false,
+    "save_terrain_data": false
+  }
+}

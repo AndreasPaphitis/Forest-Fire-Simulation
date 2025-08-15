@@ -237,11 +237,12 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
                 
                 shared_array = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
                 
-                # Create a copy to avoid issues with shared memory cleanup
-                terrain_data[terrain_name] = shared_array.copy()
+                # CRITICAL FIX: Use shared memory directly instead of copying
+                # This prevents doubling memory usage per worker process
+                terrain_data[terrain_name] = shared_array
                 
-                # Close the shared memory reference (but don't unlink)
-                shm.close()
+                # Keep reference to shared memory to prevent cleanup during use
+                terrain_data[f"_shm_ref_{terrain_name}"] = shm
                 
             except Exception as e:
                 logger.warning(f"⚠️  Could not load shared terrain data for {terrain_name}: {e}")

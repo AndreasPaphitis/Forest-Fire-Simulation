@@ -2506,12 +2506,18 @@ class MemoryOptimizedForestModel(ForestModel):
         # which might create dense intermediate arrays
         if config and hasattr(config, 'use_preprocessed_terrain') and config.use_preprocessed_terrain:
             if hasattr(config, 'preprocessed_terrain_dir') and config.preprocessed_terrain_dir:
-                logger.info(f"🏔️  Loading preprocessed terrain data for sparse model")
-                terrain_success = self._load_preprocessed_terrain_data(config.preprocessed_terrain_dir)
-                if terrain_success:
-                    logger.info(f"✅ Terrain data loaded successfully for sparse model")
+                # MEMORY OPTIMIZATION: Check if terrain is already loaded to prevent multiple loading
+                if not hasattr(self, '_terrain_loaded') or not self._terrain_loaded:
+                    logger.info(f"🏔️  Loading preprocessed terrain data for sparse model")
+                    terrain_success = self._load_preprocessed_terrain_data(config.preprocessed_terrain_dir)
+                    if terrain_success:
+                        logger.info(f"✅ Terrain data loaded successfully for sparse model")
+                        self._terrain_loaded = True
+                    else:
+                        logger.warning(f"⚠️  Failed to load terrain data for sparse model")
+                        self._terrain_loaded = False
                 else:
-                    logger.warning(f"⚠️  Failed to load terrain data for sparse model")
+                    logger.info(f"🔄 Terrain data already loaded - skipping duplicate load")
         
         logger.info(f"✅ Successfully initialized sparse model: {self.width}×{self.height}×{num_layers} "
                    f"({self.width * self.height * num_layers:,} total cells)")
