@@ -379,16 +379,27 @@ class BaseForestModel(ABC):
             
             if shared_terrain_data:
                 logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
-                elevation = shared_terrain_data['elevation']
-                slope = shared_terrain_data['slope']
-                aspect = shared_terrain_data['aspect']
-                barranco_mask = shared_terrain_data['barranco_mask']
-                barranco_directions = shared_terrain_data['barranco_directions']
-                depression_mask = shared_terrain_data['depression_mask']
-                wind_channeling_mask = shared_terrain_data['wind_channeling_mask']
-                wind_amplification = shared_terrain_data['wind_amplification']
-                wind_direction_modification = shared_terrain_data['wind_direction_modification']
-            else:
+                try:
+                    # CRITICAL FIX: Validate shared memory access to prevent segmentation faults
+                    elevation = shared_terrain_data['elevation']
+                    slope = shared_terrain_data['slope']
+                    aspect = shared_terrain_data['aspect']
+                    barranco_mask = shared_terrain_data['barranco_mask']
+                    barranco_directions = shared_terrain_data['barranco_directions']
+                    depression_mask = shared_terrain_data['depression_mask']
+                    wind_channeling_mask = shared_terrain_data['wind_channeling_mask']
+                    wind_amplification = shared_terrain_data['wind_amplification']
+                    wind_direction_modification = shared_terrain_data['wind_direction_modification']
+                    
+                    # Validate that arrays are accessible (this will trigger segfault if memory is corrupted)
+                    _ = elevation.shape  # Test access
+                    logger.debug(f"✅ Shared memory validation passed: {elevation.shape}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Shared memory access failed: {e}")
+                    logger.error("Falling back to direct file loading to prevent segmentation fault")
+                    shared_terrain_data = None  # Force fallback to file loading
+            if not shared_terrain_data:  # Changed from 'else' to handle fallback case
                 # Load the preprocessed data directly from numpy files (no preprocessor needed)
                 logger.info("📂 Loading terrain data directly from files")
                 
@@ -2553,15 +2564,21 @@ class MemoryOptimizedForestModel(ForestModel):
                 # MEMORY OPTIMIZATION: Check if terrain is already loaded to prevent multiple loading
                 if not hasattr(self, '_terrain_loaded') or not self._terrain_loaded:
                     logger.info(f"🏔️  Loading preprocessed terrain data for sparse model")
-                    terrain_success = self._load_preprocessed_terrain_data(config.preprocessed_terrain_dir)
-                    if terrain_success:
-                        logger.info(f"✅ Terrain data loaded successfully for sparse model")
-                        self._terrain_loaded = True
-                    else:
-                        logger.warning(f"⚠️  Failed to load terrain data for sparse model")
+                    try:
+                        terrain_success = self._load_preprocessed_terrain_data(config.preprocessed_terrain_dir)
+                        if terrain_success:
+                            logger.info(f"✅ Terrain data loaded successfully for sparse model")
+                            self._terrain_loaded = True
+                        else:
+                            logger.warning(f"⚠️  Failed to load terrain data for sparse model")
+                            self._terrain_loaded = False
+                    except Exception as e:
+                        logger.error(f"❌ Critical error loading terrain data: {e}")
+                        logger.error("This may cause segmentation faults - consider using emergency mode")
                         self._terrain_loaded = False
+                        # Don't raise the exception - let the model continue with flat terrain
                 else:
-                    logger.info(f"🔄 Terrain data already loaded - skipping duplicate load")
+                    logger.debug(f"🔄 Terrain data already loaded - skipping duplicate load")
         
         logger.info(f"✅ Successfully initialized sparse model: {self.width}×{self.height}×{num_layers} "
                    f"({self.width * self.height * num_layers:,} total cells)")

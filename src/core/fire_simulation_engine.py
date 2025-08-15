@@ -158,10 +158,19 @@ class FireSimulationEngine:
                              self.forest_model._sparse_initialized)
             
             if is_sparse_model:
-                logger.info("🏔️  Memory-optimized sparse model detected - loading terrain data directly into sparse model")
-                # For sparse models, load terrain data directly without going through standard load_terrain_data
-                # which might try to create dense arrays
-                success = self.forest_model._load_preprocessed_terrain_data(self.config.preprocessed_terrain_dir)
+                logger.info("🏔️  Memory-optimized sparse model detected")
+                # CRITICAL FIX: Check if terrain is already loaded to prevent double loading
+                # that can cause segmentation faults
+                if hasattr(self.forest_model, '_terrain_loaded') and self.forest_model._terrain_loaded:
+                    logger.info("✅ Terrain data already loaded in sparse model - skipping duplicate load")
+                    success = True
+                else:
+                    logger.info("🏔️  Loading terrain data directly into sparse model")
+                    # For sparse models, load terrain data directly without going through standard load_terrain_data
+                    # which might try to create dense arrays
+                    success = self.forest_model._load_preprocessed_terrain_data(self.config.preprocessed_terrain_dir)
+                    if success:
+                        self.forest_model._terrain_loaded = True
             else:
                 logger.info(f"Loading preprocessed terrain data from: {self.config.preprocessed_terrain_dir}")
                 # Try to load preprocessed terrain (will fall back to flat terrain if it fails)
