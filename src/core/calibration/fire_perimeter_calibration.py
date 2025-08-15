@@ -601,9 +601,9 @@ class TenerifeFirePerimeterCalibrator:
         base_config = ModelConfig(
             # FULL TENERIFE DOMAIN
             grid_size=(15121, 24741),  # Full Tenerife dimensions
-            num_layers=25,             # Maximum vertical resolution
+            num_layers=12,             # Reduced from 25 to 12 layers for memory efficiency
             max_steps=100,             # Sufficient for fire progression
-            model_resolution=10.0,     # 10m resolution (increased from 5m to reduce grid size)
+            model_resolution=20.0,     # 20m resolution (increased from 10m to reduce memory usage)
             
             # MAXIMUM MEMORY OPTIMIZATION
             memory_optimization_level=2,  # Maximum valid optimization level
@@ -1059,13 +1059,13 @@ class TenerifeFirePerimeterCalibrator:
             # Full Tenerife grid dimensions
             grid_width, grid_height = 15121, 24741
             
-            # Calculate cell size (10m resolution)
-            cell_size = 10.0
+            # Calculate cell size (20m resolution)
+            cell_size = 20.0
             
             # Create transform for full Tenerife domain
             # Calculate Tenerife bounds based on grid size and resolution
-            tenerife_width_m = grid_width * cell_size    # 151,210 meters
-            tenerife_height_m = grid_height * cell_size  # 247,410 meters
+            tenerife_width_m = grid_width * cell_size    # 302,420 meters
+            tenerife_height_m = grid_height * cell_size  # 494,820 meters
             
             # Estimate Tenerife SW corner (approximate)
             tenerife_sw_x = 300000  # Approximate UTM coordinates for Tenerife
@@ -1081,7 +1081,7 @@ class TenerifeFirePerimeterCalibrator:
                 grid_height
             )
             
-            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (10m resolution)")
+            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (20m resolution)")
             
             # Rasterize the fire perimeter to the full Tenerife grid
             fire_perimeter_grid = rasterize(
