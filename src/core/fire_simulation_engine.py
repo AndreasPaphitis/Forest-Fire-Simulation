@@ -193,17 +193,26 @@ class FireSimulationEngine:
             
             if success:
                 logger.info("✅ Successfully loaded preprocessed terrain data")
-                # Log terrain statistics for verification
+                # CRITICAL FIX: Skip terrain statistics to prevent segfaults on massive arrays
                 if hasattr(self.forest_model, 'terrain_elevation') and self.forest_model.terrain_elevation is not None:
-                    elev_min = np.min(self.forest_model.terrain_elevation)
-                    elev_max = np.max(self.forest_model.terrain_elevation)
-                    elev_range = elev_max - elev_min
-                    logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
-                    if hasattr(self.forest_model, 'barranco_mask') and self.forest_model.barranco_mask is not None:
-                        barranco_count = np.sum(self.forest_model.barranco_mask)
-                        total_cells = self.forest_model.barranco_mask.size
-                        barranco_percent = barranco_count / total_cells * 100
-                        logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
+                    terrain_size = getattr(self.forest_model.terrain_elevation, 'size', 0)
+                    if terrain_size > 100_000_000:  # Skip for massive grids
+                        logger.info(f"📊 Terrain statistics skipped for memory efficiency ({terrain_size:,} cells)")
+                        logger.info("🏔️  Barranco statistics skipped for memory efficiency")
+                    else:
+                        # Safe to calculate statistics for smaller grids
+                        try:
+                            elev_min = np.min(self.forest_model.terrain_elevation)
+                            elev_max = np.max(self.forest_model.terrain_elevation)
+                            elev_range = elev_max - elev_min
+                            logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+                            if hasattr(self.forest_model, 'barranco_mask') and self.forest_model.barranco_mask is not None:
+                                barranco_count = np.sum(self.forest_model.barranco_mask)
+                                total_cells = self.forest_model.barranco_mask.size
+                                barranco_percent = barranco_count / total_cells * 100
+                                logger.info(f"🏔️  Barrancos detected: {barranco_count:,} cells ({barranco_percent:.1f}% of terrain)")
+                        except Exception as stats_error:
+                            logger.warning(f"⚠️  Terrain statistics calculation failed: {stats_error}")
             else:
                 logger.warning("⚠️  Failed to load preprocessed terrain data - using flat terrain")
         else:
@@ -215,22 +224,44 @@ class FireSimulationEngine:
         
         # Initialize wind if configuration provides wind data
         if hasattr(self.config, 'wind_speed') and hasattr(self.config, 'wind_direction'):
+            # CRITICAL FIX: Use safer terrain detection without triggering massive array operations
+            # Check if we have terrain data using size check instead of np.any()
+            has_terrain_data = False
+            try:
+                if (hasattr(self.forest_model, 'terrain_elevation') and 
+                    self.forest_model.terrain_elevation is not None):
+                    # Use size check instead of np.any() to avoid scanning 374M cells
+                    terrain_size = getattr(self.forest_model.terrain_elevation, 'size', 0)
+                    has_terrain_data = terrain_size > 0
+                    logger.debug(f"Terrain data detected: {terrain_size:,} cells")
+            except Exception as terrain_check_error:
+                logger.warning(f"⚠️  Terrain data check failed: {terrain_check_error}")
+                has_terrain_data = False
+            
             # Use terrain-aware wind initialization if terrain data is loaded
-            if (hasattr(self.forest_model, 'terrain_elevation') and 
-                hasattr(self.forest_model, 'initialize_terrain_wind') and
-                self.forest_model.terrain_elevation is not None and 
-                np.any(self.forest_model.terrain_elevation)):
+            if (has_terrain_data and 
+                hasattr(self.forest_model, 'initialize_terrain_wind')):
                 logger.info("🏔️  Initializing terrain-aware wind field")
-                success = self.forest_model.initialize_terrain_wind(self.config.wind_direction, self.config.wind_speed)
-                if success:
-                    logger.info("✅ Terrain wind effects activated")
-                else:
-                    logger.warning("⚠️  Terrain wind initialization failed, falling back to uniform wind")
+                try:
+                    success = self.forest_model.initialize_terrain_wind(self.config.wind_direction, self.config.wind_speed)
+                    if success:
+                        logger.info("✅ Terrain wind effects activated")
+                    else:
+                        logger.warning("⚠️  Terrain wind initialization failed, falling back to uniform wind")
+                        if hasattr(self.forest_model, 'initialize_wind'):
+                            self.forest_model.initialize_wind(self.config.wind_direction, self.config.wind_speed)
+                except Exception as terrain_wind_error:
+                    logger.error(f"❌ Terrain wind initialization error: {terrain_wind_error}")
+                    logger.warning("⚠️  Falling back to uniform wind due to error")
                     if hasattr(self.forest_model, 'initialize_wind'):
                         self.forest_model.initialize_wind(self.config.wind_direction, self.config.wind_speed)
             elif hasattr(self.forest_model, 'initialize_wind'):
                 logger.info("💨 Initializing uniform wind field (no terrain data)")
-                self.forest_model.initialize_wind(self.config.wind_direction, self.config.wind_speed)
+                try:
+                    self.forest_model.initialize_wind(self.config.wind_direction, self.config.wind_speed)
+                except Exception as wind_error:
+                    logger.error(f"❌ Wind initialization error: {wind_error}")
+                    logger.warning("⚠️  Continuing without wind initialization")
         
         # Set default parameters if not provided - these should now come from self.config which has defaults
         self.wind_speed = self.config.wind_speed
