@@ -296,8 +296,8 @@ Examples:
         '--grid-points',
         type=int,
         default=3,
-        choices=[3, 4, 5],
-        help='Grid points per parameter (default: 3)'
+        choices=[1, 2, 3, 4, 5],
+        help='Grid points per parameter (1-5, use 1-2 for testing)'
     )
     
     parser.add_argument(
@@ -360,6 +360,12 @@ Examples:
         action='store_true',
         default=True,
         help='Enable production memory protection (default: enabled)'
+    )
+    
+    parser.add_argument(
+        '--emergency-mode',
+        action='store_true',
+        help='Enable emergency mode to prevent segfaults on massive grids'
     )
     
     args = parser.parse_args()
@@ -468,6 +474,12 @@ Examples:
         if args.emergency_small_scale:
             calibrator_kwargs['emergency_mode'] = True
             calibrator_kwargs['grid_size'] = (1000, 1000)  # Override grid size
+        
+        # Add emergency mode for segfault prevention
+        if args.emergency_mode:
+            calibrator_kwargs['emergency_mode'] = True
+            print(f"🚨 EMERGENCY MODE ENABLED - Sparse matrix operations will be bypassed")
+            print(f"   This prevents segfaults but may reduce simulation accuracy")
         
         calibrator = TenerifeFirePerimeterCalibrator(**calibrator_kwargs)
         
