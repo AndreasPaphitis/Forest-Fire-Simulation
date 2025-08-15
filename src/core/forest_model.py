@@ -906,9 +906,31 @@ class BaseForestModel(ABC):
         if total_cells > 100_000_000:  # 100M cells threshold
             logger.info(f"Applying wind speed amplification in chunks for large grid")
             
+            # DIAGNOSTIC: Check barranco_mask state before processing
+            logger.debug(f"Pre-processing diagnostics:")
+            logger.debug(f"  barranco_mask type: {type(barranco_mask)}")
+            logger.debug(f"  barranco_mask is None: {barranco_mask is None}")
+            logger.debug(f"  amplification_factor: {amplification_factor}")
+            logger.debug(f"  total_cells: {total_cells}")
+            
             # CRITICAL FIX: Avoid np.where() that scans entire 374M cell barranco mask
             # Process row-by-row instead of finding all indices at once
-            height, width = barranco_mask.shape
+            
+            # CRITICAL FIX: Safe shape access with validation
+            try:
+                logger.debug("Attempting to access barranco_mask.shape...")
+                if barranco_mask is None:
+                    raise ValueError("barranco_mask is None")
+                if not hasattr(barranco_mask, 'shape'):
+                    raise ValueError("barranco_mask has no shape attribute")
+                
+                height, width = barranco_mask.shape
+                logger.debug(f"Successfully accessed barranco_mask shape: {height} x {width}")
+            except Exception as shape_error:
+                logger.error(f"❌ CRITICAL: barranco_mask shape access failed: {shape_error}")
+                logger.error(f"barranco_mask type: {type(barranco_mask)}")
+                logger.error("Aborting barranco wind amplification to prevent segfault")
+                return  # Exit this function to prevent segfault
             chunk_rows = 100  # Process 100 rows at a time to limit memory usage
             
             try:
