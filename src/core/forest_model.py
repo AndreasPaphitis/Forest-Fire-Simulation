@@ -2417,7 +2417,16 @@ class MemoryOptimizedForestModel(ForestModel):
             width = height = grid_size
         total_cells = width * height * num_layers
         
-        # For large domains (>100M cells), initialize directly as sparse to avoid memory crashes
+        # CRITICAL: For massive domains (>100M cells), initialize directly as sparse to avoid memory crashes
+        # This prevents accidental dense array allocation that would cause OOM
+        self._force_sparse_only = total_cells > 100_000_000
+        if self._force_sparse_only:
+            logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells ({total_cells/1e9:.1f}B)")
+            logger.warning("   ENFORCING SPARSE-ONLY MODE - Dense arrays FORBIDDEN")
+            logger.warning("   Any attempt to create dense arrays will be blocked")
+            # Force sparse-only configuration
+            self.use_sparse_storage = True
+            kwargs['use_sparse_storage'] = True
         if total_cells > 100_000_000 and self.use_sparse_storage:
             # Initialize directly as sparse without creating dense arrays first
             self._initialize_directly_as_sparse(grid_size, num_layers, layer_height_meters, 
@@ -2551,6 +2560,14 @@ class MemoryOptimizedForestModel(ForestModel):
         This method is called if use_sparse_storage is True and SciPy is available.
         """
         if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
             logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
             # Fallback to dense arrays if SciPy is not available.
             default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
