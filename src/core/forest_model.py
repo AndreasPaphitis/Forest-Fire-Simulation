@@ -1999,14 +1999,30 @@ class SparseLayerAccessor:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    # For lil_matrix, check if the row has any data for this column
+                    # Handle both lil_matrix and dok_matrix formats
                     sparse_matrix = self.sparse_layers[z]
-                    if x < len(sparse_matrix.rows) and y in sparse_matrix.rows[x]:
-                        # Cell was explicitly set, return actual value (even if 0)
-                        return sparse_matrix[x, y]
+                    
+                    # Check if it's a DOK matrix (Dictionary of Keys)
+                    if hasattr(sparse_matrix, 'keys'):
+                        # DOK matrix - check if key exists in dictionary
+                        if (x, y) in sparse_matrix:
+                            return sparse_matrix[x, y]
+                        else:
+                            return self.default_value
+                    # Check if it's a LIL matrix  
+                    elif hasattr(sparse_matrix, 'rows'):
+                        # LIL matrix - check if the row has any data for this column
+                        if x < len(sparse_matrix.rows) and y in sparse_matrix.rows[x]:
+                            return sparse_matrix[x, y]
+                        else:
+                            return self.default_value
                     else:
-                        # Cell was never set, return default
-                        return self.default_value
+                        # Generic sparse matrix access
+                        try:
+                            val = sparse_matrix[x, y]
+                            return val if val != 0 else self.default_value
+                        except:
+                            return self.default_value
                 return self.default_value
             else:
                 raise IndexError(f"Layer index {z} out of range")
@@ -2475,15 +2491,34 @@ class MemoryOptimizedForestModel(ForestModel):
         self.fuel_load_layers = []
         self.state_layers = []
         
-        logger.info(f"Initializing directly as sparse for large domain: {self.width}×{self.height}×{num_layers}")
+        logger.info(f"🔥 Initializing MASSIVE domain as sparse: {self.width:,}×{self.height:,}×{num_layers}")
+        logger.info(f"📊 Total cells: {self.width * self.height * num_layers:,} ({(self.width * self.height * num_layers)/1e9:.2f}B)")
+        logger.info(f"💾 Using DOK matrices to prevent segmentation faults during initialization")
+        
+        # CRITICAL FIX: Use lazy initialization to avoid upfront memory allocation
+        # that can cause segmentation faults for massive grids
+        logger.info(f"🚨 Using LAZY sparse initialization for {num_layers} layers to prevent segfaults")
         
         for z in range(num_layers):
-            # Create empty sparse matrices (no dense conversion needed)
-            fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
-            state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
-            
-            self.fuel_load_layers.append(fuel_layer)
-            self.state_layers.append(state_layer)
+            # Create sparse matrices with minimal memory footprint
+            # Use DOK (Dictionary of Keys) format initially for safer memory handling
+            try:
+                from scipy.sparse import dok_matrix
+                # DOK matrix is safer for initial creation of massive sparse matrices
+                fuel_layer = dok_matrix((self.width, self.height), dtype=np.float32)
+                state_layer = dok_matrix((self.width, self.height), dtype=np.int8)
+                
+                # Convert to lil_matrix only when needed (lil is better for modifications)
+                # But keep dok for now to avoid segfault during initialization
+                self.fuel_load_layers.append(fuel_layer)
+                self.state_layers.append(state_layer)
+                
+                if (z + 1) % 5 == 0:  # Progress logging every 5 layers
+                    logger.info(f"   ✅ Initialized sparse layer {z+1}/{num_layers}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to create sparse layer {z}: {e}")
+                raise RuntimeError(f"Sparse matrix creation failed for layer {z}. This may indicate insufficient memory or system limits.")
         
         # Create minimal dense arrays for terrain/wind (these are 2D only, much smaller)
         # For sparse models, use original grid dimensions without transpose

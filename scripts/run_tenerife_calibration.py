@@ -63,6 +63,7 @@ try:
         setup_production_memory_protection,
         ProductionMemoryThresholds
     )
+    from src.utils.shared_terrain import emergency_cleanup_shared_memory
 except ImportError as e:
     print(f"❌ Error importing modules: {e}")
     print("Make sure you're running this from the project root directory")
@@ -580,6 +581,12 @@ Examples:
             emergency_status = memory_manager.check_memory_status()
             logger.critical(f"Error-time memory: {emergency_status['stats'].process_rss_gb:.1f}GB")
             memory_manager.stop_monitoring()
+        
+        # Clean up shared memory to prevent leaks
+        try:
+            emergency_cleanup_shared_memory()
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️  Shared memory cleanup failed: {cleanup_error}")
         
         sys.exit(1)
 

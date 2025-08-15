@@ -270,5 +270,30 @@ def cleanup_shared_terrain():
     """Clean up the global shared terrain manager."""
     global _shared_terrain_manager
     if _shared_terrain_manager is not None:
+        try:
+            _shared_terrain_manager.cleanup()
+            _shared_terrain_manager = None
+            logger.info("🧹 Global shared terrain manager cleaned up")
+        except Exception as e:
+            logger.warning(f"⚠️  Error cleaning up global shared terrain manager: {e}")
+            _shared_terrain_manager = None
+
+
+def emergency_cleanup_shared_memory():
+    """Emergency cleanup of leaked shared memory objects."""
+    try:
+        import gc
+        # Force garbage collection
+        gc.collect()
+        
+        # Try to clean up any remaining shared memory blocks
+        cleanup_shared_terrain()
+        
+        logger.info("🚨 Emergency shared memory cleanup completed")
+        
+    except Exception as e:
+        logger.warning(f"⚠️  Emergency cleanup failed: {e}")
+    global _shared_terrain_manager
+    if _shared_terrain_manager is not None:
         _shared_terrain_manager.cleanup()
         _shared_terrain_manager = None
