@@ -555,12 +555,23 @@ Examples:
         print(f"📁 Results saved to: {calibrator.results_dir}")
         
         print(f"\n🔍 BEST PARAMETERS:")
-        for param, value in results['best_parameters'].items():
-            print(f"   {param}: {value:.4f}")
+        best_parameters = results['best_parameters']
+        if isinstance(best_parameters, dict) and best_parameters:
+            for param, value in best_parameters.items():
+                print(f"   {param}: {value:.4f}")
+        else:
+            print(f"   No valid parameters found")
         
         print(f"\n🧪 VALIDATION:")
-        for test_case, test_result in results['validation_results'].items():
-            print(f"   {test_case}: {test_result['status']}")
+        validation_results = results['validation_results']
+        if isinstance(validation_results, dict):
+            for test_case, test_result in validation_results.items():
+                if isinstance(test_result, dict) and 'status' in test_result:
+                    print(f"   {test_case}: {test_result['status']}")
+                else:
+                    print(f"   {test_case}: {test_result}")
+        else:
+            print(f"   Validation status: {validation_results}")
         
         print(f"\n🎯 NEXT STEPS:")
         print(f"1. Review calibration results in {calibrator.results_dir}")
