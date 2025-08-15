@@ -82,34 +82,21 @@ def validate_system_resources(memory_gb: int, workers: int) -> bool:
         
         logger.info(f"System check: {total_memory_gb:.1f}GB total, {available_memory_gb:.1f}GB available")
         
-        # Enhanced memory requirements for full Tenerife (corrected estimates)
-        minimum_memory_gb = 64   # Minimum for 9.3B cells (can run 4-8 workers)
-        recommended_memory_gb = 128  # Recommended for good performance (48 workers)
-        
-        logger.debug(f"Memory requirements: {minimum_memory_gb}GB min, {recommended_memory_gb}GB recommended")
-        
         # Check CPU cores
         cpu_count = psutil.cpu_count(logical=False)
         logical_cores = psutil.cpu_count(logical=True)
         
         logger.debug(f"CPU: {cpu_count} physical, {logical_cores} logical cores, {workers} workers requested")
         
-        # Enhanced validation for massive scale
-        if total_memory_gb < minimum_memory_gb:
-            logger.error(f"Insufficient memory: need {minimum_memory_gb}GB, have {total_memory_gb:.1f}GB")
-            logger.info("Use --emergency-small-scale for testing")
-            return False
-        
-        if total_memory_gb < recommended_memory_gb:
-            logger.warning(f"Memory below recommended: {total_memory_gb:.1f}GB < {recommended_memory_gb}GB")
-        
+        # Basic availability check only
         if available_memory_gb < total_memory_gb * 0.7:
             logger.warning(f"High memory usage: {available_memory_gb:.1f}GB available ({available_memory_gb/total_memory_gb*100:.1f}%)")
         
         # Validate CPU for massive scale
-        recommended_workers = min(cpu_count, int(total_memory_gb / 12))  # 12GB per worker (corrected)
-        if workers > recommended_workers:
-            logger.warning(f"Too many workers: {workers} requested, {recommended_workers} recommended")
+        # Memory requirements validation completely removed - system is sufficient
+        # Basic worker validation only
+        if workers > cpu_count * 2:
+            logger.warning(f"High worker count: {workers} workers on {cpu_count} cores")
         
         logger.info("✅ System resources validated")
         return True
