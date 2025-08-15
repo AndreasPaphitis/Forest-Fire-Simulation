@@ -388,7 +388,7 @@ def example_lidar_calibration():
             grid_size=(1000, 1000),  # Smaller grid for calibration
             num_layers=20,
             layer_height=2.0,
-            model_resolution=5.0,
+            model_resolution=10.0,  # Updated to 10m resolution
             max_steps=30,
             random_seed=789,
             
@@ -426,7 +426,7 @@ def example_lidar_calibration():
             # Geographic settings for calibration
             geo_bounds=(273500, 3094350, 278500, 3099350),
             crs="EPSG:25828", 
-            model_resolution=5.0,
+            model_resolution=10.0,
             
             # LiDAR settings for calibration (disabled for demo)
             use_lidar_data=False,  # Set to True with real data

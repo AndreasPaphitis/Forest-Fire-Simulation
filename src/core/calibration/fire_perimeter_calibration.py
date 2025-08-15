@@ -603,7 +603,7 @@ class TenerifeFirePerimeterCalibrator:
             grid_size=(15121, 24741),  # Full Tenerife dimensions
             num_layers=25,             # Maximum vertical resolution
             max_steps=100,             # Sufficient for fire progression
-            model_resolution=5.0,      # 5m resolution
+            model_resolution=10.0,     # 10m resolution (increased from 5m to reduce grid size)
             
             # MAXIMUM MEMORY OPTIMIZATION
             memory_optimization_level=2,  # Maximum valid optimization level
@@ -1059,13 +1059,13 @@ class TenerifeFirePerimeterCalibrator:
             # Full Tenerife grid dimensions
             grid_width, grid_height = 15121, 24741
             
-            # Calculate cell size (5m resolution)
-            cell_size = 5.0
+            # Calculate cell size (10m resolution)
+            cell_size = 10.0
             
             # Create transform for full Tenerife domain
             # Calculate Tenerife bounds based on grid size and resolution
-            tenerife_width_m = grid_width * cell_size    # 75,605 meters
-            tenerife_height_m = grid_height * cell_size  # 123,705 meters
+            tenerife_width_m = grid_width * cell_size    # 151,210 meters
+            tenerife_height_m = grid_height * cell_size  # 247,410 meters
             
             # Estimate Tenerife SW corner (approximate)
             tenerife_sw_x = 300000  # Approximate UTM coordinates for Tenerife
@@ -1081,7 +1081,7 @@ class TenerifeFirePerimeterCalibrator:
                 grid_height
             )
             
-            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (5m resolution)")
+            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (10m resolution)")
             
             # Rasterize the fire perimeter to the full Tenerife grid
             fire_perimeter_grid = rasterize(
