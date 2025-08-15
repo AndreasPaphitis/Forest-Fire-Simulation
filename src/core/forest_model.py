@@ -277,9 +277,34 @@ class BaseForestModel(ABC):
         if (0 <= x < self.grid_size_x and 
             0 <= y < self.grid_size_y and 
             0 <= z < self.num_layers):
-            self.state[x, y, z] = FrameworkCellState.BURNING.value # Use FrameworkCellState
-            # Track ignition point for efficient active cell detection
-            self._ignition_points.append((x, y, z))
+            
+            # CRITICAL FIX: Safe ignition setting for sparse models
+            try:
+                self.state[x, y, z] = FrameworkCellState.BURNING.value # Use FrameworkCellState
+                # Track ignition point for efficient active cell detection
+                self._ignition_points.append((x, y, z))
+                logger.debug(f"✅ Ignition set at ({x}, {y}, {z})")
+            except Exception as e:
+                logger.error(f"❌ CRITICAL: Failed to set ignition at ({x}, {y}, {z}): {e}")
+                logger.error("This may indicate sparse matrix access issues - checking model type")
+                
+                # Emergency fallback for sparse models
+                if (hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and 
+                    hasattr(self, 'state_layers')):
+                    try:
+                        logger.warning("🚨 Using direct sparse matrix assignment as fallback")
+                        # Direct assignment to sparse matrix
+                        if z < len(self.state_layers):
+                            self.state_layers[z][x, y] = FrameworkCellState.BURNING.value
+                            self._ignition_points.append((x, y, z))
+                            logger.info(f"✅ Ignition set via direct sparse assignment at ({x}, {y}, {z})")
+                    except Exception as sparse_error:
+                        logger.error(f"❌ Even direct sparse assignment failed: {sparse_error}")
+                        logger.error("This indicates serious memory corruption - aborting to prevent segfault")
+                        raise RuntimeError(f"Cannot set ignition point - sparse matrix corruption detected")
+                else:
+                    # Re-raise original error for non-sparse models
+                    raise
     
     @abstractmethod
     def run_simulation(self, max_steps=100, store_full_states=False, **kwargs):
@@ -2059,7 +2084,15 @@ class SparseLayerAccessor:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    self.sparse_layers[z][x, y] = value
+                    try:
+                        # CRITICAL FIX: Safe assignment for both DOK and LIL matrices
+                        sparse_matrix = self.sparse_layers[z]
+                        sparse_matrix[x, y] = value
+                    except Exception as e:
+                        logger.error(f"❌ Sparse matrix assignment failed at ({x}, {y}, {z}): {e}")
+                        logger.error(f"Matrix type: {type(sparse_matrix)}")
+                        logger.error("This may indicate memory corruption - preventing segfault")
+                        raise RuntimeError(f"Sparse matrix assignment failed - possible memory corruption")
         elif isinstance(key, tuple) and len(key) == 2:
             x, y = key
             if len(self.sparse_layers) > 0 and 0 <= x < self.width and 0 <= y < self.height:

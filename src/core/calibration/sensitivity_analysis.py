@@ -259,14 +259,34 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         
         # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
         ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)
-        forest_model.set_ignition(ignition_x, ignition_y, 0)
         
-        # Run simulation
-        simulation_result = engine.run_simulation(
-            max_steps=config.max_steps,
-            store_history=False,
-            stop_when_fire_extinguished=True
-        )
+        # CRITICAL FIX: Add safety checks before setting ignition
+        try:
+            # Validate coordinates are within bounds
+            if not (0 <= ignition_x < config.grid_size[0] and 0 <= ignition_y < config.grid_size[1]):
+                raise ValueError(f"Ignition coordinates ({ignition_x}, {ignition_y}) out of bounds for grid {config.grid_size}")
+            
+            forest_model.set_ignition(ignition_x, ignition_y, 0)
+            
+        except Exception as ignition_error:
+            logger.error(f"❌ CRITICAL: Failed to set ignition point: {ignition_error}")
+            raise RuntimeError(f"Ignition setting failed: {ignition_error}")
+        
+        # CRITICAL FIX: Memory safety check before simulation
+        try:
+            import gc
+            gc.collect()  # Clean up before simulation
+            
+            # Run simulation with enhanced error handling
+            simulation_result = engine.run_simulation(
+                max_steps=config.max_steps,
+                store_history=False,
+                stop_when_fire_extinguished=True
+            )
+            
+        except Exception as sim_error:
+            logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
+            raise RuntimeError(f"Simulation execution failed: {sim_error}")
         
         # Evaluate objective function (use consistent configuration)
         if objective_config:
@@ -874,14 +894,34 @@ class SensitivityAnalyzer:
         
         # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
         ignition_x, ignition_y = _get_arafo_highlands_coordinates(config.grid_size)
-        forest_model.set_ignition(ignition_x, ignition_y, 0)
         
-        # Run simulation
-        simulation_result = engine.run_simulation(
-            max_steps=config.max_steps,
-            store_history=False,
-            stop_when_fire_extinguished=True
-        )
+        # CRITICAL FIX: Add safety checks before setting ignition
+        try:
+            # Validate coordinates are within bounds
+            if not (0 <= ignition_x < config.grid_size[0] and 0 <= ignition_y < config.grid_size[1]):
+                raise ValueError(f"Ignition coordinates ({ignition_x}, {ignition_y}) out of bounds for grid {config.grid_size}")
+            
+            forest_model.set_ignition(ignition_x, ignition_y, 0)
+            
+        except Exception as ignition_error:
+            logger.error(f"❌ CRITICAL: Failed to set ignition point: {ignition_error}")
+            raise RuntimeError(f"Ignition setting failed: {ignition_error}")
+        
+        # CRITICAL FIX: Memory safety check before simulation
+        try:
+            import gc
+            gc.collect()  # Clean up before simulation
+            
+            # Run simulation with enhanced error handling
+            simulation_result = engine.run_simulation(
+                max_steps=config.max_steps,
+                store_history=False,
+                stop_when_fire_extinguished=True
+            )
+            
+        except Exception as sim_error:
+            logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
+            raise RuntimeError(f"Simulation execution failed: {sim_error}")
         
         return simulation_result
     

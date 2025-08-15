@@ -446,15 +446,42 @@ class GridSearchCalibrator:
             
             # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
             ignition_x, ignition_y = self._get_arafo_highlands_coordinates(config.grid_size)
-            forest_model.set_ignition(ignition_x, ignition_y, 0)
-            logger.info(f"Set ignition at Arafo highlands: ({ignition_x}, {ignition_y})")
             
-            # Run simulation
-            simulation_result = engine.run_simulation(
-                max_steps=config.max_steps,
-                store_history=False,  # Don't store full history for calibration
-                stop_when_fire_extinguished=True
-            )
+            # CRITICAL FIX: Add safety checks before setting ignition
+            try:
+                logger.info(f"Setting ignition at Arafo highlands: ({ignition_x}, {ignition_y})")
+                logger.info(f"Grid bounds: x=0-{config.grid_size[0]-1}, y=0-{config.grid_size[1]-1}")
+                
+                # Validate coordinates are within bounds
+                if not (0 <= ignition_x < config.grid_size[0] and 0 <= ignition_y < config.grid_size[1]):
+                    raise ValueError(f"Ignition coordinates ({ignition_x}, {ignition_y}) out of bounds for grid {config.grid_size}")
+                
+                forest_model.set_ignition(ignition_x, ignition_y, 0)
+                logger.info(f"✅ Ignition set successfully at ({ignition_x}, {ignition_y})")
+                
+            except Exception as ignition_error:
+                logger.error(f"❌ CRITICAL: Failed to set ignition point: {ignition_error}")
+                logger.error("This may indicate sparse matrix corruption - aborting simulation")
+                raise RuntimeError(f"Ignition setting failed: {ignition_error}")
+            
+            # CRITICAL FIX: Memory safety check before simulation
+            try:
+                import gc
+                gc.collect()  # Clean up before simulation
+                logger.info("🚀 Starting simulation with safety monitoring")
+                
+                # Run simulation with enhanced error handling
+                simulation_result = engine.run_simulation(
+                    max_steps=config.max_steps,
+                    store_history=False,  # Don't store full history for calibration
+                    stop_when_fire_extinguished=True
+                )
+                logger.info("✅ Simulation completed successfully")
+                
+            except Exception as sim_error:
+                logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
+                logger.error("This indicates issues during fire propagation")
+                raise RuntimeError(f"Simulation execution failed: {sim_error}")
             
             # Evaluate objective function
             objective_result = self.objective_function(simulation_result, target_data)
