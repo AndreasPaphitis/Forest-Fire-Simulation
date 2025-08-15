@@ -905,16 +905,27 @@ class BaseForestModel(ABC):
         # MEMORY OPTIMIZATION: For large grids, apply amplification in chunks
         if total_cells > 100_000_000:  # 100M cells threshold
             logger.info(f"Applying wind speed amplification in chunks for large grid")
-            barranco_indices = np.where(barranco_mask)
-            total_barranco_cells = len(barranco_indices[0])
             
-            if total_barranco_cells > 0:
-                chunk_size = min(100000, total_barranco_cells)  # 100k cells per chunk
-                for i in range(0, total_barranco_cells, chunk_size):
-                    end_idx = min(i + chunk_size, total_barranco_cells)
-                    chunk_x = barranco_indices[0][i:end_idx]
-                    chunk_y = barranco_indices[1][i:end_idx]
-                    self.wind_speed[chunk_x, chunk_y] *= amplification_factor
+            # CRITICAL FIX: Avoid np.where() that scans entire 374M cell barranco mask
+            # Process row-by-row instead of finding all indices at once
+            height, width = barranco_mask.shape
+            chunk_rows = 100  # Process 100 rows at a time to limit memory usage
+            
+            try:
+                for start_row in range(0, height, chunk_rows):
+                    end_row = min(start_row + chunk_rows, height)
+                    # Apply amplification directly to barranco cells in row chunks
+                    row_barranco_mask = barranco_mask[start_row:end_row, :]
+                    self.wind_speed[start_row:end_row, :][row_barranco_mask] *= amplification_factor
+                    
+                    # Log progress occasionally
+                    if (start_row % 1000) == 0:
+                        logger.debug(f"Barranco wind amplification progress: {start_row}/{height} rows processed")
+                
+                logger.info("✅ Completed chunked barranco wind amplification without np.where()")
+            except Exception as barranco_amp_error:
+                logger.error(f"❌ Barranco wind amplification failed: {barranco_amp_error}")
+                logger.warning("⚠️  Continuing without barranco wind amplification to prevent segfault")
         else:
             # Standard operation for smaller grids
             self.wind_speed[barranco_mask] *= amplification_factor
