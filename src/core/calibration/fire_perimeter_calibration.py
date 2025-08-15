@@ -985,6 +985,11 @@ class TenerifeFirePerimeterCalibrator:
                 except Exception as e:
                     logger.warning(f"⚠️  Error cleaning up shared terrain: {e}")
             
+            # Ensure validation_results is a dictionary for return
+            if not isinstance(validation_results, dict):
+                logger.warning(f"⚠️  validation_results is not a dict in return: {type(validation_results)}")
+                validation_results = {'status': 'error', 'reason': 'invalid_type_in_return', 'original_type': str(type(validation_results))}
+            
             return {
                 'calibration_results': results,
                 'validation_results': validation_results,
@@ -1202,6 +1207,12 @@ class TenerifeFirePerimeterCalibrator:
         
         # Save validation results
         validation_file = self.results_dir / f"{self.experiment_name}_validation_results.json"
+        
+        # Ensure validation_results is a dictionary
+        if not isinstance(validation_results, dict):
+            logger.warning(f"⚠️  validation_results is not a dict: {type(validation_results)}")
+            validation_results = {'status': 'error', 'reason': 'invalid_type', 'original_type': str(type(validation_results))}
+        
         with open(validation_file, 'w') as f:
             json.dump(validation_results, f, indent=2, default=str)
         print(f"✅ Saved validation results: {validation_file.name}")
@@ -1224,7 +1235,7 @@ class TenerifeFirePerimeterCalibrator:
             },
             'best_parameters': results.get_best_parameters() or {},
             'validation_summary': {
-                'test_cases': len(validation_results),
+                'test_cases': len(validation_results) if isinstance(validation_results, dict) else 0,
                 'status': 'completed'
             }
         }
