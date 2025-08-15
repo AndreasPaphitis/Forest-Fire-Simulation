@@ -2589,6 +2589,9 @@ class MemoryOptimizedForestModel(ForestModel):
         self.fuel_load_layers = []
         self.state_layers = []
         
+        # CRITICAL FIX: Initialize ignition points tracking (missing from direct sparse initialization)
+        self._ignition_points = []
+        
         logger.info(f"🔥 Initializing MASSIVE domain as sparse: {self.width:,}×{self.height:,}×{num_layers}")
         logger.info(f"📊 Total cells: {self.width * self.height * num_layers:,} ({(self.width * self.height * num_layers)/1e9:.2f}B)")
         logger.info(f"💾 Using DOK matrices to prevent segmentation faults during initialization")
