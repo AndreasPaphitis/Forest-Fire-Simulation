@@ -622,7 +622,11 @@ class GridSearchCalibrator:
         
         total_time = time.time() - start_time
         logger.info(f"Grid search completed in {total_time:.2f} seconds")
-        logger.info(f"Best objective value: {results.get_best_objective_value():.4f}")
+        best_value = results.get_best_objective_value()
+        if best_value is not None:
+            logger.info(f"Best objective value: {best_value:.4f}")
+        else:
+            logger.info(f"Best objective value: None (no valid results)")
         logger.info(f"Best parameters: {results.get_best_parameters()}")
         
         # Store convergence information
@@ -651,7 +655,9 @@ class GridSearchCalibrator:
             # Periodic logging
             if (i + 1) % max(1, self.total_combinations // 20) == 0:
                 progress = (i + 1) / self.total_combinations * 100
-                best_value = results.get_best_objective_value() or 0.0
+                best_value = results.get_best_objective_value()
+                if best_value is None:
+                    best_value = 0.0
                 logger.info(f"Progress: {progress:.1f}% ({i + 1}/{self.total_combinations}), "
                            f"Best objective: {best_value:.4f}")
         
@@ -731,7 +737,9 @@ class GridSearchCalibrator:
                     # Periodic logging
                     if completed % max(1, self.total_combinations // 20) == 0:
                         progress = completed / self.total_combinations * 100
-                        best_value = results.get_best_objective_value() or 0.0
+                        best_value = results.get_best_objective_value()
+                        if best_value is None:
+                            best_value = 0.0
                         logger.info(f"Progress: {progress:.1f}% ({completed}/{self.total_combinations}), "
                                    f"Best objective: {best_value:.4f}")
                 

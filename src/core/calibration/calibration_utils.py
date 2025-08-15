@@ -421,7 +421,9 @@ def _generate_experiment_overview(config: Any) -> str:
 
 def _generate_results_summary(results: Any) -> str:
     """Generate results summary section."""
-    best_value = results.get_best_objective_value() if hasattr(results, 'get_best_objective_value') else 'Unknown'
+    best_value = results.get_best_objective_value() if hasattr(results, 'get_best_objective_value') else None
+    if best_value is None:
+        best_value = 'Unknown'
     total_evals = getattr(results, 'total_evaluations', 'Unknown')
     success_rate = 'Unknown'
     

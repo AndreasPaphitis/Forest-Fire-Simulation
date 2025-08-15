@@ -955,7 +955,11 @@ class TenerifeFirePerimeterCalibrator:
             
             print(f"\n✅ Calibration completed successfully!")
             print(f"⏱️  Runtime: {runtime:.2f} hours")
-            print(f"🎯 Best objective value: {results.get_best_objective_value():.4f}")
+            best_value = results.get_best_objective_value()
+            if best_value is not None:
+                print(f"🎯 Best objective value: {best_value:.4f}")
+            else:
+                print(f"🎯 Best objective value: None (no valid results)")
             
             # Validate on test data
             validation_results = self._validate_on_test_data(
@@ -981,7 +985,7 @@ class TenerifeFirePerimeterCalibrator:
                 'validation_results': validation_results,
                 'runtime_hours': runtime,
                 'best_parameters': results.get_best_parameters(),
-                'best_objective_value': results.get_best_objective_value()
+                'best_objective_value': results.get_best_objective_value() or 0.0 or 0.0
             }
             
         except Exception as e:
@@ -1206,7 +1210,7 @@ class TenerifeFirePerimeterCalibrator:
                 'runtime_hours': runtime_hours,
                 'total_combinations': len(results.results),
                 'successful_evaluations': results.successful_evaluations,
-                'best_objective_value': results.get_best_objective_value()
+                'best_objective_value': results.get_best_objective_value() or 0.0
             },
             'best_parameters': results.get_best_parameters(),
             'validation_summary': {
