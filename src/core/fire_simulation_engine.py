@@ -286,17 +286,13 @@ class FireSimulationEngine:
         # This helps identify if segfault occurs during __init__ or after
         logger.info("🎯 FireSimulationEngine.__init__ completed successfully")
         
-        # CRITICAL FIX: Pre-validate critical object state to prevent post-init segfaults
-        try:
-            # Test that forest_model is accessible without triggering massive operations
-            _ = hasattr(self.forest_model, 'width')
-            _ = hasattr(self.forest_model, 'height') 
-            _ = hasattr(self.forest_model, 'num_layers')
-            logger.debug("✅ Forest model accessibility validated")
-        except Exception as validation_error:
-            logger.error(f"❌ CRITICAL: Forest model validation failed: {validation_error}")
-            logger.error("This may indicate object corruption - aborting to prevent segfault")
-            raise RuntimeError(f"Forest model validation failed: {validation_error}")
+        # CRITICAL FIX: Skip all forest_model validation to prevent property access
+        # hasattr() on forest_model triggers @property decorators that access massive arrays!
+        # Just verify the object reference exists without any attribute access
+        if self.forest_model is None:
+            raise RuntimeError("Forest model is None - cannot proceed")
+        
+        logger.debug("✅ FireSimulationEngine initialization complete without array access")
     
     def run_simulation(self, 
                          max_steps: Optional[int] = None, 
