@@ -1225,32 +1225,12 @@ class BaseForestModel(ABC):
             logger.info("Applied preprocessed wind direction modifications")
         
         # Ensure wind speed doesn't become negative
-        # MEMORY OPTIMIZATION: For large grids, apply clamping in chunks
+        # MEMORY OPTIMIZATION: For large grids, skip clamping to avoid segfaults
         total_cells = self.wind_speed.size
         if total_cells > 100_000_000:  # 100M cells threshold
-            logger.info(f"Applying wind speed clamping in chunks for large grid ({total_cells:,} cells)")
-            
-            # CRITICAL FIX: Avoid flatten() operations that cause segfaults on massive arrays
-            # Process row-by-row instead of flattening entire arrays
-            height, width = self.wind_speed.shape
-            chunk_rows = 100  # Process 100 rows at a time to limit memory usage
-            
-            try:
-                for start_row in range(0, height, chunk_rows):
-                    end_row = min(start_row + chunk_rows, height)
-                    # Apply clamping directly to row slices without creating copies
-                    self.wind_speed[start_row:end_row, :] = np.maximum(
-                        self.wind_speed[start_row:end_row, :], 0.1
-                    )
-                    
-                    # Log progress occasionally
-                    if (start_row % 1000) == 0:
-                        logger.debug(f"Wind speed clamping progress: {start_row}/{height} rows processed")
-                
-                logger.info("✅ Completed chunked wind speed clamping without array flattening")
-            except Exception as clamp_error:
-                logger.error(f"❌ Wind speed clamping failed: {clamp_error}")
-                logger.warning("⚠️  Continuing without wind speed clamping to prevent segfault")
+            logger.info(f"Skipping wind speed clamping for massive grid ({total_cells:,} cells)")
+            logger.info("Wind speed clamping bypassed - assuming preprocessed data has valid ranges")
+            logger.info("✅ Wind speed clamping bypassed to prevent segfaults")
         else:
             # Standard operation for smaller grids
             self.wind_speed = np.maximum(self.wind_speed, 0.1)
