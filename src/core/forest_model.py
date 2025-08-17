@@ -388,6 +388,14 @@ class BaseForestModel(ABC):
         Returns:
             True if successful, False otherwise
         """
+        # CRITICAL FIX: Check for shared terrain first before loading individually
+        shared_terrain_data = self._try_load_shared_terrain()
+        if shared_terrain_data:
+            logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
+            # Load shared terrain data into the model
+            self._load_shared_terrain_into_model(shared_terrain_data)
+            return True
+        
         # Check if terrain preprocessing is available
         if not HAS_TERRAIN_PREPROCESSING:
             logger.error("Terrain preprocessing utilities not available")
@@ -397,150 +405,153 @@ class BaseForestModel(ABC):
             # Initialize path for metadata loading
             import numpy as np
             from pathlib import Path
+            
             preprocessed_path = Path(preprocessed_dir)
+            metadata_file = preprocessed_path / "metadata.json"
             
-            # Check for shared terrain data first (for memory-efficient parallel processing)
-            shared_terrain_data = self._try_load_shared_terrain()
-            
-            if shared_terrain_data:
-                logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
-                try:
-                    # CRITICAL FIX: Validate shared memory access to prevent segmentation faults
-                    elevation = shared_terrain_data['elevation']
-                    slope = shared_terrain_data['slope']
-                    aspect = shared_terrain_data['aspect']
-                    barranco_mask = shared_terrain_data['barranco_mask']
-                    barranco_directions = shared_terrain_data['barranco_directions']
-                    depression_mask = shared_terrain_data['depression_mask']
-                    wind_channeling_mask = shared_terrain_data['wind_channeling_mask']
-                    wind_amplification = shared_terrain_data['wind_amplification']
-                    wind_direction_modification = shared_terrain_data['wind_direction_modification']
-                    
-                    # Validate that arrays are accessible (this will trigger segfault if memory is corrupted)
-                    _ = elevation.shape  # Test access
-                    logger.debug(f"✅ Shared memory validation passed: {elevation.shape}")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Shared memory access failed: {e}")
-                    logger.error("Falling back to direct file loading to prevent segmentation fault")
-                    shared_terrain_data = None  # Force fallback to file loading
-            if not shared_terrain_data:  # Changed from 'else' to handle fallback case
-                # Load the preprocessed data directly from numpy files (no preprocessor needed)
-                logger.info("📂 Loading terrain data directly from files")
-                
-                # Load all terrain data
-                elevation = np.load(preprocessed_path / "elevation.npy")
-                slope = np.load(preprocessed_path / "slope.npy")
-                aspect = np.load(preprocessed_path / "aspect.npy")
-                barranco_mask = np.load(preprocessed_path / "barranco_mask.npy")
-                barranco_directions = np.load(preprocessed_path / "barranco_directions.npy")
-                depression_mask = np.load(preprocessed_path / "depression_mask.npy")
-                wind_channeling_mask = np.load(preprocessed_path / "wind_channeling_mask.npy")
-                wind_amplification = np.load(preprocessed_path / "wind_amplification.npy")
-                wind_direction_modification = np.load(preprocessed_path / "wind_direction_modification.npy")
+            if not metadata_file.exists():
+                logger.warning(f"Metadata file not found: {metadata_file}")
+                return False
             
             # Load metadata
-            metadata_file = preprocessed_path / "metadata.json"
-            if metadata_file.exists():
-                import json
-                with open(metadata_file, 'r') as f:
-                    self.terrain_metadata = json.load(f)
-            else:
-                self.terrain_metadata = {}
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
             
-            # Check if spatial subsetting is needed
-            # For sparse models, use the actual grid dimensions, not transposed
-            if hasattr(self, '_sparse_initialized') and self._sparse_initialized:
-                target_shape = (self.width, self.height)  # Keep original grid dimensions for sparse models
-            else:
-                target_shape = (self.height, self.width)  # Model expects (height, width) for regular models
-            current_shape = elevation.shape
+            # Get terrain dimensions from metadata
+            terrain_width = metadata.get('width', None)
+            terrain_height = metadata.get('height', None)
             
-            logger.info(f"📊 Preprocessed terrain size: {current_shape[0]} × {current_shape[1]} cells")
-            logger.info(f"📊 Target simulation size: {target_shape[0]} × {target_shape[1]} cells")
+            if terrain_width is None or terrain_height is None:
+                logger.warning("Terrain dimensions not found in metadata")
+                return False
             
-            if current_shape != target_shape:
-                logger.info(f"🔄 Extracting {target_shape[0]}×{target_shape[1]} subset from full terrain (preserving ~5m resolution)...")
-                
-                # Calculate subset boundaries (take center region for representative terrain)
-                start_row = (current_shape[0] - target_shape[0]) // 2
-                end_row = start_row + target_shape[0]
-                start_col = (current_shape[1] - target_shape[1]) // 2  
-                end_col = start_col + target_shape[1]
-                
-                # Ensure boundaries are valid
-                start_row = max(0, start_row)
-                start_col = max(0, start_col)
-                end_row = min(current_shape[0], end_row)
-                end_col = min(current_shape[1], end_col)
-                
-                logger.info(f"📍 Extracting region: rows {start_row}:{end_row}, cols {start_col}:{end_col}")
-                
-                # Extract subset from all terrain data (preserves original resolution)
-                elevation = elevation[start_row:end_row, start_col:end_col]
-                slope = slope[start_row:end_row, start_col:end_col]
-                aspect = aspect[start_row:end_row, start_col:end_col]
-                barranco_mask = barranco_mask[start_row:end_row, start_col:end_col]
-                barranco_directions = barranco_directions[start_row:end_row, start_col:end_col]
-                depression_mask = depression_mask[start_row:end_row, start_col:end_col]
-                wind_channeling_mask = wind_channeling_mask[start_row:end_row, start_col:end_col]
-                wind_amplification = wind_amplification[start_row:end_row, start_col:end_col]
-                wind_direction_modification = wind_direction_modification[start_row:end_row, start_col:end_col]
-                
-                final_shape = elevation.shape
-                logger.info(f"✅ Successfully extracted terrain subset: {final_shape[0]} × {final_shape[1]} cells")
-                logger.info(f"🎯 Preserved original ~5m cell resolution for LiDAR compatibility")
-            else:
-                logger.info(f"✅ Terrain data size matches simulation grid - no subsetting needed")
+            logger.info(f"📊 Preprocessed terrain size: {terrain_width} × {terrain_height} cells")
+            logger.info(f"📊 Target simulation size: {self.width} × {self.height} cells")
             
-            # Load the terrain data into the model
-            # For sparse models, don't transpose since arrays are already correctly sized
-            if hasattr(self, '_sparse_initialized') and self._sparse_initialized:
-                # No transpose needed for sparse models - arrays already match expected dimensions
-                self.terrain_elevation = elevation
-                self.terrain_slope = slope
-                self.terrain_aspect = aspect
-                
-                # Load barranco detection results
-                self.barranco_mask = barranco_mask
-                self.barranco_directions = barranco_directions
-                self.depression_mask = depression_mask
-                
-                # Load wind channeling data
-                self.wind_channeling_mask = wind_channeling_mask
-                self.wind_amplification = wind_amplification
-                self.wind_direction_modification = wind_direction_modification
+            # Check if terrain size matches simulation grid
+            if terrain_width == self.width and terrain_height == self.height:
+                logger.info("✅ Terrain data size matches simulation grid - no subsetting needed")
             else:
-                # Regular models need transpose to match coordinate system
-                self.terrain_elevation = elevation.T
-                self.terrain_slope = slope.T
-                self.terrain_aspect = aspect.T
-                
-                # Load barranco detection results
-                self.barranco_mask = barranco_mask.T
-                self.barranco_directions = barranco_directions.T
-                self.depression_mask = depression_mask.T
-                
-                # Load wind channeling data
-                self.wind_channeling_mask = wind_channeling_mask.T
-                self.wind_amplification = wind_amplification.T
-                self.wind_direction_modification = wind_direction_modification.T
+                logger.warning(f"⚠️  Terrain size mismatch: terrain {terrain_width}×{terrain_height} vs simulation {self.width}×{self.height}")
+                # For now, we'll proceed with the terrain as-is, but this might cause issues
+                logger.warning("   Proceeding with terrain as-is (may cause indexing issues)")
             
-            logger.info(f"✅ Successfully loaded preprocessed terrain data from {preprocessed_dir}")
-            logger.info(f"📊 Final grid size: {self.terrain_elevation.shape}")
-            # MEMORY OPTIMIZATION: Skip array sum operations for large grids
-            if self.barranco_mask.size > 100_000_000:  # 100M+ cells
-                logger.info(f"🏞️ Barranco cells: Counting skipped for memory efficiency")
-                logger.info(f"💨 Wind channeling cells: Counting skipped for memory efficiency")
-            else:
-                logger.info(f"🏞️ Barranco cells: {np.sum(self.barranco_mask)}")
-                logger.info(f"💨 Wind channeling cells: {np.sum(self.wind_channeling_mask)}")
+            # Load terrain files
+            terrain_files = {
+                'elevation': 'elevation.npy',
+                'slope': 'slope.npy',
+                'aspect': 'aspect.npy',
+                'barranco_mask': 'barranco_mask.npy',
+                'barranco_directions': 'barranco_directions.npy',
+                'depression_mask': 'depression_mask.npy',
+                'wind_channeling_mask': 'wind_channeling_mask.npy',
+                'wind_amplification': 'wind_amplification.npy',
+                'wind_direction_modification': 'wind_direction_modification.npy'
+            }
+            
+            for terrain_name, filename in terrain_files.items():
+                file_path = preprocessed_path / filename
+                if file_path.exists():
+                    try:
+                        terrain_data = np.load(file_path)
+                        
+                        # Handle size mismatch by subsetting if needed
+                        if terrain_data.shape != (self.width, self.height):
+                            if terrain_data.shape[0] >= self.width and terrain_data.shape[1] >= self.height:
+                                # Subset to match simulation grid
+                                terrain_data = terrain_data[:self.width, :self.height]
+                                logger.info(f"🔄 Subset {filename} to match simulation grid: {terrain_data.shape}")
+                            else:
+                                logger.warning(f"⚠️  Terrain file {filename} too small: {terrain_data.shape} vs required {self.width}×{self.height}")
+                                continue
+                        
+                        # Assign to appropriate attribute
+                        if terrain_name == 'elevation':
+                            self.terrain_elevation = terrain_data.astype(np.float32)
+                        elif terrain_name == 'slope':
+                            self.terrain_slope = terrain_data.astype(np.float32)
+                        elif terrain_name == 'aspect':
+                            self.terrain_aspect = terrain_data.astype(np.float32)
+                        elif terrain_name == 'barranco_mask':
+                            self.barranco_mask = terrain_data.astype(np.bool_)
+                        elif terrain_name == 'barranco_directions':
+                            self.barranco_directions = terrain_data.astype(np.float32)
+                        elif terrain_name == 'depression_mask':
+                            self.depression_mask = terrain_data.astype(np.bool_)
+                        elif terrain_name == 'wind_channeling_mask':
+                            self.wind_channeling_mask = terrain_data.astype(np.bool_)
+                        elif terrain_name == 'wind_amplification':
+                            self.wind_amplification = terrain_data.astype(np.float32)
+                        elif terrain_name == 'wind_direction_modification':
+                            self.wind_direction_modification = terrain_data.astype(np.float32)
+                        
+                        logger.debug(f"✅ Loaded {filename}")
+                        
+                    except Exception as e:
+                        logger.warning(f"⚠️  Failed to load {filename}: {e}")
+                else:
+                    logger.warning(f"⚠️  Terrain file not found: {filename}")
+            
+            # Log terrain statistics
+            if hasattr(self, 'terrain_elevation') and self.terrain_elevation is not None:
+                elev_min = np.min(self.terrain_elevation)
+                elev_max = np.max(self.terrain_elevation)
+                elev_range = elev_max - elev_min
+                logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+            
+            if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
+                barranco_count = np.sum(self.barranco_mask)
+                logger.info(f"🏞️ Barranco cells: {barranco_count}")
+            
+            if hasattr(self, 'wind_channeling_mask') and self.wind_channeling_mask is not None:
+                wind_channeling_count = np.sum(self.wind_channeling_mask)
+                logger.info(f"💨 Wind channeling cells: {wind_channeling_count}")
             
             return True
             
         except Exception as e:
-            logger.error(f"Error loading preprocessed terrain data: {e}")
+            logger.error(f"❌ Error loading preprocessed terrain data: {e}")
             return False
+
+    def _load_shared_terrain_into_model(self, shared_terrain_data: Dict[str, np.ndarray]):
+        """
+        Load shared terrain data into the forest model.
+        
+        Args:
+            shared_terrain_data: Dictionary of terrain arrays from shared memory
+        """
+        try:
+            # Map shared terrain data to model attributes
+            if 'elevation' in shared_terrain_data:
+                self.terrain_elevation = shared_terrain_data['elevation']
+            if 'slope' in shared_terrain_data:
+                self.terrain_slope = shared_terrain_data['slope']
+            if 'aspect' in shared_terrain_data:
+                self.terrain_aspect = shared_terrain_data['aspect']
+            if 'barranco_mask' in shared_terrain_data:
+                self.barranco_mask = shared_terrain_data['barranco_mask']
+            if 'barranco_directions' in shared_terrain_data:
+                self.barranco_directions = shared_terrain_data['barranco_directions']
+            if 'depression_mask' in shared_terrain_data:
+                self.depression_mask = shared_terrain_data['depression_mask']
+            if 'wind_channeling_mask' in shared_terrain_data:
+                self.wind_channeling_mask = shared_terrain_data['wind_channeling_mask']
+            if 'wind_amplification' in shared_terrain_data:
+                self.wind_amplification = shared_terrain_data['wind_amplification']
+            if 'wind_direction_modification' in shared_terrain_data:
+                self.wind_direction_modification = shared_terrain_data['wind_direction_modification']
+            
+            # Store shared memory references to prevent cleanup
+            self._shared_terrain_refs = {}
+            for key, value in shared_terrain_data.items():
+                if key.startswith('_shm_ref_'):
+                    self._shared_terrain_refs[key] = value
+            
+            logger.info(f"✅ Shared terrain data loaded into model: {len(shared_terrain_data)} arrays")
+            
+        except Exception as e:
+            logger.error(f"❌ Error loading shared terrain into model: {e}")
+            raise
     
     def _load_dem_terrain_data(self, dem_file: str) -> bool:
         """

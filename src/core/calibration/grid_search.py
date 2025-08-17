@@ -395,17 +395,28 @@ class GridSearchCalibrator:
     def _evaluate_single_combination(self, 
                                    parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
-        """Evaluate a single parameter combination."""
+        """
+        Evaluate a single parameter combination.
+        
+        Args:
+            parameter_values: Parameter values to evaluate
+            target_data: Target data for objective function evaluation
+            
+        Returns:
+            GridSearchResult with evaluation results
+        """
         start_time = time.time()
         
         try:
             # Create configuration with these parameter values
             config = self.config.create_config_variant(parameter_values)
             
-            # SHARED TERRAIN OPTIMIZATION: Ensure shared terrain info is available for memory efficiency
+            # CRITICAL FIX: Ensure shared terrain info is passed to each worker
             if hasattr(self.config.base_config, 'shared_terrain_info') and self.config.base_config.shared_terrain_info:
                 config.shared_terrain_info = self.config.base_config.shared_terrain_info
-                logger.debug(f"Using shared terrain for memory-efficient model creation")
+                logger.debug(f"✅ Passing shared terrain info to worker for memory efficiency")
+            else:
+                logger.debug(f"⚠️  No shared terrain info available - worker will load terrain individually")
             
             # MEMORY OPTIMIZATION: Add memory checks and error handling for large models
             grid_size = config.grid_size
@@ -500,41 +511,17 @@ class GridSearchCalibrator:
                 error_message=objective_result.error_message
             )
             
-            # MEMORY OPTIMIZATION: Explicit cleanup for large models
-            if total_model_cells > 100_000_000:  # 100M+ cells
-                try:
-                    # Clear large objects explicitly
-                    if hasattr(forest_model, 'terrain_elevation'):
-                        forest_model.terrain_elevation = None
-                    if hasattr(forest_model, 'wind_direction'):
-                        forest_model.wind_direction = None
-                    if hasattr(forest_model, 'wind_speed'):
-                        forest_model.wind_speed = None
-                    if hasattr(forest_model, 'barranco_mask'):
-                        forest_model.barranco_mask = None
-                    del forest_model
-                    del engine
-                    del simulation_result
-                except Exception as cleanup_error:
-                    logger.warning(f"Error during cleanup: {cleanup_error}")
+            # Clean up to free memory
+            if forest_model:
+                del forest_model
+            if engine:
+                del engine
             
             return result
             
         except Exception as e:
             evaluation_time = time.time() - start_time
-            logger.warning(f"Evaluation failed for parameters {parameter_values}: {e}")
-            
-            # MEMORY OPTIMIZATION: Cleanup on error for large models
-            try:
-                # Try to clean up any partially created objects
-                if 'forest_model' in locals() and forest_model is not None:
-                    del forest_model
-                if 'engine' in locals() and engine is not None:
-                    del engine
-                if 'simulation_result' in locals():
-                    del simulation_result
-            except Exception as cleanup_error:
-                logger.debug(f"Error during exception cleanup: {cleanup_error}")
+            logger.error(f"Evaluation failed: {e}")
             
             return GridSearchResult(
                 parameter_values=parameter_values.copy(),
@@ -684,7 +671,7 @@ class GridSearchCalibrator:
         total_model_cells = total_cells * num_layers
         
         if total_model_cells > 100_000_000:  # 100M+ cells
-            # Force ThreadPoolExecutor for large grids to avoid process serialization overhead
+            # Force ThreadPoolExecutor for large grids to avoid serialization overhead
             executor_class = ThreadPoolExecutor
             logger.info(f"Using ThreadPoolExecutor for large grid ({total_model_cells:,} cells) to avoid serialization overhead")
         else:

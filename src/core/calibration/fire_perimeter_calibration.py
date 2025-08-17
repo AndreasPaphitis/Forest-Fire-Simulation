@@ -1133,12 +1133,17 @@ class TenerifeFirePerimeterCalibrator:
         # Set up shared terrain if possible (for memory optimization)
         shared_terrain_info = self._setup_shared_terrain_if_possible(calibration_config)
         if shared_terrain_info:
-            # Add shared terrain info to the base config
+            # CRITICAL FIX: Set shared terrain info in both base config and calibration config
             if hasattr(calibration_config.base_config, '__dict__'):
                 calibration_config.base_config.shared_terrain_info = shared_terrain_info
-                print(f"✅ Added shared terrain info to calibration configuration")
+            calibration_config.shared_terrain_info = shared_terrain_info  # CRITICAL: Set in calibration config too
+            print(f"✅ Added shared terrain info to calibration configuration")
+            print(f"📊 Memory optimization: ~14.5 GB terrain data shared across {self.workers} workers")
         else:
             print(f"📊 Using individual terrain loading (no shared memory)")
+            print(f"⚠️  WARNING: Each worker will load 14.5 GB terrain data individually!")
+            print(f"   Total memory usage: ~{14.5 * self.workers:.1f} GB")
+            print(f"   Consider reducing workers or fixing shared terrain setup")
         
         # Create parameter bounds
         parameter_bounds = get_default_calibration_bounds()

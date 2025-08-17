@@ -119,6 +119,9 @@ class CalibrationConfig:
     memory_limit_gb: float = 8.0
     simulation_timeout_minutes: float = 30.0
     
+    # === SHARED TERRAIN CONFIGURATION ===
+    shared_terrain_info: Optional[Dict[str, Any]] = None  # CRITICAL: Shared terrain data for memory efficiency
+    
     # === GEOGRAPHIC AND LIDAR CONFIGURATION ===
     # Geographic bounds for simulation area [min_x, min_y, max_x, max_y]
     geo_bounds: Optional[Tuple[float, float, float, float]] = None
@@ -292,13 +295,20 @@ class CalibrationConfig:
         try:
             new_config = ModelConfig(**config_dict)
             
-            # SHARED TERRAIN OPTIMIZATION: Preserve shared terrain info if available
-            if hasattr(self.base_config, 'shared_terrain_info') and self.base_config.shared_terrain_info:
+            # CRITICAL FIX: Pass shared terrain info from calibration config to worker config
+            if self.shared_terrain_info is not None:
+                new_config.shared_terrain_info = self.shared_terrain_info
+                logger.debug(f"✅ Passing shared terrain info to worker config")
+            elif hasattr(self.base_config, 'shared_terrain_info') and self.base_config.shared_terrain_info:
                 new_config.shared_terrain_info = self.base_config.shared_terrain_info
+                logger.debug(f"✅ Passing shared terrain info from base config to worker config")
+            else:
+                logger.debug(f"⚠️  No shared terrain info available for worker config")
             
             return new_config
+            
         except Exception as e:
-            logger.error(f"Failed to create config variant: {e}")
+            logger.error(f"Error creating config variant: {e}")
             raise
     
     def add_calibration_target(self, 
