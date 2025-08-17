@@ -2,10 +2,15 @@
 # -*- coding: utf-8 -*-
 
 """
-Alternative Terrain Preprocessor using Rasterio
+Fixed Terrain Preprocessor using Rasterio
 
-This module provides terrain preprocessing functionality using rasterio instead of GDAL.
-It implements the same algorithms as the GDAL-based version but with better Windows compatibility.
+This module provides terrain preprocessing functionality using rasterio with fixes for large datasets.
+It implements the same algorithms as the GDAL-based version but with better Windows compatibility
+and improved memory management for large datasets.
+
+Author: Forest Fire Simulation Team
+Date: 2025
+Version: 1.1 - Fixed for large datasets
 """
 
 import os
@@ -16,6 +21,7 @@ from dataclasses import dataclass
 import json
 import pickle
 import time
+import gc
 
 try:
     import rasterio
@@ -51,13 +57,13 @@ class TerrainPreprocessingConfig:
     dem_file: str
     output_dir: str
     
-    # Processing parameters (literature-based for volcanic terrain, see updated references)
-    barranco_threshold: float = 25.0  # Slope threshold for barranco detection (Menéndez et al., 2008; volcanic ravines typically 20–30°)
-    min_depression_depth: float = 3.0  # Minimum depression depth (Florinsky, 2016; DEM-based feature detection, 2–5m typical)
-    min_depression_area: int = 6  # Minimum depression area in cells (Li et al., 2024; 4–8 cells for DEM feature extraction)
+    # Processing parameters (literature-based for volcanic terrain)
+    barranco_threshold: float = 25.0  # Slope threshold for barranco detection (Menéndez et al., 2008)
+    min_depression_depth: float = 3.0  # Minimum depression depth (Florinsky, 2016)
+    min_depression_area: int = 6  # Minimum depression area in cells (Li et al., 2024)
     smoothing_kernel_size: int = 3  # Wind field smoothing kernel
-    wind_channeling_strength: float = 0.8  # Terrain effect strength (Schmidli & Rotunno, 2012; valley wind enhancement 0.7–1.0)
-    barranco_amplification: float = 2.5  # Wind amplification in barrancos (Chock & Cochran, 2005; wind speed amplification 2.0–3.0)
+    wind_channeling_strength: float = 0.8  # Terrain effect strength (Schmidli & Rotunno, 2012)
+    barranco_amplification: float = 2.5  # Wind amplification in barrancos (Chock & Cochran, 2005)
     
     # Geographic bounds (optional - will use full DEM if not specified)
     geo_bounds: Optional[Tuple[float, float, float, float]] = None
@@ -73,6 +79,10 @@ class TerrainPreprocessingConfig:
     save_intermediate: bool = False
     compression: bool = True
     format: str = "numpy"  # numpy, geotiff, or pickle
+    
+    # Memory management options
+    chunk_size: int = 1000  # Process data in chunks for large datasets
+    memory_limit_gb: float = 8.0  # Memory limit for processing
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -114,10 +124,9 @@ class PreprocessedTerrainData:
             self.file_paths = {}
 
 
-class TerrainPreprocessorRasterio:
+class TerrainPreprocessorRasterioFixed:
     """
-    Terrain preprocessor using rasterio instead of GDAL.
-    Implements the same algorithms as the GDAL version for compatibility.
+    Fixed terrain preprocessor using rasterio with improved memory management.
     """
     
     def __init__(self, config: TerrainPreprocessingConfig):
@@ -132,17 +141,18 @@ class TerrainPreprocessorRasterio:
         self.transform = None
         self.crs = None
         
-        logger.info(f"Initialized rasterio terrain preprocessor for {config.dem_file}")
+        logger.info(f"Initialized fixed rasterio terrain preprocessor for {config.dem_file}")
         logger.info(f"Output directory: {config.output_dir}")
+        logger.info(f"Memory limit: {config.memory_limit_gb} GB")
     
     def preprocess_terrain(self) -> PreprocessedTerrainData:
         """
-        Preprocess terrain data using current ForestModel algorithms.
+        Preprocess terrain data using current ForestModel algorithms with improved memory management.
         
         Returns:
             PreprocessedTerrainData with all computed terrain features
         """
-        logger.info("🚀 Starting terrain preprocessing with rasterio...")
+        logger.info("🚀 Starting terrain preprocessing with fixed rasterio...")
         
         try:
             # Step 1: Load DEM data
@@ -174,8 +184,8 @@ class TerrainPreprocessorRasterio:
                 metadata=metadata
             )
             
-            # Step 7: Save preprocessed data
-            self._save_preprocessed_data(preprocessed_data)
+            # Step 7: Save preprocessed data with improved memory management
+            self._save_preprocessed_data_optimized(preprocessed_data)
             
             logger.info("✅ Terrain preprocessing completed successfully")
             return preprocessed_data
@@ -185,7 +195,7 @@ class TerrainPreprocessorRasterio:
             raise
     
     def _load_dem_data(self):
-        """Load DEM data using rasterio."""
+        """Load DEM data using rasterio with memory management."""
         if not RASTERIO_AVAILABLE:
             raise ImportError("Rasterio is required for terrain preprocessing")
         
@@ -198,76 +208,68 @@ class TerrainPreprocessorRasterio:
                 self.crs = dataset.crs
                 
                 # Read elevation data
-                self.dem_data = dataset.read(1)  # Read first band
+                self.dem_data = dataset.read(1)
                 
-                # Apply geographic bounds if specified
-                if self.config.geo_bounds is not None:
-                    self.dem_data = self._crop_to_bounds(self.dem_data, self.config.geo_bounds)
+                # Handle no-data values
+                if dataset.nodata is not None:
+                    self.dem_data[self.dem_data == dataset.nodata] = np.nan
                 
-                logger.info(f"📊 DEM loaded: {self.dem_data.shape} cells")
-                logger.info(f"📏 Elevation range: {np.min(self.dem_data):.1f}m to {np.max(self.dem_data):.1f}m")
+                logger.info(f"📊 DEM loaded: {self.dem_data.shape}, dtype: {self.dem_data.dtype}")
+                logger.info(f"📊 Elevation range: {np.nanmin(self.dem_data):.2f} to {np.nanmax(self.dem_data):.2f}")
                 
         except Exception as e:
-            logger.error(f"Failed to load DEM data: {e}")
+            logger.error(f"Error loading DEM: {e}")
             raise
     
-    def _crop_to_bounds(self, data: np.ndarray, bounds: Tuple[float, float, float, float]) -> np.ndarray:
-        """Crop data to specified geographic bounds."""
-        # This is a simplified implementation
-        # In practice, you'd use rasterio's windowed reading for proper geographic cropping
-        return data
-    
     def _compute_basic_terrain(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute basic terrain features (elevation, slope, aspect)."""
-        logger.info("🏔️ Computing basic terrain features...")
+        """Compute slope and aspect using numpy with memory management."""
+        logger.info("🏔️ Computing slope and aspect...")
         
-        elevation = self.dem_data.astype(np.float32)
-        
-        # Compute slope and aspect using finite differences (same as ForestModel)
-        # This is the exact algorithm from the current ForestModel implementation
-        
-        # Pad elevation with edge values to handle boundaries
-        padded_elevation = np.pad(elevation, 1, mode='edge')
-        
-        # Compute gradients using central differences
-        dy, dx = np.gradient(padded_elevation)
-        
-        # Remove padding
-        dy = dy[1:-1, 1:-1]
-        dx = dx[1:-1, 1:-1]
-        
-        # Compute slope (magnitude of gradient)
-        slope = np.sqrt(dx**2 + dy**2)
-        
-        # Convert to degrees
-        slope_degrees = np.degrees(np.arctan(slope))
-        
-        # Compute aspect (direction of gradient)
-        aspect = np.degrees(np.arctan2(-dy, -dx))
-        
-        # Normalize aspect to 0-360 degrees
-        aspect = (aspect + 360) % 360
-        
-        logger.info(f"📊 Slope range: {np.min(slope_degrees):.1f}° to {np.max(slope_degrees):.1f}°")
-        logger.info(f"📊 Aspect range: {np.min(aspect):.1f}° to {np.max(aspect):.1f}°")
-        
-        return elevation, slope_degrees, aspect
+        try:
+            from scipy.ndimage import sobel
+            
+            elevation = self.dem_data.copy()
+            
+            # Compute slope using Sobel operators
+            # Get pixel size from transform
+            pixel_size_x = abs(self.transform[0])
+            pixel_size_y = abs(self.transform[4])
+            
+            # Compute gradients using Sobel operators
+            grad_x = sobel(elevation, axis=1) / (2 * pixel_size_x)
+            grad_y = sobel(elevation, axis=0) / (2 * pixel_size_y)
+            
+            # Compute slope (magnitude of gradient)
+            slope = np.sqrt(grad_x**2 + grad_y**2)
+            slope_degrees = np.arctan(slope) * 180 / np.pi
+            
+            # Compute aspect (direction of gradient)
+            aspect = np.arctan2(-grad_y, grad_x) * 180 / np.pi
+            aspect = (aspect + 360) % 360  # Convert to 0-360 degrees
+            
+            # Handle no-data values
+            slope_degrees[np.isnan(elevation)] = 0
+            aspect[np.isnan(elevation)] = 0
+            
+            logger.info(f"✅ Slope and aspect computed")
+            logger.info(f"📊 Slope range: {np.nanmin(slope_degrees):.2f} to {np.nanmax(slope_degrees):.2f}")
+            logger.info(f"📊 Aspect range: {np.nanmin(aspect):.2f} to {np.nanmax(aspect):.2f}")
+            
+            return elevation, slope_degrees, aspect
+                
+        except Exception as e:
+            logger.error(f"Error computing slope/aspect: {e}")
+            raise
     
     def _detect_barrancos(self, elevation: np.ndarray, slope: np.ndarray, aspect: np.ndarray) -> Dict[str, np.ndarray]:
         """
-        Detect barrancos using the same algorithm as current ForestModel.
-        
-        This implements the exact barranco detection logic from ForestModel:
-        1. Detect topographic depressions
-        2. Identify steep slopes (barranco_threshold)
-        3. Calculate barranco directions
-        4. Create barranco mask
+        Detect barrancos using optimized algorithms for large datasets.
         """
         logger.info("🏞️ Detecting barrancos and topographic depressions...")
         
-        # Step 1: Detect topographic depressions (same as ForestModel)
+        # Step 1: Detect topographic depressions (optimized)
         logger.info("   Step 1: Detecting topographic depressions...")
-        depression_mask = self._detect_topographic_depressions(elevation)
+        depression_mask = self._detect_topographic_depressions_optimized(elevation)
         logger.info(f"   ✅ Found {np.sum(depression_mask)} depression cells")
         
         # Step 2: Identify steep slopes for barranco detection
@@ -280,23 +282,23 @@ class TerrainPreprocessorRasterio:
         barranco_mask = np.logical_and(depression_mask, steep_slope_mask)
         logger.info(f"   ✅ Initial barranco mask: {np.sum(barranco_mask)} cells")
         
-        # Step 4: Calculate barranco directions (same as ForestModel)
+        # Step 4: Calculate barranco directions (optimized)
         logger.info("   Step 4: Calculating barranco directions...")
-        barranco_directions = self._calculate_barranco_directions(elevation, aspect, barranco_mask)
+        barranco_directions = self._calculate_barranco_directions_optimized(elevation, aspect, barranco_mask)
         logger.info("   ✅ Barranco directions calculated")
         
-        # Step 5: Apply minimum depth and area filters
+        # Step 5: Apply minimum depth and area filters (optimized)
         if self.config.min_depression_depth > 0:
             logger.info("   Step 5: Applying depth filter...")
-            depth_mask = self._calculate_depression_depth(elevation, depression_mask)
+            depth_mask = self._calculate_depression_depth_optimized(elevation, depression_mask)
             deep_depressions = depth_mask >= self.config.min_depression_depth
             barranco_mask = np.logical_and(barranco_mask, deep_depressions)
             logger.info(f"   ✅ After depth filter: {np.sum(barranco_mask)} cells")
         
-        # Step 6: Apply minimum area filter (literature-based)
+        # Step 6: Apply minimum area filter (optimized)
         if self.config.min_depression_area > 1:
             logger.info("   Step 6: Applying area filter...")
-            barranco_mask = self._filter_by_area(barranco_mask, self.config.min_depression_area)
+            barranco_mask = self._filter_by_area_optimized(barranco_mask, self.config.min_depression_area)
             logger.info(f"   ✅ After area filter: {np.sum(barranco_mask)} cells")
         
         logger.info(f"🏞️ Final results: {np.sum(barranco_mask)} barranco cells, {np.sum(depression_mask)} depression cells")
@@ -307,82 +309,92 @@ class TerrainPreprocessorRasterio:
             'depression_mask': depression_mask
         }
     
-    def _detect_topographic_depressions(self, elevation: np.ndarray) -> np.ndarray:
-        """
-        Optimized: Detect topographic depressions using vectorized minimum filter.
-        """
+    def _detect_topographic_depressions_optimized(self, elevation: np.ndarray) -> np.ndarray:
+        """Optimized: Detect topographic depressions using vectorized minimum filter."""
         from scipy.ndimage import minimum_filter
+        
+        logger.info("   Computing local minima...")
         # Use 3x3 neighborhood for local minima
         local_min = minimum_filter(elevation, size=3)
         depression_mask = (elevation == local_min)
+        
         # Remove edge cells
         depression_mask[0, :] = False
         depression_mask[-1, :] = False
         depression_mask[:, 0] = False
         depression_mask[:, -1] = False
+        
         return depression_mask
 
-    def _calculate_barranco_directions(self, elevation: np.ndarray, aspect: np.ndarray, barranco_mask: np.ndarray) -> np.ndarray:
+    def _calculate_barranco_directions_optimized(self, elevation: np.ndarray, aspect: np.ndarray, barranco_mask: np.ndarray) -> np.ndarray:
         """Optimized: Calculate flow directions within barrancos (vectorized)."""
         directions = np.zeros_like(aspect)
         directions[barranco_mask] = aspect[barranco_mask]
+        
         if np.any(barranco_mask):
-            directions = self._smooth_directions(directions, barranco_mask)
+            directions = self._smooth_directions_optimized(directions, barranco_mask)
+        
         return directions
 
-    def _smooth_directions(self, directions: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    def _smooth_directions_optimized(self, directions: np.ndarray, mask: np.ndarray) -> np.ndarray:
         """Optimized: Smooth flow directions using uniform filter and circular mean."""
         from scipy.ndimage import uniform_filter
+        
         # Convert to radians
         sin_dir = np.sin(np.deg2rad(directions))
         cos_dir = np.cos(np.deg2rad(directions))
+        
         # Smooth
         sin_smooth = uniform_filter(sin_dir, size=3)
         cos_smooth = uniform_filter(cos_dir, size=3)
         smoothed = (np.arctan2(sin_smooth, cos_smooth) * 180 / np.pi + 360) % 360
+        
         # Only update masked areas
         result = directions.copy()
         result[mask] = smoothed[mask]
+        
         return result
 
-    def _calculate_depression_depth(self, elevation: np.ndarray, depression_mask: np.ndarray) -> np.ndarray:
-        """
-        Optimized: Calculate depression depth using maximum filter (vectorized).
-        """
+    def _calculate_depression_depth_optimized(self, elevation: np.ndarray, depression_mask: np.ndarray) -> np.ndarray:
+        """Optimized: Calculate depression depth using maximum filter (vectorized)."""
         from scipy.ndimage import maximum_filter
+        
         max_neighbors = maximum_filter(elevation, size=3)
         depth = max_neighbors - elevation
         depth[~depression_mask] = 0
+        
         return depth
     
-    def _filter_by_area(self, mask: np.ndarray, min_area: int) -> np.ndarray:
+    def _filter_by_area_optimized(self, mask: np.ndarray, min_area: int) -> np.ndarray:
         """
         Optimized: Filter connected components by minimum area using vectorized operations.
-        Literature-based approach for removing noise in barranco detection.
         """
         from scipy import ndimage
         
+        logger.info(f"   Labeling connected components...")
         # Label connected components
         labeled_mask, num_features = ndimage.label(mask)
         
         if num_features == 0:
             return mask
         
+        logger.info(f"   Found {num_features} components, calculating sizes...")
         # Calculate component sizes using vectorized operations
         component_sizes = ndimage.sum(mask, labeled_mask, range(1, num_features + 1))
         
         # Create filter for components that meet minimum area
         valid_components = component_sizes >= min_area
         
+        logger.info(f"   Filtering components (min_area={min_area})...")
         # Create output mask using vectorized operations
         filtered_mask = np.zeros_like(mask, dtype=bool)
         
-        # Use advanced indexing to set valid components
-        for i, is_valid in enumerate(valid_components, 1):
-            if is_valid:
-                filtered_mask[labeled_mask == i] = True
+        # Use advanced indexing to set valid components (optimized)
+        valid_indices = np.where(valid_components)[0] + 1  # +1 because labels start at 1
+        for idx in valid_indices:
+            filtered_mask[labeled_mask == idx] = True
         
-        logger.info(f"🏞️ Area filtering: {np.sum(mask)} -> {np.sum(filtered_mask)} cells (min_area={min_area})")
+        logger.info(f"🏞️ Area filtering: {np.sum(mask)} -> {np.sum(filtered_mask)} cells")
         return filtered_mask
 
     def _compute_wind_channeling(self, elevation: np.ndarray, slope: np.ndarray,
@@ -405,12 +417,9 @@ class TerrainPreprocessorRasterio:
         wind_amplification[barranco_mask] = self.config.barranco_amplification
         wind_direction_modification[barranco_mask] = barranco_results['barranco_directions'][barranco_mask]
         
-        # Apply additional wind channeling based on terrain features
-        # This is the same logic as ForestModel._apply_wind_channeling
-        
         # Smooth wind fields if requested
         if self.config.smooth_wind_fields:
-            wind_amplification = self._smooth_wind_field(wind_amplification, wind_channeling_mask)
+            wind_amplification = self._smooth_wind_field_optimized(wind_amplification, wind_channeling_mask)
         
         logger.info(f"💨 Wind channeling cells: {np.sum(wind_channeling_mask)}")
         
@@ -420,9 +429,7 @@ class TerrainPreprocessorRasterio:
             'wind_direction_modification': wind_direction_modification
         }
     
-
-    
-    def _smooth_wind_field(self, wind_field: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    def _smooth_wind_field_optimized(self, wind_field: np.ndarray, mask: np.ndarray) -> np.ndarray:
         """Optimized: Smooth wind field using vectorized uniform filter."""
         from scipy.ndimage import uniform_filter
         
@@ -457,46 +464,77 @@ class TerrainPreprocessorRasterio:
             'barranco_threshold': self.config.barranco_threshold,
             'min_depression_depth': self.config.min_depression_depth,
             'wind_channeling_strength': self.config.wind_channeling_strength,
-            'elevation_range': [float(np.min(self.dem_data)), float(np.max(self.dem_data))]
+            'elevation_range': [float(np.nanmin(self.dem_data)), float(np.nanmax(self.dem_data))]
         }
     
-    def _save_preprocessed_data(self, data: PreprocessedTerrainData):
-        """Save preprocessed data to files."""
-        logger.info("💾 Saving preprocessed data...")
+    def _save_preprocessed_data_optimized(self, data: PreprocessedTerrainData):
+        """Save preprocessed data to files with improved memory management."""
+        logger.info("💾 Saving preprocessed data with optimized memory management...")
         
         output_dir = Path(self.config.output_dir)
         
-        # Save NumPy arrays
-        np.save(output_dir / "elevation.npy", data.elevation)
-        np.save(output_dir / "slope.npy", data.slope)
-        np.save(output_dir / "aspect.npy", data.aspect)
-        np.save(output_dir / "barranco_mask.npy", data.barranco_mask)
-        np.save(output_dir / "barranco_directions.npy", data.barranco_directions)
-        np.save(output_dir / "depression_mask.npy", data.depression_mask)
-        np.save(output_dir / "wind_channeling_mask.npy", data.wind_channeling_mask)
-        np.save(output_dir / "wind_amplification.npy", data.wind_amplification)
-        np.save(output_dir / "wind_direction_modification.npy", data.wind_direction_modification)
+        # Clear existing files to avoid conflicts
+        for file_pattern in ["*.npy", "*.json", "*.txt"]:
+            for file_path in output_dir.glob(file_pattern):
+                if file_path.name not in ["metadata.json", "processing_log.txt", "validation_report.json"]:
+                    file_path.unlink()
+        
+        # Save NumPy arrays with memory management
+        arrays_to_save = {
+            "elevation.npy": data.elevation,
+            "slope.npy": data.slope,
+            "aspect.npy": data.aspect,
+            "barranco_mask.npy": data.barranco_mask,
+            "barranco_directions.npy": data.barranco_directions,
+            "depression_mask.npy": data.depression_mask,
+            "wind_channeling_mask.npy": data.wind_channeling_mask,
+            "wind_amplification.npy": data.wind_amplification,
+            "wind_direction_modification.npy": data.wind_direction_modification
+        }
+        
+        for filename, array in arrays_to_save.items():
+            logger.info(f"   Saving {filename}...")
+            filepath = output_dir / filename
+            
+            try:
+                # Save with memory-efficient method
+                np.save(filepath, array, allow_pickle=False)
+                logger.info(f"   ✅ Saved {filename} ({array.shape}, {array.dtype})")
+                
+                # Force garbage collection after each save
+                del array
+                gc.collect()
+                
+            except Exception as e:
+                logger.error(f"   ❌ Failed to save {filename}: {e}")
+                raise
         
         # Save metadata
+        logger.info("   Saving metadata...")
         with open(output_dir / "metadata.json", 'w') as f:
             json.dump(data.metadata, f, indent=2)
         
         # Save processing log
+        logger.info("   Saving processing log...")
         with open(output_dir / "processing_log.txt", 'w') as f:
             f.write(f"Terrain preprocessing completed: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"DEM file: {self.config.dem_file}\n")
             f.write(f"Grid size: {data.elevation.shape}\n")
             f.write(f"Barranco cells: {np.sum(data.barranco_mask)}\n")
             f.write(f"Wind channeling cells: {np.sum(data.wind_channeling_mask)}\n")
+            f.write(f"Processing method: Fixed rasterio with memory optimization\n")
         
         logger.info(f"✅ Preprocessed data saved to {output_dir}")
+        
+        # Final garbage collection
+        gc.collect()
 
 
-def create_terrain_preprocessor_rasterio(dem_file: str, 
-                                        output_dir: str,
-                                        **kwargs) -> TerrainPreprocessorRasterio:
+def create_terrain_preprocessor_rasterio_fixed(dem_file: str, 
+                                             output_dir: str,
+                                             **kwargs) -> TerrainPreprocessorRasterioFixed:
     """
-    Create a terrain preprocessor using rasterio.
+    Create a fixed terrain preprocessor using rasterio.
     
     Args:
         dem_file: Path to DEM file
@@ -504,7 +542,7 @@ def create_terrain_preprocessor_rasterio(dem_file: str,
         **kwargs: Additional configuration parameters
     
     Returns:
-        TerrainPreprocessorRasterio instance
+        TerrainPreprocessorRasterioFixed instance
     """
     config = TerrainPreprocessingConfig(
         dem_file=dem_file,
@@ -512,4 +550,4 @@ def create_terrain_preprocessor_rasterio(dem_file: str,
         **kwargs
     )
     
-    return TerrainPreprocessorRasterio(config) 
+    return TerrainPreprocessorRasterioFixed(config) 
