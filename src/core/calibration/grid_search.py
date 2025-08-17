@@ -248,7 +248,7 @@ class SerializationOptimizer:
                 # Create minimal copy of each section
                 if isinstance(config[key], dict):
                     optimized[key] = self._minimize_dict(config[key])
-            else:
+                else:
                     optimized[key] = config[key]
         
         # Add serialization metadata
