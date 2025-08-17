@@ -86,7 +86,7 @@ class ModelConfig:
     # === MEMORY AND PERFORMANCE ===
     memory_optimization_level: int = 0
     use_disk_storage: bool = False
-    use_sparse_storage: bool = Truegit
+    use_sparse_storage: bool = True
     disk_storage_dir: str = "temp_simulation_states"
     bytes_per_cell: int = 10
     tile_size: int = 200
