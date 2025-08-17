@@ -353,6 +353,9 @@ _serialization_optimizer = None
 # Global target data for multiprocessing
 _global_target_data = None
 
+# Shared memory target data
+_shared_target_data = None
+
 def get_serialization_optimizer() -> SerializationOptimizer:
     """Get the global serialization optimizer instance."""
     global _serialization_optimizer
@@ -369,6 +372,54 @@ def get_global_target_data() -> Optional[Dict[str, Any]]:
     """Get global target data for multiprocessing access."""
     global _global_target_data
     return _global_target_data
+
+def set_shared_target_data(target_data: Dict[str, Any]):
+    """Set target data in shared memory for multiprocessing access."""
+    global _shared_target_data
+    try:
+        import pickle
+        import tempfile
+        import os
+        
+        # Create a temporary file for shared target data
+        temp_dir = tempfile.gettempdir()
+        target_file = os.path.join(temp_dir, "shared_target_data.pkl")
+        
+        # Serialize target data to file
+        with open(target_file, 'wb') as f:
+            pickle.dump(target_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        _shared_target_data = target_file
+        logger.info(f"📦 Set shared target data in {target_file} (size: {os.path.getsize(target_file):,} bytes)")
+        
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to set shared target data: {e}")
+        _shared_target_data = None
+
+def get_shared_target_data() -> Optional[Dict[str, Any]]:
+    """Get target data from shared memory."""
+    global _shared_target_data
+    if _shared_target_data is None:
+        return None
+    
+    try:
+        import pickle
+        import os
+        
+        if not os.path.exists(_shared_target_data):
+            logger.warning(f"⚠️  Shared target data file not found: {_shared_target_data}")
+            return None
+        
+        # Load target data from file
+        with open(_shared_target_data, 'rb') as f:
+            target_data = pickle.load(f)
+        
+        logger.debug(f"📦 Loaded shared target data from {_shared_target_data}")
+        return target_data
+        
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to load shared target data: {e}")
+        return None
 
 class GridSearchCalibrator:
     """
@@ -526,9 +577,9 @@ class GridSearchCalibrator:
             # Run simulation
             simulation_result = engine.run_simulation()
             
-            # Get target data from global storage if not provided
+            # Get target data from shared memory if not provided
             if target_data is None:
-                target_data = get_global_target_data()
+                target_data = get_shared_target_data()
                 if target_data is None:
                     logger.warning("No target data available - using synthetic target")
             
@@ -609,10 +660,10 @@ class GridSearchCalibrator:
             GridSearchResults object
         """
         try:
-            # Set global target data for multiprocessing access
+            # Set target data for multiprocessing access using shared memory
             if target_data is not None:
-                set_global_target_data(target_data)
-                logger.info(f"📦 Set global target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
+                set_shared_target_data(target_data)
+                logger.info(f"📦 Set shared target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
             
             logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
             self.start_time = time.time()  # Store start time for ETA calculations
