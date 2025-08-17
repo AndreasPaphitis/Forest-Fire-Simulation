@@ -339,7 +339,7 @@ class FireSimulationEngine:
         total_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
         
         if total_cells > 100_000_000:  # 100M+ cells - use memory-efficient scanning
-                                logger.info(f"🔍 Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
+            logger.info(f"🔍 Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
             
             # For memory-optimized sparse models, check if they track active cells
             if (hasattr(self.forest_model, 'use_sparse_storage') and 
