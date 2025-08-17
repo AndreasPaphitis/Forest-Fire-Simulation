@@ -350,12 +350,25 @@ class SerializationOptimizer:
 # Global serialization optimizer
 _serialization_optimizer = None
 
+# Global target data for multiprocessing
+_global_target_data = None
+
 def get_serialization_optimizer() -> SerializationOptimizer:
     """Get the global serialization optimizer instance."""
     global _serialization_optimizer
     if _serialization_optimizer is None:
         _serialization_optimizer = SerializationOptimizer()
     return _serialization_optimizer
+
+def set_global_target_data(target_data: Dict[str, Any]):
+    """Set global target data for multiprocessing access."""
+    global _global_target_data
+    _global_target_data = target_data
+
+def get_global_target_data() -> Optional[Dict[str, Any]]:
+    """Get global target data for multiprocessing access."""
+    global _global_target_data
+    return _global_target_data
 
 class GridSearchCalibrator:
     """
@@ -513,6 +526,12 @@ class GridSearchCalibrator:
             # Run simulation
             simulation_result = engine.run_simulation()
             
+            # Get target data from global storage if not provided
+            if target_data is None:
+                target_data = get_global_target_data()
+                if target_data is None:
+                    logger.warning("No target data available - using synthetic target")
+            
             # Calculate objective value
             objective_result = self.objective_function(simulation_result, target_data)
             
@@ -590,6 +609,11 @@ class GridSearchCalibrator:
             GridSearchResults object
         """
         try:
+            # Set global target data for multiprocessing access
+            if target_data is not None:
+                set_global_target_data(target_data)
+                logger.info(f"📦 Set global target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
+            
             logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
             self.start_time = time.time()  # Store start time for ETA calculations
             
