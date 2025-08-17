@@ -2663,6 +2663,21 @@ class MemoryOptimizedForestModel(ForestModel):
         self.history = []
         self.debug = kwargs.get('debug', False)
         
+        # CRITICAL FIX: Initialize spread_stats attribute that's expected by simulation engine
+        self.spread_stats = {
+            'horizontal_spread': 0,
+            'vertical_spread': 0,
+            'ember_spread': 0,
+            'ember_ignitions': 0,
+            'total_ignitions': 0,
+            'wind_assisted_spread': 0,
+            'slope_assisted_spread': 0,
+            'barranco_assisted_spread': 0
+        }
+        
+        # Initialize fire history tracking
+        self.fire_history = []
+        
         # Add property accessors for fuel_load and state to maintain compatibility
         self._setup_sparse_property_accessors()
         
@@ -2891,126 +2906,3366 @@ class MemoryOptimizedForestModel(ForestModel):
                 self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
                 self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
 
-
-class MinimalForestModelStub(BaseForestModel):
-    """
-    Minimal stub implementation of ForestModel for testing and fallback scenarios,
-    inheriting from the BaseForestModel in this module.
-    """
-    
-    def __init__(self, 
-                 grid_size: Union[int, Tuple[int, int]] = (100, 100), 
-                 num_layers: int = 10, 
-                 layer_height_meters: float = 2.0, 
-                 model_resolution: float = 5.0,
-                 initial_fuel_load: float = 0.0,
-                 config: Optional[ModelConfig] = None,
-                 **kwargs):
-        """
-        Initialize a minimal forest model stub.
-        """
-        all_params = {**kwargs, 'config': config, 'grid_size': grid_size, 'num_layers': num_layers, 
-                      'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
-                      'initial_fuel_load': initial_fuel_load}
-        super().__init__(**all_params)
-    
-    def run_simulation(self, max_steps=100, store_full_states=False, **kwargs):
-        """
-        Stub for running simulation.
-        """
-        logger.info(f"MinimalForestModelStub: Would run simulation for {max_steps} steps")
-        self.current_step = max_steps
-        return {
-            'steps_completed': max_steps,
-            'active_cells': 0,
-            'burned_cells': 0,
-            'model': self
-        }
-    
-    def calculate_vertical_connectivity(self):
-        """
-        Stub for calculating vertical connectivity.
-        """
-        logger.info("MinimalForestModelStub: Calculate vertical connectivity")
-        # Ensure vertical_connectivity is initialized correctly for BaseForestModel expectations
-        if self.num_layers > 0:
-            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers -1 if self.num_layers > 0 else 0), dtype=np.float32) * 0.5
-        else: # Handle case of 0 layers if it can occur
-            self.vertical_connectivity = np.empty((self.width, self.height, 0), dtype=np.float32)
-        return self.vertical_connectivity
-
-
-def create_forest_model(model_type='standard', **kwargs):
-    """
-    Factory function to create the appropriate forest model instance.
-    
-    This function centralizes model creation decisions and ensures the right type
-    of model is created based on simulation requirements.
-    
-    Args:
-        model_type: Type of model to create ('standard', 'memory_optimized', 'minimal')
-        **kwargs: Parameters to pass to the model constructor
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
         
-    Returns:
-        An instance of the appropriate forest model class
-    """
-    logger.info(f"Creating {model_type} forest model")
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
     
-    # Resolve configuration to get parameters like num_layers, grid_size
-    config_arg = kwargs.get('config')
-    if isinstance(config_arg, ModelConfig):
-        current_config = config_arg
-    elif isinstance(config_arg, dict):
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
         try:
-            current_config = ModelConfig(**config_arg)
-        except TypeError:
-            logger.warning("Dict passed as config to create_forest_model is not a valid ModelConfig. Using global.")
-            current_config = get_global_config() if get_global_config is not None else None
-    else:
-        current_config = get_global_config() if get_global_config is not None else None
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
 
-    # Get parameters from kwargs first, then from resolved config, then literals
-    grid_size_val = kwargs.get('grid_size', getattr(current_config, 'grid_size', 100) if current_config else 100)
-    num_layers_val = kwargs.get('num_layers', getattr(current_config, 'num_layers', 10) if current_config else 10)
-    
-    # Calculate memory requirements (ensure calculate_memory_requirements is available)
-    memory_estimate_mb = 0
-    try:
-        # Ensure grid_size_val is a tuple for calculate_memory_requirements if it expects one
-        gs_for_mem_calc = grid_size_val
-        if not isinstance(gs_for_mem_calc, tuple):
-            gs_for_mem_calc = (gs_for_mem_calc, gs_for_mem_calc)
-        
-        # Pass other relevant params from config if available
-        mem_calc_params = {
-            'memory_optimization_level': getattr(current_config, 'memory_optimization_level', 0) if current_config else 0,
-            'store_full_states': getattr(current_config, 'store_full_states', True) if current_config else True,
-            'use_differential_history': getattr(current_config, 'use_differential_history', False) if current_config else False,
-            'save_interval': getattr(current_config, 'save_interval', 5) if current_config else 5,
-            'bytes_per_cell': getattr(current_config, 'bytes_per_cell', 10) if current_config else 10
-        }
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
 
-        mem_req = calculate_memory_requirements(grid_size=gs_for_mem_calc, num_layers=num_layers_val, **mem_calc_params)
-        memory_estimate_mb = mem_req.get('total_estimated_in_memory_mb', mem_req.get('total_mb', 0)) # check for different possible keys
-    except (NameError, TypeError) as e: # If calculate_memory_requirements not imported or bad args
-        logger.warning(f"Could not estimate memory requirements in create_forest_model: {e}. Using simple estimate.")
-        # Simple memory estimate if shared utilities not available or fail
-        gs_x, gs_y = (grid_size_val, grid_size_val) if not isinstance(grid_size_val, tuple) else grid_size_val
-        cells = gs_x * gs_y * num_layers_val
-        memory_estimate_mb = cells * (getattr(current_config, 'bytes_per_cell', 10) if current_config else 10) / (1024 * 1024)
-    
-    # Auto-select memory optimized for large grids
-    if model_type == 'auto':
-        if memory_estimate_mb > 1000:  # 1GB threshold
-            model_type = 'memory_optimized'
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
         else:
-            model_type = 'standard'
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
     
-    # Create the appropriate model type
-    if model_type == 'memory_optimized':
-        logger.info("Creating MemoryOptimizedForestModel for memory-efficient processing")
-        return MemoryOptimizedForestModel(**kwargs)
-    elif model_type == 'minimal' or model_type == 'stub':
-        return MinimalForestModelStub(**kwargs)
-    else:  # standard
-        return ForestModel(**kwargs) 
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+    # Add property accessors for fuel_load and state to maintain compatibility
+    def _setup_sparse_property_accessors(self):
+        """Set up property accessors to maintain API compatibility when initialized directly as sparse."""
+        # Override the fuel_load and state properties to work with sparse storage
+        # This ensures compatibility with code that expects dense arrays
+        
+        # Mark that we're using sparse storage from the start
+        self.use_sparse_storage = True
+        self._sparse_initialized = True
+        
+        # The existing property accessors in MemoryOptimizedForestModel should handle this
+
+    def _convert_dense_to_sparse_fuel(self, dense_array):
+        """Convert dense fuel array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.fuel_load_layers[z] = lil_matrix(dense_array[:, :, z])
+    
+    def _convert_dense_to_sparse_state(self, dense_array):
+        """Convert dense state array to sparse storage."""
+        for z in range(self.num_layers):
+            if z < dense_array.shape[2]:
+                self.state_layers[z] = lil_matrix(dense_array[:, :, z].astype(np.int8))
+    
+    def _initialize_sparse_storage(self):
+        """
+        Initialize sparse storage for fuel_load, state, etc.
+        This method is called if use_sparse_storage is True and SciPy is available.
+        """
+        if not HAS_SCIPY:
+            # CRITICAL: For massive grids, SciPy is REQUIRED - no dense fallback allowed
+            if hasattr(self, '_force_sparse_only') and self._force_sparse_only:
+                raise RuntimeError(
+                    f"🚨 CRITICAL ERROR: SciPy required for massive grid ({self.width}x{self.height}x{self.num_layers})\n"
+                    f"   Dense fallback FORBIDDEN - would cause OOM\n"
+                    f"   Install SciPy: pip install scipy"
+                )
+            
+            logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
+            # Fallback to dense arrays if SciPy is not available.
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
+
+            # Store dense arrays with different names to avoid conflicts
+            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self._state_dense = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            self.use_sparse_storage = False # Ensure this flag is updated
+            logger.info("Fell back to dense storage due to SciPy unavailability.")
+            return
+
+        logger.info(f"Initializing sparse storage for grid {self.width}x{self.height}x{self.num_layers}")
+        
+        # Store original dense arrays before converting to sparse
+        # Access the base class attributes directly to avoid triggering properties
+        original_fuel_load = None
+        original_state = None
+        if hasattr(super(MemoryOptimizedForestModel, self), 'fuel_load'):
+            # Get the actual dense array from the base class, not the property
+            base_fuel_load = object.__getattribute__(self, 'fuel_load')
+            if isinstance(base_fuel_load, np.ndarray):
+                original_fuel_load = base_fuel_load.copy()
+        if hasattr(super(MemoryOptimizedForestModel, self), 'state'):
+            # Get the actual dense array from the base class, not the property  
+            base_state = object.__getattribute__(self, 'state')
+            if isinstance(base_state, np.ndarray):
+                original_state = base_state.copy()
+        
+        # Initialize sparse storage lists
+        self.fuel_load_layers = []
+        self.state_layers = []
+
+        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        
+        for z in range(self.num_layers):
+            # Initialize fuel load layer
+            if original_fuel_load is not None:
+                # Convert existing data to sparse
+                fuel_layer = lil_matrix(original_fuel_load[:, :, z])
+            else:
+                # Create new EMPTY sparse layer - don't fill with defaults to save memory
+                # DON'T fill with default values - this defeats the purpose of sparse storage
+                # Default values will be returned by the accessor when cells are not set
+                fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
+            self.fuel_load_layers.append(fuel_layer)
+
+            # Initialize state layer
+            if original_state is not None:
+                # Convert existing data to sparse
+                state_layer = lil_matrix(original_state[:, :, z].astype(np.int8))
+            else:
+                # Create new sparse layer (starts as zeros, which is efficient for sparse)
+                state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
+            self.state_layers.append(state_layer)
+
+        # Store references to original dense arrays (already copied above)
+        self._original_fuel_load = original_fuel_load
+        self._original_state = original_state
+        # Don't delete the base class attributes - let the property handle access
+        
+        logger.info(f"Sparse storage initialized. {self.num_layers} layers converted to sparse matrices.")
+        
+        # Calculate and log memory savings
+        try:
+            total_sparse_bytes = 0
+            for layer in self.fuel_load_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            for layer in self.state_layers:
+                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+
+            sparse_size_mb = total_sparse_bytes / (1024**2)
+            
+            dense_fuel_bytes = self.width * self.height * self.num_layers * 4  # float32
+            dense_state_bytes = self.width * self.height * self.num_layers * 1  # int8
+            dense_size_mb = (dense_fuel_bytes + dense_state_bytes) / (1024**2)
+
+            logger.info(f"Memory usage: Dense={dense_size_mb:.1f}MB, Sparse={sparse_size_mb:.1f}MB")
+            if dense_size_mb > 0:
+                reduction_percent = (1 - sparse_size_mb / dense_size_mb) * 100
+                logger.info(f"Memory reduction: {reduction_percent:.1f}%")
+        except Exception as e:
+            logger.warning(f"Could not calculate memory savings: {e}")
+
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
+    
+    @property
+    def state(self):
+        """Access state data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            return SparseLayerAccessor(self.state_layers, self.width, self.height, self.num_layers, default_value=0)
+        else:
+            # Access the dense storage or create default array
+            if hasattr(self, '_state_dense'):
+                return self._state_dense
+            else:
+                # Create a default state array if nothing exists
+                return np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    @state.setter
+    def state(self, value):
+        """Set state data."""
+        if self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_state(value)
+        else:
+            self._state_dense = value
+    
+    def set_fuel_load_tile(self, x_start, x_end, y_start, y_end, layer_idx, data):
+        """Set fuel load data for a tile region - optimized for sparse storage."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Use the SparseLayerAccessor's tile method
+            fuel_accessor = self.fuel_load
+            if hasattr(fuel_accessor, '
