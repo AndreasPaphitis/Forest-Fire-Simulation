@@ -421,6 +421,72 @@ def get_shared_target_data() -> Optional[Dict[str, Any]]:
         logger.warning(f"⚠️  Failed to load shared target data: {e}")
         return None
 
+def evaluate_worker_function(parameter_values: Dict[str, float], 
+                           target_data: Optional[Dict[str, Any]],
+                           config_dict: Dict[str, Any],
+                           objective_function_name: str) -> Dict[str, Any]:
+    """
+    Standalone worker function for multiprocessing evaluation.
+    
+    This function is designed to be picklable and run in separate processes.
+    """
+    try:
+        import time
+        import logging
+        from src.core.forest_model import ForestModel
+        from src.config.config_tools import ModelConfig
+        from src.core.fire_simulation_engine import FireSimulationEngine
+        
+        # Set up logging for worker process
+        logging.basicConfig(level=logging.INFO)
+        worker_logger = logging.getLogger(f"worker_{time.time()}")
+        
+        start_time = time.time()
+        
+        # Create forest model from config
+        forest_model = ForestModel(config=ModelConfig(**config_dict))
+        
+        # Create simulation engine
+        engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
+        
+        # Run simulation
+        simulation_result = engine.run_simulation()
+        
+        # Import and create objective function
+        if objective_function_name == "SpatialSimilarityObjective":
+            from src.core.calibration.objective_functions import SpatialSimilarityObjective
+            objective_function = SpatialSimilarityObjective()
+        else:
+            raise ValueError(f"Unknown objective function: {objective_function_name}")
+        
+        # Calculate objective value
+        objective_result = objective_function.evaluate(simulation_result, target_data or {})
+        
+        evaluation_time = time.time() - start_time
+        
+        # Return result as dictionary (more picklable)
+        return {
+            'parameter_values': parameter_values.copy(),
+            'objective_value': objective_result.value if objective_result.is_valid else 0.0,
+            'objective_components': objective_result.components,
+            'simulation_stats': simulation_result.get('stats', {}),
+            'evaluation_time': evaluation_time,
+            'is_valid': objective_result.is_valid,
+            'error_message': objective_result.error_message
+        }
+        
+    except Exception as e:
+        evaluation_time = time.time() - start_time
+        return {
+            'parameter_values': parameter_values.copy(),
+            'objective_value': 0.0,
+            'objective_components': {},
+            'simulation_stats': {},
+            'evaluation_time': evaluation_time,
+            'is_valid': False,
+            'error_message': str(e)
+        }
+
 class GridSearchCalibrator:
     """
     Grid search calibrator for systematic parameter space exploration.
@@ -815,6 +881,10 @@ class GridSearchCalibrator:
         # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
         combinations_list = list(self._generate_parameter_combinations())
         
+        # Prepare configuration and objective function name for workers
+        config_dict = self.config.create_config_variant({}).__dict__ if hasattr(self.config.create_config_variant({}), '__dict__') else self.config.create_config_variant({})
+        objective_function_name = self.objective_function.__class__.__name__
+        
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit jobs in batches to prevent resource contention
             batch_size = min(10, self.max_workers)
@@ -823,7 +893,7 @@ class GridSearchCalibrator:
             for i in range(0, len(combinations_list), batch_size):
                 batch = combinations_list[i:i + batch_size]
                 batch_futures = {
-                executor.submit(self._evaluate_single_combination, combo, target_data): combo
+                executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
                     for combo in batch
                 }
                 all_futures.extend(batch_futures.keys())
@@ -835,7 +905,10 @@ class GridSearchCalibrator:
             completed = 0
             for future in as_completed(all_futures):
                 try:
-                    result = future.result(timeout=300)  # 5 minute timeout per evaluation
+                    result_dict = future.result(timeout=300)  # 5 minute timeout per evaluation
+                    
+                    # Convert dictionary result to GridSearchResult
+                    result = GridSearchResult(**result_dict)
                     results.add_result(result)
                     completed += 1
                     
