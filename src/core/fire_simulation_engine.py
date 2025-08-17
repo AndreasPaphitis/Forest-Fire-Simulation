@@ -73,12 +73,23 @@ class FireSimulationEngine:
                  config: Optional[Union[Dict[str, Any], ModelConfig]] = None):
         
         # EMERGENCY FIX: Enable emergency mode for massive grids to prevent segfaults
-        self._emergency_mode = False
+        self.emergency_mode = False
+        
+        # Initialize logging statistics
+        self.log_stats = {
+            'total_burnouts': 0,
+            'burnout_batch_size': 0,
+            'last_progress_log': 0,
+            'progress_interval': 50,  # Log progress every 50 burnouts
+            'max_burnout_logs': 10,   # Only log first 10 individual burnouts
+            'step_start_time': None
+        }
+        
         if forest_model and hasattr(forest_model, 'width') and hasattr(forest_model, 'height'):
             total_cells = forest_model.width * forest_model.height * getattr(forest_model, 'num_layers', 1)
             # INCREASED THRESHOLD: With memory optimizations, we can handle 1B cells safely
             if total_cells > 1_000_000_000:  # 1B cells threshold (increased from 100M)
-                self._emergency_mode = True
+                self.emergency_mode = True
                 logger.warning(f"🚨 EMERGENCY MODE ENABLED for massive grid ({total_cells:,} cells)")
                 logger.warning("Sparse matrix operations will be bypassed to prevent segfaults")
             elif total_cells > 100_000_000:  # 100M-1B cells: Use optimized mode
@@ -328,7 +339,7 @@ class FireSimulationEngine:
         total_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
         
         if total_cells > 100_000_000:  # 100M+ cells - use memory-efficient scanning
-            logger.info(f"Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
+                                logger.info(f"🔍 Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
             
             # For memory-optimized sparse models, check if they track active cells
             if (hasattr(self.forest_model, 'use_sparse_storage') and 
@@ -346,7 +357,7 @@ class FireSimulationEngine:
                             0 <= z < self.forest_model.num_layers):
                             if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                 self.active_cells.add((x, y, z))
-                    logger.info(f"Used tracked ignition points: {len(self.active_cells)} initial cells")
+                    logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
                 else:
                     # Fallback: scan only center region where ignition typically occurs
                     center_x, center_y = self.forest_model.width // 2, self.forest_model.height // 2
@@ -372,8 +383,31 @@ class FireSimulationEngine:
                         if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                             self.active_cells.add((x, y, z))
         
-        logger.info(f"ENGINE DEBUG: Initial active_cells detected: {len(self.active_cells)} cells") # DEBUG MODIFIED
+        # Enhanced initial logging with grid information
+        total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
+        active_percentage = (len(self.active_cells) / total_grid_cells) * 100 if total_grid_cells > 0 else 0
+        
+        logger.info(f"🔥 FIRE SIMULATION INITIALIZED")
+        logger.info(f"   Grid Size: {self.forest_model.width} × {self.forest_model.height} × {self.forest_model.num_layers} = {total_grid_cells:,} total cells")
+        logger.info(f"   Initial Fire: {len(self.active_cells)} active cells ({active_percentage:.3f}% of grid)")
+        
+        if len(self.active_cells) > 0:
+            # Show first few ignition points
+            ignition_points = list(self.active_cells)[:5]
+            logger.info(f"   Ignition Points: {ignition_points}")
+            if len(self.active_cells) > 5:
+                logger.info(f"   ... and {len(self.active_cells) - 5} more ignition points")
 
+        # Reset logging statistics for new simulation
+        self.log_stats = {
+            'total_burnouts': 0,
+            'burnout_batch_size': 0,
+            'last_progress_log': 0,
+            'progress_interval': 50,  # Log progress every 50 burnouts
+            'max_burnout_logs': 10,   # Only log first 10 individual burnouts
+            'step_start_time': time.time()
+        }
+        
         # Initialize statistics
         stats = {
             'steps': 0,
@@ -392,8 +426,16 @@ class FireSimulationEngine:
                 logger.info(f"Fire extinguished after {step} steps")
                 break
             
-            # Process single simulation step
+            # Process single simulation step with timing
+            step_start = time.time()
             self._process_step()
+            step_time = time.time() - step_start
+            
+            # Log step processing statistics occasionally
+            if step % 10 == 0 and step > 0:  # Every 10 steps
+                avg_step_time = step_time
+                cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
+                logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
             
             # Update statistics for this step
             current_step_stats = {
@@ -412,9 +454,22 @@ class FireSimulationEngine:
                     logger.info(f"Simulation stopped by callback after {step + 1} steps.")
                     break
             
-            # Log progress at intervals
+            # Enhanced progress logging with percentages and rates
             if self.config.engine_logging_interval > 0 and (step + 1) % self.config.engine_logging_interval == 0:
-                logger.info(f"Step {step+1}/{sim_max_steps}: {len(self.active_cells)} active cells, {len(self.burned_cells)} burned cells")
+                total_affected = len(self.active_cells) + len(self.burned_cells)
+                total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
+                affected_percentage = (total_affected / total_grid_cells) * 100 if total_grid_cells > 0 else 0
+                
+                # Calculate spread rate (cells per step)
+                if step > 0:
+                    spread_rate = len(self.active_cells) / (step + 1)
+                else:
+                    spread_rate = len(self.active_cells)
+                
+                logger.info(f"📊 STEP {step+1}/{sim_max_steps}")
+                logger.info(f"   Active: {len(self.active_cells)} cells | Burned: {len(self.burned_cells)} cells")
+                logger.info(f"   Total Affected: {total_affected:,} cells ({affected_percentage:.3f}% of grid)")
+                logger.info(f"   Spread Rate: {spread_rate:.2f} active cells/step")
         
         # Update final statistics
         stats['steps'] = self.current_step + 1
@@ -422,8 +477,19 @@ class FireSimulationEngine:
         stats['total_burned_cells'] = len(self.burned_cells)
         stats['final_active_cells'] = len(self.active_cells)
         
-        logger.info(f"Simulation completed in {stats['runtime_seconds']:.2f} seconds")
-        logger.info(f"Final statistics: {stats['total_burned_cells']} cells burned, {stats['final_active_cells']} cells still burning")
+        # Enhanced final statistics with comprehensive summary
+        total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
+        final_affected_percentage = (stats['total_burned_cells'] / total_grid_cells) * 100 if total_grid_cells > 0 else 0
+        avg_cells_per_second = stats['total_burned_cells'] / stats['runtime_seconds'] if stats['runtime_seconds'] > 0 else 0
+        
+        logger.info(f"🏁 SIMULATION COMPLETED")
+        logger.info(f"   Runtime: {stats['runtime_seconds']:.2f} seconds ({stats['runtime_seconds']/60:.2f} minutes)")
+        logger.info(f"   Steps: {stats['steps']} simulation steps")
+        logger.info(f"   Final Results:")
+        logger.info(f"     • Burned Cells: {stats['total_burned_cells']:,} ({final_affected_percentage:.3f}% of grid)")
+        logger.info(f"     • Still Burning: {stats['final_active_cells']} cells")
+        logger.info(f"     • Peak Active: {stats['max_active_cells']} cells")
+        logger.info(f"   Performance: {avg_cells_per_second:.1f} cells burned/second")
         
         return {
             'stats': stats,
@@ -773,9 +839,26 @@ class FireSimulationEngine:
             # Check if burned out
             burned_out = new_fuel <= min_fuel
             
-            # Debug logging for first few burnouts
-            if burned_out and len(self.burned_cells) < 5:
-                logger.info(f"BURNOUT: Cell ({x},{y},{z}) burned out - fuel: {current_fuel:.2f} -> {new_fuel:.2f} (threshold: {min_fuel})")
+            # Enhanced burnout logging with batch processing
+            if burned_out:
+                self.log_stats['total_burnouts'] += 1
+                self.log_stats['burnout_batch_size'] += 1
+                
+                # Log first few individual burnouts for debugging
+                if self.log_stats['total_burnouts'] <= self.log_stats['max_burnout_logs']:
+                    logger.info(f"🔥 BURNOUT: Cell ({x},{y},{z}) - fuel: {current_fuel:.2f} → {new_fuel:.2f} (threshold: {min_fuel})")
+                
+                # Log batch progress every N burnouts
+                if self.log_stats['burnout_batch_size'] >= self.log_stats['progress_interval']:
+                    total_affected = len(self.burned_cells) + len(self.active_cells)
+                    total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
+                    affected_percentage = (total_affected / total_grid_cells) * 100 if total_grid_cells > 0 else 0
+                    
+                    logger.info(f"📈 BURNOUT BATCH: {self.log_stats['burnout_batch_size']} cells burned out")
+                    logger.info(f"   Total Burnouts: {self.log_stats['total_burnouts']} | Active: {len(self.active_cells)} | Affected: {affected_percentage:.3f}% of grid")
+                    
+                    # Reset batch counter
+                    self.log_stats['burnout_batch_size'] = 0
             
             return burned_out
             
