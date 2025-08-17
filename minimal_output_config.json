@@ -1,0 +1,8 @@
+{
+  "engine_logging_interval": 1000,
+  "verbose": false,
+  "save_intermediate_results": false,
+  "generate_plots": false,
+  "console_output": false,
+  "log_level": "WARNING"
+}

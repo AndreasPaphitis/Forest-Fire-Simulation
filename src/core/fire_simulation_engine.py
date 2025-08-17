@@ -372,7 +372,7 @@ class FireSimulationEngine:
                         if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                             self.active_cells.add((x, y, z))
         
-        logger.info(f"ENGINE DEBUG: Initial active_cells detected: {self.active_cells}") # DEBUG MODIFIED
+        logger.info(f"ENGINE DEBUG: Initial active_cells detected: {len(self.active_cells)} cells") # DEBUG MODIFIED
 
         # Initialize statistics
         stats = {
@@ -435,11 +435,11 @@ class FireSimulationEngine:
     
     def _process_step(self):
         """Process a single simulation step."""
-        logger.info(f"ENGINE DEBUG: Entering _process_step. Current active_cells: {self.active_cells}") # DEBUG MODIFIED
+        logger.info(f"ENGINE DEBUG: Entering _process_step. Current active_cells: {len(self.active_cells)} cells") # DEBUG MODIFIED
         # Copy active cells to avoid modification during iteration
         current_active_cells = list(self.active_cells)
         
-        logger.info(f"ENGINE DEBUG: _process_step: current_active_cells to iterate: {current_active_cells}") # DEBUG MODIFIED
+        logger.info(f"ENGINE DEBUG: _process_step: current_active_cells to iterate: {len(current_active_cells)} cells") # DEBUG MODIFIED
 
         # EMERGENCY FIX: Handle empty active cells to prevent segfaults
         if not current_active_cells:
