@@ -42,7 +42,7 @@ import json
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # Set NumExpr to 128 threads for HPC environments immediately
 os.environ['NUMEXPR_MAX_THREADS'] = '128'
