@@ -702,6 +702,11 @@ class GridSearchCalibrator:
                 for combo in combinations
             }
             
+            # IMMEDIATE STARTUP MESSAGE
+            logger.info(f"🚀 CALIBRATION STARTED: {self.total_combinations} simulations submitted to {self.max_workers} workers")
+            logger.info(f"📊 First results expected within 2-5 minutes...")
+            logger.info(f"⏱️  Estimated total time: {self.total_combinations * 2 / self.max_workers:.1f} minutes (conservative)")
+            
             # Collect results as they complete
             completed = 0
             for future in as_completed(future_to_params):
@@ -738,6 +743,25 @@ class GridSearchCalibrator:
                             eta_seconds = remaining * time_per_sim
                             eta_minutes = eta_seconds / 60
                             logger.info(f"   ⏱️  ETA: {eta_minutes:.1f} minutes")
+                        
+                        # Add visual progress bar
+                        progress_bar = print_progress_bar(completed, self.total_combinations)
+                        logger.info(f"   📊 {progress_bar}")
+                    
+                    # ADDITIONAL: More frequent progress updates for large combinations
+                    # Log every 1 completion for first 10, then every 2, then every 5
+                    if (completed <= 10 and completed > 0) or \
+                       (completed <= 30 and completed % 2 == 0) or \
+                       (completed > 30 and completed % 3 == 0):
+                        # Calculate ETA for quick update
+                        if completed > 0:
+                            elapsed_time = time.time() - self.start_time
+                            time_per_sim = elapsed_time / completed
+                            eta_seconds = remaining * time_per_sim
+                            eta_minutes = eta_seconds / 60
+                            logger.info(f"📊 Quick Update: {completed}/{self.total_combinations} completed ({progress:.1f}%) - ETA: {eta_minutes:.1f}min")
+                        else:
+                            logger.info(f"📊 Quick Update: {completed}/{self.total_combinations} completed ({progress:.1f}%)")
                 
                 except TimeoutError:
                     logger.error(f"❌ CRITICAL: Worker timeout - possible deadlock")
@@ -833,6 +857,14 @@ def create_progress_callback(verbose: bool = True) -> callable:
                   f"{status} (Objective: {obj_val:.4f})")
     
     return callback
+
+
+def print_progress_bar(completed: int, total: int, width: int = 50) -> str:
+    """Create a simple progress bar string."""
+    progress = completed / total
+    filled = int(width * progress)
+    bar = '█' * filled + '░' * (width - filled)
+    return f"[{bar}] {progress*100:.1f}% ({completed}/{total})"
 
 
 if __name__ == "__main__":
