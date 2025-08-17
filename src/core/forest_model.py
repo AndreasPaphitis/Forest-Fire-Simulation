@@ -377,7 +377,39 @@ class BaseForestModel(ABC):
             if hasattr(self, 'config') and self.config and hasattr(self.config, 'shared_terrain_info'):
                 from src.utils.shared_terrain import load_shared_terrain_data
                 shared_info = self.config.shared_terrain_info
-                terrain_data = load_shared_terrain_data(shared_info)
+                
+                # CRITICAL FIX: Use threading-based timeout instead of broken signal-based timeout
+                import threading
+                import time
+                
+                terrain_data = None
+                timeout_occurred = False
+                
+                def load_terrain_with_timeout():
+                    nonlocal terrain_data, timeout_occurred
+                    try:
+                        terrain_data = load_shared_terrain_data(shared_info)
+                    except Exception as e:
+                        logger.error(f"❌ Shared terrain loading failed: {e}")
+                        timeout_occurred = True
+                
+                # Start terrain loading in a separate thread with timeout
+                terrain_thread = threading.Thread(target=load_terrain_with_timeout)
+                terrain_thread.daemon = True
+                terrain_thread.start()
+                
+                # Wait for completion with timeout (30 seconds)
+                terrain_thread.join(timeout=30.0)
+                
+                if terrain_thread.is_alive():
+                    # Thread is still running - timeout occurred
+                    logger.error("❌ Shared terrain loading timed out after 30 seconds - falling back to individual loading")
+                    timeout_occurred = True
+                    return None
+                
+                if timeout_occurred:
+                    logger.warning("⚠️  Shared terrain loading failed - falling back to individual loading")
+                    return None
                 
                 # Mark as loaded to prevent future calls
                 if terrain_data:

@@ -299,6 +299,9 @@ Examples:
   # Force many workers (system will warn if unsafe)
   python run_tenerife_calibration.py --workers 60
   
+  # Bypass worker limits for high-memory systems
+  python run_tenerife_calibration.py --workers 70 --bypass-worker-limit
+  
   # 4-point grid search for higher accuracy
   python run_tenerife_calibration.py --grid-points 4 --workers 30
   
@@ -380,6 +383,12 @@ Examples:
         '--verbose',
         action='store_true',
         help='Enable verbose output'
+    )
+    
+    parser.add_argument(
+        '--bypass-worker-limit',
+        action='store_true',
+        help='Bypass automatic worker limit reduction for large grids (use with caution)'
     )
     
     parser.add_argument(
@@ -555,7 +564,8 @@ Examples:
             'memory_gb': args.memory,
             'workers': args.workers,
             'grid_search_points': args.grid_points,
-            'experiment_name': args.experiment_name
+            'experiment_name': args.experiment_name,
+            'bypass_worker_limit': args.bypass_worker_limit
         }
         
         # Add dynamic grid size configuration

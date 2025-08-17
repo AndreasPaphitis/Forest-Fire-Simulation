@@ -457,7 +457,8 @@ class TenerifeFirePerimeterCalibrator:
                  workers: int = 60,
                  grid_search_points: int = 3,
                  experiment_name: str = "tenerife_fire_calibration",
-                 grid_size: Optional[Tuple[int, int]] = None):
+                 grid_size: Optional[Tuple[int, int]] = None,
+                 bypass_worker_limit: bool = False):
         """
         Initialize Tenerife fire perimeter calibrator.
         
@@ -473,6 +474,7 @@ class TenerifeFirePerimeterCalibrator:
         self.grid_search_points = grid_search_points
         self.experiment_name = experiment_name
         self.grid_size = grid_size
+        self.bypass_worker_limit = bypass_worker_limit
         
         # Validate configuration
         if memory_gb not in [64, 128]:
@@ -1179,7 +1181,8 @@ class TenerifeFirePerimeterCalibrator:
             parameter_bounds=parameter_bounds,
             objective_function=objective_function,
             parallel_execution=True,
-            max_workers=self.workers
+            max_workers=self.workers,
+            bypass_worker_limit=self.bypass_worker_limit
         )
         
         # Create progress callback

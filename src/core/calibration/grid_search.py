@@ -752,20 +752,32 @@ class GridSearchCalibrator:
             logger.warning("⚠️  psutil not available - cannot check memory status")
         
         with executor_class(max_workers=self.max_workers) as executor:
-            # Submit all jobs
-            future_to_params = {
-                executor.submit(self._evaluate_single_combination, combo, target_data): combo
-                for combo in combinations
-            }
+            # CRITICAL FIX: Submit jobs in batches to prevent resource contention
+            batch_size = min(10, self.max_workers)  # Submit max 10 jobs at once
+            all_futures = []
             
-            # IMMEDIATE STARTUP MESSAGE
-            logger.info(f"🚀 CALIBRATION STARTED: {self.total_combinations} simulations submitted to {self.max_workers} workers")
+            logger.info(f"🚀 CALIBRATION STARTED: Submitting {self.total_combinations} simulations in batches of {batch_size}")
+            
+            # Submit jobs in batches to prevent overwhelming the executor
+            for i in range(0, len(combinations), batch_size):
+                batch = combinations[i:i + batch_size]
+                batch_futures = {
+                    executor.submit(self._evaluate_single_combination, combo, target_data): combo
+                    for combo in batch
+                }
+                all_futures.extend(batch_futures.keys())
+                
+                # Small delay between batches to prevent resource contention
+                if i + batch_size < len(combinations):
+                    time.sleep(0.1)
+            
+            logger.info(f"📊 All {len(all_futures)} jobs submitted successfully")
             logger.info(f"📊 First results expected within 2-5 minutes...")
             logger.info(f"⏱️  Estimated total time: {self.total_combinations * 2 / self.max_workers:.1f} minutes (conservative)")
             
             # Collect results as they complete
             completed = 0
-            for future in as_completed(future_to_params):
+            for future in all_futures:
                 try:
                     # CRITICAL FIX: Add timeout to prevent deadlock
                     timeout_seconds = min(self.config.simulation_timeout_minutes * 60, 600)  # Max 10 minutes

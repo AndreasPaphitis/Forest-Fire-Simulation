@@ -284,10 +284,14 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
     Returns:
         Dictionary of terrain arrays
     """
-    # CRITICAL FIX: Prevent multiple calls in the same process
-    if hasattr(load_shared_terrain_data, '_process_loaded') and load_shared_terrain_data._process_loaded:
+    # CRITICAL FIX: Use process ID for proper process-level caching
+    import os
+    process_id = os.getpid()
+    cache_key = f'_process_loaded_{process_id}'
+    
+    if hasattr(load_shared_terrain_data, cache_key) and getattr(load_shared_terrain_data, cache_key):
         logger.debug("🔄 Shared terrain already loaded in this process - returning cached data")
-        return getattr(load_shared_terrain_data, '_cached_data', {})
+        return getattr(load_shared_terrain_data, f'_cached_data_{process_id}', {})
     
     terrain_data = {}
     
@@ -300,37 +304,88 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
         shapes = shared_info['shapes']
         dtypes = shared_info['dtypes']
         
+        # CRITICAL FIX: Add timeout and retry logic to prevent deadlocks
+        import time
+        import threading
+        max_retries = 3
+        retry_delay = 1.0  # seconds
+        connection_timeout = 10.0  # seconds per connection
+        
         for terrain_name, shm_name in shared_names.items():
-            try:
-                # Connect to existing shared memory
-                shm = shared_memory.SharedMemory(name=shm_name)
-                
-                # Create numpy array view
-                shape = shapes[terrain_name]
-                dtype = np.dtype(dtypes[terrain_name])
-                
-                shared_array = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
-                
-                # CRITICAL FIX: Use shared memory directly instead of copying
-                # This prevents doubling memory usage per worker process
-                terrain_data[terrain_name] = shared_array
-                
-                # Keep reference to shared memory to prevent cleanup during use
-                terrain_data[f"_shm_ref_{terrain_name}"] = shm
-                
-            except Exception as e:
-                logger.warning(f"⚠️  Could not load shared terrain data for {terrain_name}: {e}")
+            shm = None
+            for attempt in range(max_retries):
+                try:
+                    # CRITICAL FIX: Add timeout to prevent indefinite hanging
+                    logger.debug(f"🔄 Attempting to connect to shared memory {terrain_name} (attempt {attempt + 1}/{max_retries})")
+                    
+                    # CRITICAL FIX: Use threading-based timeout for shared memory connection
+                    connection_success = False
+                    connection_error = None
+                    
+                    def connect_to_shared_memory():
+                        nonlocal shm, connection_success, connection_error
+                        try:
+                            shm = shared_memory.SharedMemory(name=shm_name)
+                            connection_success = True
+                        except Exception as e:
+                            connection_error = e
+                    
+                    # Start connection in separate thread with timeout
+                    conn_thread = threading.Thread(target=connect_to_shared_memory)
+                    conn_thread.daemon = True
+                    conn_thread.start()
+                    conn_thread.join(timeout=connection_timeout)
+                    
+                    if conn_thread.is_alive():
+                        # Connection timed out
+                        logger.warning(f"⚠️  Connection to {terrain_name} timed out after {connection_timeout}s")
+                        connection_error = TimeoutError(f"Connection to {terrain_name} timed out")
+                    
+                    if not connection_success:
+                        raise connection_error
+                    
+                    # Create numpy array view
+                    shape = shapes[terrain_name]
+                    dtype = np.dtype(dtypes[terrain_name])
+                    
+                    shared_array = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+                    
+                    # CRITICAL FIX: Use shared memory directly instead of copying
+                    # This prevents doubling memory usage per worker process
+                    terrain_data[terrain_name] = shared_array
+                    
+                    # Keep reference to shared memory to prevent cleanup during use
+                    terrain_data[f"_shm_ref_{terrain_name}"] = shm
+                    
+                    logger.debug(f"✅ Successfully connected to {terrain_name}")
+                    break  # Success - exit retry loop
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️  Attempt {attempt + 1} failed for {terrain_name}: {e}")
+                    if shm:
+                        try:
+                            shm.close()
+                        except:
+                            pass
+                        shm = None
+                    
+                    if attempt < max_retries - 1:
+                        logger.debug(f"🔄 Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        logger.error(f"❌ Failed to connect to {terrain_name} after {max_retries} attempts")
         
         # Only log once per process to reduce spam
-        if not hasattr(load_shared_terrain_data, '_logged_this_process'):
+        if not hasattr(load_shared_terrain_data, f'_logged_this_process_{process_id}'):
             # CRITICAL FIX: Count only actual terrain arrays, not shared memory references
             terrain_array_count = len([k for k in terrain_data.keys() if not k.startswith('_shm_ref_')])
             logger.info(f"✅ Loaded {terrain_array_count} terrain arrays from shared memory")
-            load_shared_terrain_data._logged_this_process = True
+            setattr(load_shared_terrain_data, f'_logged_this_process_{process_id}', True)
         
-        # CRITICAL FIX: Cache the data for this process to prevent reloading
-        load_shared_terrain_data._process_loaded = True
-        load_shared_terrain_data._cached_data = terrain_data
+        # CRITICAL FIX: Cache the data for this specific process to prevent reloading
+        setattr(load_shared_terrain_data, cache_key, True)
+        setattr(load_shared_terrain_data, f'_cached_data_{process_id}', terrain_data)
         
         return terrain_data
         
@@ -365,12 +420,16 @@ def cleanup_shared_terrain():
 
 def reset_shared_terrain_logging():
     """Reset shared terrain logging flags for fresh simulation runs."""
-    if hasattr(load_shared_terrain_data, '_logged_this_process'):
-        delattr(load_shared_terrain_data, '_logged_this_process')
-    if hasattr(load_shared_terrain_data, '_process_loaded'):
-        delattr(load_shared_terrain_data, '_process_loaded')
-    if hasattr(load_shared_terrain_data, '_cached_data'):
-        delattr(load_shared_terrain_data, '_cached_data')
+    import os
+    process_id = os.getpid()
+    
+    # Remove process-specific attributes
+    for attr_name in dir(load_shared_terrain_data):
+        if attr_name.startswith('_logged_this_process_') or attr_name.startswith('_process_loaded_') or attr_name.startswith('_cached_data_'):
+            try:
+                delattr(load_shared_terrain_data, attr_name)
+            except:
+                pass
     logger.debug("🔄 Shared terrain logging flags reset")
 
 
