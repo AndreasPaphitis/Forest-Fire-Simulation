@@ -339,6 +339,20 @@ class CalibrationConfig:
         """Get the list of parameters to be calibrated."""
         return self.calibration_parameters.copy()
     
+    @property
+    def grid_size(self) -> Optional[Tuple[int, int]]:
+        """Get grid size from base_config."""
+        if self.base_config is not None:
+            return getattr(self.base_config, 'grid_size', None)
+        return None
+    
+    @property
+    def num_layers(self) -> Optional[int]:
+        """Get number of layers from base_config."""
+        if self.base_config is not None:
+            return getattr(self.base_config, 'num_layers', None)
+        return None
+    
     def set_calibration_parameters(self, parameter_names: List[str]) -> None:
         """
         Set the list of parameters to be calibrated.
