@@ -208,7 +208,8 @@ class GridSearchCalibrator:
                  parameter_bounds: Dict[str, Any],
                  objective_function,
                  parallel_execution: bool = True,
-                 max_workers: Optional[int] = None):
+                 max_workers: Optional[int] = None,
+                 bypass_worker_limit: bool = False):
         """
         Initialize grid search calibrator.
         
@@ -223,6 +224,7 @@ class GridSearchCalibrator:
         self.parameter_bounds = parameter_bounds
         self.objective_function = objective_function
         self.parallel_execution = parallel_execution
+        self.bypass_worker_limit = bypass_worker_limit
         
         # MEMORY OPTIMIZATION: Reduce workers for large grids to prevent memory exhaustion
         if max_workers is None:
@@ -516,6 +518,13 @@ class GridSearchCalibrator:
             evaluation_time = time.time() - start_time
             logger.error(f"Evaluation failed: {e}")
             
+            # CRITICAL FIX: Clean up shared memory on error
+            try:
+                from src.utils.shared_terrain import reset_shared_terrain_logging
+                reset_shared_terrain_logging()
+            except Exception as cleanup_error:
+                logger.warning(f"Shared terrain cleanup failed: {cleanup_error}")
+            
             return GridSearchResult(
                 parameter_values=parameter_values.copy(),
                 objective_value=0.0,
@@ -668,12 +677,50 @@ class GridSearchCalibrator:
         if total_model_cells > 100_000_000:  # 100M+ cells
             # Use ProcessPoolExecutor for large grids to avoid GIL deadlocks
             executor_class = ProcessPoolExecutor
-            # CRITICAL: Reduce workers for ProcessPoolExecutor to prevent memory issues
-            adjusted_workers = min(self.max_workers, 20)  # Max 20 workers for large grids
-            if adjusted_workers < self.max_workers:
-                logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers} for ProcessPoolExecutor")
-                logger.warning(f"   This prevents memory issues with large forest models")
-            self.max_workers = adjusted_workers
+            
+            # RESPECT CLI CHOICE: Only apply limits if bypass is not enabled
+            if self.bypass_worker_limit:
+                # User explicitly wants to bypass all limits - respect their choice
+                logger.warning(f"🚨 BYPASSING WORKER LIMITS: Using all {self.max_workers} workers as requested")
+                logger.warning(f"   ⚠️  Monitor memory usage carefully - system may crash if insufficient memory")
+                # Keep self.max_workers unchanged - respect CLI choice
+            else:
+                # Apply safety limits only when bypass is not enabled
+                try:
+                    import psutil
+                    available_memory_gb = psutil.virtual_memory().available / (1024**3)
+                    total_memory_gb = psutil.virtual_memory().total / (1024**3)
+                    
+                    # Estimate memory per worker (conservative estimate)
+                    estimated_memory_per_worker_gb = 2.0  # Conservative estimate
+                    max_safe_workers = int(available_memory_gb * 0.8 / estimated_memory_per_worker_gb)
+                    
+                    # Use the minimum of: requested workers, memory-safe limit, and hard limit
+                    hard_limit = 70  # Maximum allowed workers for large grids
+                    adjusted_workers = min(self.max_workers, max_safe_workers, hard_limit)
+                    
+                    logger.info(f"🧠 Memory-based worker calculation:")
+                    logger.info(f"   Available memory: {available_memory_gb:.1f}GB")
+                    logger.info(f"   Estimated memory per worker: {estimated_memory_per_worker_gb:.1f}GB")
+                    logger.info(f"   Memory-safe limit: {max_safe_workers} workers")
+                    logger.info(f"   Hard limit: {hard_limit} workers")
+                    logger.info(f"   Final worker count: {adjusted_workers}")
+                    
+                    if adjusted_workers < self.max_workers:
+                        logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers} for ProcessPoolExecutor")
+                        logger.warning(f"   This prevents memory issues with large forest models")
+                        logger.info(f"   💡 To use all {self.max_workers} workers, add --bypass-worker-limit flag")
+                        self.max_workers = adjusted_workers
+                    
+                except ImportError:
+                    # Fallback to fixed limit if psutil not available
+                    adjusted_workers = min(self.max_workers, 50)  # Max 50 workers for large grids
+                    logger.warning("⚠️  psutil not available - using fixed worker limit of 50")
+                    if adjusted_workers < self.max_workers:
+                        logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers}")
+                        logger.info(f"   💡 To use all {self.max_workers} workers, add --bypass-worker-limit flag")
+                        self.max_workers = adjusted_workers
+            
             logger.info(f"🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid ({total_model_cells:,} cells) to avoid GIL deadlocks")
             logger.info(f"   ThreadPoolExecutor was causing GIL deadlocks with {self.max_workers} workers")
         else:
@@ -801,6 +848,14 @@ class GridSearchCalibrator:
                     )
                     results.add_result(failed_result)
                     completed += 1
+        
+        # CRITICAL FIX: Clean up shared memory after calibration
+        try:
+            from src.utils.shared_terrain import reset_shared_terrain_logging
+            reset_shared_terrain_logging()
+            logger.info("🧹 Shared terrain logging flags reset after calibration")
+        except Exception as cleanup_error:
+            logger.warning(f"Shared terrain cleanup failed: {cleanup_error}")
         
         return results
     

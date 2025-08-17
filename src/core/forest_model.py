@@ -573,7 +573,9 @@ class BaseForestModel(ABC):
                 if key.startswith('_shm_ref_'):
                     self._shared_terrain_refs[key] = value
             
-            logger.info(f"✅ Shared terrain data loaded into model: {len(shared_terrain_data)} arrays")
+            # CRITICAL FIX: Count only actual terrain arrays, not shared memory references
+            terrain_array_count = len([k for k in shared_terrain_data.keys() if not k.startswith('_shm_ref_')])
+            logger.info(f"✅ Shared terrain data loaded into model: {terrain_array_count} arrays")
             
         except Exception as e:
             logger.error(f"❌ Error loading shared terrain into model: {e}")
@@ -703,14 +705,15 @@ class BaseForestModel(ABC):
             cache_key = (wind_direction, wind_speed, terrain_effect_strength)
             if hasattr(self, '_wind_cache') and cache_key in self._wind_cache:
                 cached_wind = self._wind_cache[cache_key]
-                self.wind_direction = cached_wind['direction'].copy()
-                self.wind_speed = cached_wind['speed'].copy()
+                # CRITICAL FIX: Use references instead of copies to save memory
+                self.wind_direction = cached_wind['direction']  # Use reference, not copy
+                self.wind_speed = cached_wind['speed']          # Use reference, not copy
                 self.base_wind_direction = cached_wind['base_direction']
                 self.base_wind_speed = cached_wind['base_speed']
                 if 'barranco_mask' in cached_wind:
-                    self.barranco_mask = cached_wind['barranco_mask'].copy()
+                    self.barranco_mask = cached_wind['barranco_mask']  # Use reference, not copy
                 if 'depression_mask' in cached_wind:
-                    self.depression_mask = cached_wind['depression_mask'].copy()
+                    self.depression_mask = cached_wind['depression_mask']  # Use reference, not copy
                 logger.debug("Using cached terrain wind field")
                 return True
             
@@ -819,8 +822,8 @@ class BaseForestModel(ABC):
         
         # Create cache entry
         cache_entry = {
-            'direction': self.wind_direction.copy(),
-            'speed': self.wind_speed.copy(),
+            'direction': self.wind_direction,  # CRITICAL FIX: Use reference instead of copy
+            'speed': self.wind_speed,          # CRITICAL FIX: Use reference instead of copy
             'base_direction': self.base_wind_direction,
             'base_speed': self.base_wind_speed
         }
@@ -828,9 +831,9 @@ class BaseForestModel(ABC):
         # Add terrain-specific data if available
         if not uniform_only:
             if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
-                cache_entry['barranco_mask'] = self.barranco_mask.copy()
+                cache_entry['barranco_mask'] = self.barranco_mask  # CRITICAL FIX: Use reference instead of copy
             if hasattr(self, 'depression_mask') and self.depression_mask is not None:
-                cache_entry['depression_mask'] = self.depression_mask.copy()
+                cache_entry['depression_mask'] = self.depression_mask  # CRITICAL FIX: Use reference instead of copy
         
         # Add to cache
         self._wind_cache[cache_key] = cache_entry
