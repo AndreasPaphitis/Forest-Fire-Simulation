@@ -686,7 +686,14 @@ class GridSearchCalibrator:
                 self.max_workers = optimal_workers
         
         # Use ProcessPoolExecutor for large grids
-        total_cells = self.config.grid.width * self.config.grid.height * self.config.grid.num_layers
+        # Access grid through base_config
+        if hasattr(self.config, 'base_config') and hasattr(self.config.base_config, 'grid'):
+            grid_config = self.config.base_config.grid
+            total_cells = grid_config.width * grid_config.height * grid_config.num_layers
+        else:
+            # Fallback to default values
+            total_cells = 100_000_000  # Default threshold
+        
         if total_cells > 100_000_000:  # 100M cells
             logger.info("🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid to avoid GIL deadlocks")
             logger.info("   ThreadPoolExecutor was causing GIL deadlocks with many workers")
