@@ -48,8 +48,7 @@ from src.utils.shared_utilities import (
 from src.core.forest_model import (
     ForestModel,
     MemoryOptimizedForestModel, # Assuming this is the correct name from forest_model.py
-    create_forest_model,
-    MinimalForestModelStub
+    create_forest_model
 )
 from src.config.config_tools import get_global_config, ModelConfig # get_constant is deprecated
 

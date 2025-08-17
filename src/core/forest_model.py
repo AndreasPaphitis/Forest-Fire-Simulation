@@ -6309,7 +6309,4 @@ def create_forest_model(model_type: str = "standard", config=None, **kwargs):
     else:
         raise ValueError(f"Unknown model type: {model_type}. Use 'standard' or 'memory_optimized'")
 
- 
- c l a s s   M i n i m a l F o r e s t M o d e l S t u b : 
- 
- 
+
