@@ -828,6 +828,9 @@ class TenerifeFirePerimeterCalibrator:
             use_differential_history=True, # Only store changes
             use_sparse_storage=True,      # Sparse arrays for fuel/state
             
+            # REDUCED LOGGING FOR CALIBRATION
+            engine_logging_interval=50,   # Only log every 50 steps to reduce noise
+            
             # TENERIFE GEOGRAPHIC CONFIGURATION
             crs="EPSG:25828",            # UTM Zone 28N for Tenerife
             

@@ -435,11 +435,8 @@ class FireSimulationEngine:
     
     def _process_step(self):
         """Process a single simulation step."""
-        logger.info(f"ENGINE DEBUG: Entering _process_step. Current active_cells: {len(self.active_cells)} cells") # DEBUG MODIFIED
         # Copy active cells to avoid modification during iteration
         current_active_cells = list(self.active_cells)
-        
-        logger.info(f"ENGINE DEBUG: _process_step: current_active_cells to iterate: {len(current_active_cells)} cells") # DEBUG MODIFIED
 
         # EMERGENCY FIX: Handle empty active cells to prevent segfaults
         if not current_active_cells:

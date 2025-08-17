@@ -547,7 +547,7 @@ class GridSearchCalibrator:
             GridSearchResults with all evaluation results
         """
         logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
-        start_time = time.time()
+        self.start_time = time.time()  # Store start time for ETA calculations
         
         results = GridSearchResults(parameter_space=self.parameter_space.copy())
         
@@ -607,7 +607,7 @@ class GridSearchCalibrator:
         else:
             results = self._run_sequential_calibration(target_data, progress_callback, results)
         
-        total_time = time.time() - start_time
+        total_time = time.time() - self.start_time
         logger.info(f"Grid search completed in {total_time:.2f} seconds")
         best_value = results.get_best_objective_value()
         if best_value is not None:
@@ -721,14 +721,28 @@ class GridSearchCalibrator:
                     if progress_callback:
                         progress_callback(completed, self.total_combinations, result)
                     
-                    # Periodic logging
-                    if completed % max(1, self.total_combinations // 20) == 0:
-                        progress = completed / self.total_combinations * 100
-                        best_value = results.get_best_objective_value()
-                        if best_value is None:
-                            best_value = 0.0
-                        logger.info(f"Progress: {progress:.1f}% ({completed}/{self.total_combinations}), "
-                                   f"Best objective: {best_value:.4f}")
+                    # ENHANCED PROGRESS LOGGING
+                    progress = completed / self.total_combinations * 100
+                    remaining = self.total_combinations - completed
+                    best_value = results.get_best_objective_value()
+                    if best_value is None:
+                        best_value = 0.0
+                    
+                    # Log every 10 completions or every 5% progress
+                    if completed % 10 == 0 or completed % max(1, self.total_combinations // 20) == 0:
+                        logger.info(f"🎯 CALIBRATION PROGRESS: {progress:.1f}% ({completed}/{self.total_combinations})")
+                        logger.info(f"   ✅ Completed: {completed} simulations")
+                        logger.info(f"   ⏳ Remaining: {remaining} simulations")
+                        logger.info(f"   🏆 Best objective: {best_value:.4f}")
+                        logger.info(f"   🔥 Active workers: {self.max_workers}")
+                        
+                        # Estimate time remaining
+                        if completed > 0:
+                            elapsed_time = time.time() - self.start_time
+                            time_per_sim = elapsed_time / completed
+                            eta_seconds = remaining * time_per_sim
+                            eta_minutes = eta_seconds / 60
+                            logger.info(f"   ⏱️  ETA: {eta_minutes:.1f} minutes")
                 
                 except Exception as e:
                     logger.error(f"Evaluation failed: {e}")

@@ -73,6 +73,9 @@ class MemoryStats:
     system_available_gb: float = 0.0
     system_percent: float = 0.0
     
+    # Enhanced process memory tracking
+    total_process_memory_gb: float = 0.0  # Total memory from all Python processes
+    
     # Memory growth
     growth_rate_mb_per_sec: float = 0.0
     
@@ -144,18 +147,22 @@ class ProductionMemoryManager:
         
         if HAS_PSUTIL:
             try:
-                # Process memory
+                # Process memory (main process)
                 process = psutil.Process()
                 memory_info = process.memory_info()
                 stats.process_rss_gb = memory_info.rss / (1024**3)
                 stats.process_vms_gb = memory_info.vms / (1024**3)
                 
-                # System memory
+                # System memory (total system usage)
                 system_memory = psutil.virtual_memory()
                 stats.system_total_gb = system_memory.total / (1024**3)
                 stats.system_used_gb = system_memory.used / (1024**3)
                 stats.system_available_gb = system_memory.available / (1024**3)
                 stats.system_percent = system_memory.percent
+                
+                # ENHANCED: Calculate total memory from all related processes
+                total_process_memory_gb = self._get_total_process_memory_gb()
+                stats.total_process_memory_gb = total_process_memory_gb
                 
                 # Calculate growth rate
                 if len(self.stats_history) > 0:
@@ -181,6 +188,38 @@ class ProductionMemoryManager:
             logger.debug(f"Could not get shared memory stats: {e}")
         
         return stats
+    
+    def _get_total_process_memory_gb(self) -> float:
+        """Get total memory usage from all related Python processes."""
+        total_memory_gb = 0.0
+        
+        try:
+            # Get current process and its children
+            current_process = psutil.Process()
+            
+            # Get all Python processes that might be related
+            python_processes = []
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info']):
+                try:
+                    if proc.info['name'] and 'python' in proc.info['name'].lower():
+                        python_processes.append(proc)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            # Calculate total memory from all Python processes
+            for proc in python_processes:
+                try:
+                    memory_gb = proc.memory_info().rss / (1024**3)
+                    total_memory_gb += memory_gb
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"Could not calculate total process memory: {e}")
+            # Fallback to just current process
+            total_memory_gb = stats.process_rss_gb if hasattr(stats, 'process_rss_gb') else 0.0
+        
+        return total_memory_gb
     
     def _estimate_sparse_memory(self) -> float:
         """Estimate memory used by sparse matrices (rough approximation)."""
@@ -504,7 +543,8 @@ class ProductionMemoryManager:
                     
                     if should_log:
                         stats = status['stats']
-                        logger.info(f"📊 Memory: Process={stats.process_rss_gb:.1f}GB, "
+                        logger.info(f"📊 Memory: Main={stats.process_rss_gb:.1f}GB, "
+                                   f"Total={stats.total_process_memory_gb:.1f}GB, "
                                    f"System={stats.system_percent:.1f}%, "
                                    f"Growth={stats.growth_rate_mb_per_sec:.1f}MB/s, "
                                    f"Level={status['alert_level']}")
