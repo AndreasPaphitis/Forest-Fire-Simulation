@@ -1024,10 +1024,10 @@ class FireSimulationEngine:
         # Temperature and humidity effects removed
         
         # Calculate final probability
-        if self._emergency_mode:
+        if self.emergency_mode:
             logger.debug(f"FACTORS_BEFORE_PRODUCT: base={base_prob}, fuel={fuel_factor}, wind={wind_factor}, slope={slope_factor}, distance={distance_factor}")
         ignition_prob = base_prob * fuel_factor * wind_factor * slope_factor * distance_factor
-        if self._emergency_mode:
+        if self.emergency_mode:
             logger.debug(f"    IGNITION_PROB_INTERMEDIATE: {ignition_prob}") 
         
         # Clip probability to ensure it's within [0, 1]
@@ -1037,7 +1037,7 @@ class FireSimulationEngine:
         ignition_threshold = getattr(self.config, 'ignition_threshold', 0.5)  # Default threshold of 0.5
         
         # --- DEBUG PRINT --- (Only in emergency mode to reduce log spam)
-        if self._emergency_mode:
+        if self.emergency_mode:
             logger.debug(f"DEBUG _check_ignition: tgt=({x},{y},{z}), src=({src_x},{src_y},{src_z})")
             logger.debug(f"    EFFECTIVE_SPREAD_PROB: {effective_spread_prob:.6f}")
             logger.debug(f"    ignition_threshold: {ignition_threshold}")
@@ -1047,7 +1047,7 @@ class FireSimulationEngine:
         result_comparison = (effective_spread_prob >= ignition_threshold)
         
         # Only log result in emergency mode to reduce spam
-        if self._emergency_mode:
+        if self.emergency_mode:
             logger.debug(f"    CALCULATED RESULT: {result_comparison}")
 
         return result_comparison
