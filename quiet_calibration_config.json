@@ -8,7 +8,7 @@
   "debug": false,
   "store_full_states": false,
   "use_disk_storage": false,
-  "show_progress": false,
+  "show_progress": true,
   "detailed_logging": false,
   "memory_tracking": false,
   "performance_tracking": false

@@ -97,6 +97,63 @@ setup_quiet_logging()
 logger = get_logger(__name__)
 
 
+def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):
+    """
+    Create a progress callback that works in quiet mode.
+    
+    Args:
+        total_combinations: Total number of parameter combinations
+        quiet_mode: Whether to run in quiet mode
+        
+    Returns:
+        Progress callback function
+    """
+    start_time = time.time()
+    last_progress_time = start_time
+    progress_interval = 30  # Show progress every 30 seconds in quiet mode
+    
+    def progress_callback(completed: int, total: int, result):
+        nonlocal last_progress_time
+        current_time = time.time()
+        
+        if quiet_mode:
+            # In quiet mode, show progress every 30 seconds or every 5 completions
+            time_since_last = current_time - last_progress_time
+            should_show = (time_since_last >= progress_interval or 
+                          completed % 5 == 0 or 
+                          completed == total)
+            
+            if should_show:
+                progress = (completed / total) * 100
+                remaining = total - completed
+                best_value = result.objective_value if result.is_valid else 0.0
+                
+                # Calculate ETA
+                if completed > 0:
+                    elapsed_time = current_time - start_time
+                    time_per_sim = elapsed_time / completed
+                    eta_seconds = remaining * time_per_sim
+                    eta_minutes = eta_seconds / 60
+                    eta_hours = eta_minutes / 60
+                    
+                    if eta_hours >= 1:
+                        eta_str = f"{eta_hours:.1f}h"
+                    else:
+                        eta_str = f"{eta_minutes:.0f}m"
+                else:
+                    eta_str = "calculating..."
+                
+                print(f"🎯 Progress: {progress:.1f}% ({completed}/{total}) | "
+                      f"Best: {best_value:.4f} | ETA: {eta_str}")
+                
+                last_progress_time = current_time
+        else:
+            # In verbose mode, use the default logging
+            pass
+    
+    return progress_callback
+
+
 def validate_system_resources(memory_gb: int, workers: int) -> bool:
     """Validate that system has sufficient resources for 9.3B cell simulation."""
     try:
@@ -354,14 +411,14 @@ Examples:
     
     # Configure logging based on verbosity settings
     if args.quiet:
-        # Set all loggers to ERROR level for minimal output
+        # Set all loggers to ERROR level for minimal output, but allow progress updates
         logging.getLogger().setLevel(logging.ERROR)
         logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.ERROR)
         logging.getLogger('src.core.forest_model').setLevel(logging.ERROR)
         logging.getLogger('src.core.calibration').setLevel(logging.ERROR)
         logging.getLogger('src.utils').setLevel(logging.ERROR)
         logging.getLogger('shared_utilities').setLevel(logging.ERROR)
-        print("🔇 Running in quiet mode - minimal output")
+        print("🔇 Running in quiet mode - minimal output with progress updates")
     elif args.verbose:
         # Set all loggers to INFO level for verbose output
         logging.getLogger().setLevel(logging.INFO)
@@ -565,7 +622,14 @@ Examples:
         start_time = time.time()
         
         try:
-            results = calibrator.run_calibration(calib_config, test_data)
+            # Create progress callback based on quiet mode
+            if args.quiet:
+                # Calculate total combinations for progress tracking
+                total_combinations = args.grid_points ** len(args.parameters)
+                progress_callback = create_quiet_progress_callback(total_combinations, quiet_mode=True)
+                results = calibrator.run_calibration(calib_config, test_data, progress_callback=progress_callback)
+            else:
+                results = calibrator.run_calibration(calib_config, test_data)
         except Exception as e:
             if memory_manager:
                 logger.critical("🚨 CALIBRATION FAILED - CHECKING MEMORY STATE")

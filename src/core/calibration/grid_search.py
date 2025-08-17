@@ -395,58 +395,41 @@ class GridSearchCalibrator:
     def _evaluate_single_combination(self, 
                                    parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
-        """
-        Evaluate a single parameter combination.
-        
-        Args:
-            parameter_values: Parameter values to evaluate
-            target_data: Target data for objective function evaluation
-            
-        Returns:
-            GridSearchResult with evaluation results
-        """
+        """Evaluate a single parameter combination."""
         start_time = time.time()
         
         try:
-            # Create configuration with these parameter values
+            # Create configuration variant
             config = self.config.create_config_variant(parameter_values)
             
-            # CRITICAL FIX: Ensure shared terrain info is passed to each worker
-            if hasattr(self.config.base_config, 'shared_terrain_info') and self.config.base_config.shared_terrain_info:
-                config.shared_terrain_info = self.config.base_config.shared_terrain_info
-                logger.debug(f"✅ Passing shared terrain info to worker for memory efficiency")
-            else:
-                logger.debug(f"⚠️  No shared terrain info available - worker will load terrain individually")
-            
-            # MEMORY OPTIMIZATION: Add memory checks and error handling for large models
-            grid_size = config.grid_size
-            if isinstance(grid_size, (int, float)):
-                total_cells = int(grid_size) ** 2
-            else:
-                total_cells = int(grid_size[0]) * int(grid_size[1])
-            total_model_cells = total_cells * config.num_layers
-            
-            if total_model_cells > 1_000_000_000:  # 1B+ cells
-                logger.info(f"Creating memory-optimized model for massive grid ({total_model_cells:,} cells)")
-            
-            # Create forest model and simulation engine with memory optimization
+            # Create forest model with shared terrain if available
             forest_model = None
             engine = None
             
             try:
-                forest_model = create_forest_model(
-                    model_type='memory_optimized',  # Use memory optimized for large domains
-                    config=config,
-                    grid_size=config.grid_size,
-                    num_layers=config.num_layers
+                # CRITICAL FIX: Use shared terrain if available
+                if hasattr(config, 'shared_terrain_info') and config.shared_terrain_info:
+                    forest_model = create_forest_model(
+                        model_type='memory_optimized',  # Use memory optimized for large domains
+                        config=config,
+                        grid_size=config.grid_size,
+                        num_layers=config.num_layers,
+                        shared_terrain_info=config.shared_terrain_info
+                    )
+                else:
+                    forest_model = create_forest_model(
+                        model_type='memory_optimized',  # Use memory optimized for large domains
+                        config=config,
+                        grid_size=config.grid_size,
+                        num_layers=config.num_layers
+                    )
+                
+                # Create fire simulation engine
+                engine = FireSimulationEngine(
+                    forest_model=forest_model,
+                    config=config
                 )
                 
-                engine = FireSimulationEngine(forest_model=forest_model, config=config)
-                logger.info("🎯 FireSimulationEngine created successfully - proceeding to ignition setup")
-                
-            except MemoryError as me:
-                logger.error(f"Memory error creating model with {total_model_cells:,} cells: {me}")
-                raise MemoryError(f"Insufficient memory for grid size {grid_size} with {config.num_layers} layers")
             except Exception as model_error:
                 logger.error(f"Error creating model: {model_error}")
                 # Clean up partial objects
@@ -461,15 +444,18 @@ class GridSearchCalibrator:
             
             # CRITICAL FIX: Add safety checks before setting ignition
             try:
-                logger.info(f"Setting ignition at Arafo highlands: ({ignition_x}, {ignition_y})")
-                logger.info(f"Grid bounds: x=0-{config.grid_size[0]-1}, y=0-{config.grid_size[1]-1}")
+                # REDUCED VERBOSITY: Only log in debug mode
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"Setting ignition at Arafo highlands: ({ignition_x}, {ignition_y})")
+                    logger.debug(f"Grid bounds: x=0-{config.grid_size[0]-1}, y=0-{config.grid_size[1]-1}")
                 
                 # Validate coordinates are within bounds
                 if not (0 <= ignition_x < config.grid_size[0] and 0 <= ignition_y < config.grid_size[1]):
                     raise ValueError(f"Ignition coordinates ({ignition_x}, {ignition_y}) out of bounds for grid {config.grid_size}")
                 
                 forest_model.set_ignition(ignition_x, ignition_y, 0)
-                logger.info(f"✅ Ignition set successfully at ({ignition_x}, {ignition_y})")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"✅ Ignition set successfully at ({ignition_x}, {ignition_y})")
                 
             except Exception as ignition_error:
                 logger.error(f"❌ CRITICAL: Failed to set ignition point: {ignition_error}")
@@ -480,16 +466,38 @@ class GridSearchCalibrator:
             try:
                 import gc
                 gc.collect()  # Clean up before simulation
-                logger.info("🚀 Starting simulation with safety monitoring")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("🚀 Starting simulation with safety monitoring")
                 
-                # Run simulation with enhanced error handling
-                simulation_result = engine.run_simulation(
-                    max_steps=config.max_steps,
-                    store_history=False,  # Don't store full history for calibration
-                    stop_when_fire_extinguished=True
-                )
-                logger.info("✅ Simulation completed successfully")
+                # CRITICAL FIX: Add timeout to prevent deadlock
+                import signal
                 
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Simulation timeout - possible deadlock")
+                
+                # Set timeout for simulation (5 minutes max)
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(300)  # 5 minutes timeout
+                
+                try:
+                    # Run simulation with enhanced error handling and timeout
+                    simulation_result = engine.run_simulation(
+                        max_steps=config.max_steps,
+                        store_history=False,  # Don't store full history for calibration
+                        stop_when_fire_extinguished=True
+                    )
+                    
+                    # Cancel timeout
+                    signal.alarm(0)
+                    
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug("✅ Simulation completed successfully")
+                        
+                except TimeoutError:
+                    signal.alarm(0)  # Cancel timeout
+                    logger.error("❌ CRITICAL: Simulation timed out - possible deadlock")
+                    raise RuntimeError("Simulation timeout - possible deadlock")
+                    
             except Exception as sim_error:
                 logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
                 logger.error("This indicates issues during fire propagation")
@@ -713,7 +721,9 @@ class GridSearchCalibrator:
             completed = 0
             for future in as_completed(future_to_params):
                 try:
-                    result = future.result(timeout=self.config.simulation_timeout_minutes * 60)
+                    # CRITICAL FIX: Add timeout to prevent deadlock
+                    timeout_seconds = min(self.config.simulation_timeout_minutes * 60, 600)  # Max 10 minutes
+                    result = future.result(timeout=timeout_seconds)
                     results.add_result(result)
                     completed += 1
                     
@@ -721,15 +731,15 @@ class GridSearchCalibrator:
                     if progress_callback:
                         progress_callback(completed, self.total_combinations, result)
                     
-                    # ENHANCED PROGRESS LOGGING
+                    # REDUCED VERBOSITY: Only log progress every 5 completions or 10% progress
                     progress = completed / self.total_combinations * 100
                     remaining = self.total_combinations - completed
                     best_value = results.get_best_objective_value()
                     if best_value is None:
                         best_value = 0.0
                     
-                    # Log every 10 completions or every 5% progress
-                    if completed % 10 == 0 or completed % max(1, self.total_combinations // 20) == 0:
+                    # Log every 5 completions or every 10% progress (reduced from 10/5%)
+                    if completed % 5 == 0 or completed % max(1, self.total_combinations // 10) == 0:
                         logger.info(f"🎯 CALIBRATION PROGRESS: {progress:.1f}% ({completed}/{self.total_combinations})")
                         logger.info(f"   ✅ Completed: {completed} simulations")
                         logger.info(f"   ⏳ Remaining: {remaining} simulations")
@@ -744,6 +754,21 @@ class GridSearchCalibrator:
                             eta_minutes = eta_seconds / 60
                             logger.info(f"   ⏱️  ETA: {eta_minutes:.1f} minutes")
                 
+                except TimeoutError:
+                    logger.error(f"❌ CRITICAL: Worker timeout - possible deadlock")
+                    # Create a failed result
+                    failed_result = GridSearchResult(
+                        parameter_values=future_to_params[future],
+                        objective_value=0.0,
+                        objective_components={},
+                        simulation_stats={},
+                        evaluation_time=0.0,
+                        is_valid=False,
+                        error_message="Worker timeout - possible deadlock"
+                    )
+                    results.add_result(failed_result)
+                    completed += 1
+                    
                 except Exception as e:
                     logger.error(f"Evaluation failed: {e}")
                     # Create a failed result

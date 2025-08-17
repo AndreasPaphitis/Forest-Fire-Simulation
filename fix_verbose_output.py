@@ -88,12 +88,14 @@ def show_usage():
     print("\n🎯 HOW TO USE THE FIXES:")
     print("=" * 40)
     print("1. The verbose output has been fixed in the engine")
-    print("2. Use the quiet config for minimal output:")
+    print("2. Use quiet mode for minimal output with progress updates:")
+    print(f"   python run_tenerife_calibration.py --quiet")
+    print("3. Or use the quiet config file:")
     print(f"   python run_tenerife_calibration.py --config quiet_calibration_config.json")
-    print("3. Or redirect output to a file:")
+    print("4. Or redirect output to a file:")
     print("   python run_tenerife_calibration.py > calibration.log 2>&1")
-    print("4. To monitor progress, check the log file:")
-    print("   tail -f calibration.log")
+    print("5. To monitor progress in quiet mode:")
+    print("   Progress updates will be shown every 30 seconds or 5 completions")
 
 if __name__ == "__main__":
     print("🔧 FIXING VERBOSE CALIBRATION OUTPUT")
@@ -111,4 +113,4 @@ if __name__ == "__main__":
     # Show usage
     show_usage()
     
-    print("\n🚀 You can now run calibration with much less output!")
+    print("\n🚀 You can now run calibration with minimal output and progress updates!")

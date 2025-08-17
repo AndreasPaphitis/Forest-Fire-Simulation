@@ -1135,13 +1135,15 @@ class TenerifeFirePerimeterCalibrator:
 
     def run_calibration(self, 
                        calibration_config: CalibrationConfig,
-                       test_data: List[FirePerimeterData]) -> Dict[str, Any]:
+                       test_data: List[FirePerimeterData],
+                       progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """
         Run the complete calibration process.
         
         Args:
             calibration_config: Calibration configuration
             test_data: Test data for validation
+            progress_callback: Optional custom progress callback function
             
         Returns:
             Dictionary with calibration results and validation metrics
@@ -1181,7 +1183,8 @@ class TenerifeFirePerimeterCalibrator:
         )
         
         # Create progress callback
-        progress_callback = create_progress_callback(verbose=True)
+        if progress_callback is None:
+            progress_callback = create_progress_callback(verbose=True)
         
         # Display calibration info
         estimation_info = calibrator.get_estimation_info()

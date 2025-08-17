@@ -431,11 +431,11 @@ class FireSimulationEngine:
             self._process_step()
             step_time = time.time() - step_start
             
-            # Log step processing statistics occasionally
-            if step % 10 == 0 and step > 0:  # Every 10 steps
-                avg_step_time = step_time
-                cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
-                logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
+                    # Log step processing statistics occasionally (reduced frequency)
+        if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
+            avg_step_time = step_time
+            cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
+            logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
             
             # Update statistics for this step
             current_step_stats = {
@@ -846,16 +846,20 @@ class FireSimulationEngine:
                 
                 # Log first few individual burnouts for debugging
                 if self.log_stats['total_burnouts'] <= self.log_stats['max_burnout_logs']:
-                    logger.info(f"🔥 BURNOUT: Cell ({x},{y},{z}) - fuel: {current_fuel:.2f} → {new_fuel:.2f} (threshold: {min_fuel})")
+                    # REDUCED VERBOSITY: Only log individual burnouts in debug mode
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"🔥 BURNOUT: Cell ({x},{y},{z}) - fuel: {current_fuel:.2f} → {new_fuel:.2f} (threshold: {min_fuel})")
                 
-                # Log batch progress every N burnouts
+                # Log batch progress every N burnouts (reduced frequency)
                 if self.log_stats['burnout_batch_size'] >= self.log_stats['progress_interval']:
                     total_affected = len(self.burned_cells) + len(self.active_cells)
                     total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
                     affected_percentage = (total_affected / total_grid_cells) * 100 if total_grid_cells > 0 else 0
                     
-                    logger.info(f"📈 BURNOUT BATCH: {self.log_stats['burnout_batch_size']} cells burned out")
-                    logger.info(f"   Total Burnouts: {self.log_stats['total_burnouts']} | Active: {len(self.active_cells)} | Affected: {affected_percentage:.3f}% of grid")
+                    # REDUCED VERBOSITY: Only log in debug mode or every 5th batch
+                    if logger.isEnabledFor(logging.DEBUG) or self.log_stats['total_burnouts'] % (self.log_stats['progress_interval'] * 5) == 0:
+                        logger.info(f"📈 BURNOUT BATCH: {self.log_stats['burnout_batch_size']} cells burned out")
+                        logger.info(f"   Total Burnouts: {self.log_stats['total_burnouts']} | Active: {len(self.active_cells)} | Affected: {affected_percentage:.3f}% of grid")
                     
                     # Reset batch counter
                     self.log_stats['burnout_batch_size'] = 0
