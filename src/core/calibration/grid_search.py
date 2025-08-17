@@ -676,7 +676,7 @@ class GridSearchCalibrator:
         """
         Run parallel calibration with optimized serialization.
         """
-        logger.info(f"🚀 Starting parallel calibration with {len(self.combinations)} combinations")
+        logger.info(f"🚀 Starting parallel calibration with {self.total_combinations} combinations")
         
         # Calculate optimal worker count
         if not self.bypass_worker_limit:
@@ -695,20 +695,23 @@ class GridSearchCalibrator:
         logger.info("📦 Pre-optimizing configurations for worker processes...")
         self._pre_optimize_for_workers()
         
+        # Convert generator to list for parallel processing
+        combinations_list = list(self.combinations)
+        
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit jobs in batches to prevent resource contention
             batch_size = min(10, self.max_workers)
             all_futures = []
             
-            for i in range(0, len(self.combinations), batch_size):
-                batch = self.combinations[i:i + batch_size]
+            for i in range(0, len(combinations_list), batch_size):
+                batch = combinations_list[i:i + batch_size]
                 batch_futures = {
                 executor.submit(self._evaluate_single_combination, combo, target_data): combo
                     for combo in batch
                 }
                 all_futures.extend(batch_futures.keys())
                 
-                if i + batch_size < len(self.combinations):
+                if i + batch_size < len(combinations_list):
                     time.sleep(0.1)  # Small delay between batches
             
             # Process results
@@ -720,9 +723,9 @@ class GridSearchCalibrator:
                     completed += 1
                     
                     if progress_callback:
-                        progress_callback(completed, len(self.combinations))
+                        progress_callback(completed, len(combinations_list))
                     
-                    logger.info(f"✅ Completed {completed}/{len(self.combinations)} evaluations")
+                    logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
                     
                 except TimeoutError:
                     logger.error("❌ Evaluation timed out")
@@ -739,7 +742,10 @@ class GridSearchCalibrator:
             # Cache frequently used configurations
             common_configs = {}
             
-            for combo in self.combinations[:10]:  # Cache first 10 combinations
+            # Take first 10 combinations from generator
+            for i, combo in enumerate(self.combinations):
+                if i >= 10:  # Only cache first 10
+                    break
                 config_key = f"config_{hash(str(combo))}"
                 config_variant = self.config.create_config_variant(combo)
                 optimized_config = self.serialization_optimizer.optimize_config_for_serialization(
