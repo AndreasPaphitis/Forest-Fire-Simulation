@@ -366,12 +366,24 @@ class BaseForestModel(ABC):
         Returns:
             Dictionary of terrain arrays if available, None otherwise
         """
+        # CRITICAL FIX: Prevent repeated loading of shared terrain data
+        if hasattr(self, '_shared_terrain_loaded') and self._shared_terrain_loaded:
+            logger.debug("🔄 Shared terrain already loaded - skipping duplicate load")
+            return None
+            
         try:
             # Check if shared terrain info is available in config
             if hasattr(self, 'config') and self.config and hasattr(self.config, 'shared_terrain_info'):
                 from src.utils.shared_terrain import load_shared_terrain_data
                 shared_info = self.config.shared_terrain_info
-                return load_shared_terrain_data(shared_info)
+                terrain_data = load_shared_terrain_data(shared_info)
+                
+                # Mark as loaded to prevent future calls
+                if terrain_data:
+                    self._shared_terrain_loaded = True
+                    logger.debug("✅ Shared terrain loaded and marked as complete")
+                
+                return terrain_data
         except Exception as e:
             logger.debug(f"No shared terrain data available: {e}")
         
@@ -387,12 +399,18 @@ class BaseForestModel(ABC):
         Returns:
             True if successful, False otherwise
         """
+        # CRITICAL FIX: Prevent repeated loading of terrain data
+        if hasattr(self, '_terrain_data_loaded') and self._terrain_data_loaded:
+            logger.debug("🔄 Terrain data already loaded - skipping duplicate load")
+            return True
+            
         # CRITICAL FIX: Check for shared terrain first before loading individually
         shared_terrain_data = self._try_load_shared_terrain()
         if shared_terrain_data:
             logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
             # Load shared terrain data into the model
             self._load_shared_terrain_into_model(shared_terrain_data)
+            self._terrain_data_loaded = True
             return True
         
         # Check if terrain preprocessing is available
@@ -506,10 +524,15 @@ class BaseForestModel(ABC):
                 wind_channeling_count = np.sum(self.wind_channeling_mask)
                 logger.info(f"💨 Wind channeling cells: {wind_channeling_count}")
             
+            # CRITICAL FIX: Mark terrain data as loaded to prevent repeated loading
+            self._terrain_data_loaded = True
+            logger.info("✅ Terrain data loaded and marked as complete")
+            
             return True
             
         except Exception as e:
             logger.error(f"❌ Error loading preprocessed terrain data: {e}")
+            self._terrain_data_loaded = False
             return False
 
     def _load_shared_terrain_into_model(self, shared_terrain_data: Dict[str, np.ndarray]):
