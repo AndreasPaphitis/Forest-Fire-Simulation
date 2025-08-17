@@ -15,6 +15,7 @@ Version: 1.0
 
 import time
 import itertools
+import logging
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
