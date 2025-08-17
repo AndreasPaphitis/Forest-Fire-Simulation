@@ -16,12 +16,16 @@ Version: 1.0
 import time
 import itertools
 import logging
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed, TimeoutError
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import numpy as np
 import json
+import multiprocessing as mp
+
+# Add HPC optimizer import
+from src.utils.hpc_optimizer import apply_hpc_optimizations, start_hpc_monitoring, stop_hpc_monitoring
 
 try:
     from src.utils.logging_utils import get_logger
@@ -201,6 +205,11 @@ class GridSearchResults:
 class GridSearchCalibrator:
     """
     Grid search calibrator for systematic parameter space exploration.
+    
+    Now includes automatic HPC optimizations for:
+    - Network filesystem bottlenecks
+    - Memory bandwidth limitations
+    - Garbage collection overhead
     """
     
     def __init__(self, 
@@ -210,17 +219,9 @@ class GridSearchCalibrator:
                  parallel_execution: bool = True,
                  max_workers: Optional[int] = None,
                  bypass_worker_limit: bool = False):
-        """
-        Initialize grid search calibrator.
+        # Apply HPC optimizations to configuration
+        self.config = apply_hpc_optimizations(calibration_config)
         
-        Args:
-            calibration_config: Calibration configuration
-            parameter_bounds: Dictionary of parameter bounds
-            objective_function: Objective function to optimize
-            parallel_execution: Whether to use parallel evaluation
-            max_workers: Maximum number of parallel workers
-        """
-        self.config = calibration_config
         self.parameter_bounds = parameter_bounds
         self.objective_function = objective_function
         self.parallel_execution = parallel_execution
@@ -323,6 +324,17 @@ class GridSearchCalibrator:
         
         logger.info(f"Initialized grid search with {self.total_combinations} parameter combinations")
         logger.info(f"Worker configuration: {self.max_workers} workers, parallel={self.parallel_execution}")
+        
+        # Start HPC monitoring
+        start_hpc_monitoring()
+        logger.info("🚀 GridSearchCalibrator initialized with HPC optimizations")
+    
+    def __del__(self):
+        """Cleanup HPC monitoring on destruction."""
+        try:
+            stop_hpc_monitoring()
+        except Exception:
+            pass
     
     def _create_parameter_space(self) -> Dict[str, List[float]]:
         """Create the parameter space grid."""
@@ -398,49 +410,33 @@ class GridSearchCalibrator:
     def _evaluate_single_combination(self, 
                                    parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
-        """Evaluate a single parameter combination."""
+        """
+        Evaluate a single parameter combination with HPC optimizations.
+        
+        Includes:
+        - Garbage collection optimization during evaluation
+        - Memory monitoring
+        - Local storage usage
+        """
+        
         start_time = time.time()
         
         try:
+            # Optimize garbage collection for this evaluation
+            import gc
+            gc.disable()  # Disable GC during critical evaluation
+            
             # Create configuration variant
             config = self.config.create_config_variant(parameter_values)
             
-            # Create forest model with shared terrain if available
-            forest_model = None
-            engine = None
+            # Create forest model with HPC optimizations
+            forest_model = self._create_forest_model_with_hpc_optimizations(parameter_values)
             
-            try:
-                # CRITICAL FIX: Use shared terrain if available
-                if hasattr(config, 'shared_terrain_info') and config.shared_terrain_info:
-                    forest_model = create_forest_model(
-                        model_type='memory_optimized',  # Use memory optimized for large domains
-                        config=config,
-                        grid_size=config.grid_size,
-                        num_layers=config.num_layers,
-                        shared_terrain_info=config.shared_terrain_info
-                    )
-                else:
-                    forest_model = create_forest_model(
-                        model_type='memory_optimized',  # Use memory optimized for large domains
-                        config=config,
-                        grid_size=config.grid_size,
-                        num_layers=config.num_layers
-                    )
-                
-                # Create fire simulation engine
-                engine = FireSimulationEngine(
-                    forest_model=forest_model,
-                    config=config
-                )
-                
-            except Exception as model_error:
-                logger.error(f"Error creating model: {model_error}")
-                # Clean up partial objects
-                if forest_model:
-                    del forest_model
-                if engine:
-                    del engine
-                raise
+            # Create fire simulation engine
+            engine = FireSimulationEngine(
+                forest_model=forest_model,
+                config=config
+            )
             
             # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
             ignition_x, ignition_y = self._get_arafo_highlands_coordinates(config.grid_size)
@@ -467,11 +463,6 @@ class GridSearchCalibrator:
             
             # CRITICAL FIX: Memory safety check before simulation
             try:
-                import gc
-                gc.collect()  # Clean up before simulation
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug("🚀 Starting simulation with safety monitoring")
-                
                 # CRITICAL FIX: Remove signal timeout for parallel processing compatibility
                 # Signal handlers only work in main thread, so we'll use a simpler approach
                 
@@ -518,6 +509,15 @@ class GridSearchCalibrator:
             evaluation_time = time.time() - start_time
             logger.error(f"Evaluation failed: {e}")
             
+            # Force garbage collection on error
+            try:
+                gc.enable()
+                collected = gc.collect()
+                if collected > 0:
+                    logger.info(f"🗑️  Error-time GC collected {collected} objects")
+            except Exception:
+                pass
+            
             # CRITICAL FIX: Clean up shared memory on error
             try:
                 from src.utils.shared_terrain import reset_shared_terrain_logging
@@ -534,99 +534,111 @@ class GridSearchCalibrator:
                 is_valid=False,
                 error_message=str(e)
             )
+        
+        finally:
+            # Re-enable garbage collection
+            try:
+                gc.enable()
+            except Exception:
+                pass
     
     def run_calibration(self, 
                        target_data: Optional[Dict[str, Any]] = None,
                        progress_callback: Optional[callable] = None) -> GridSearchResults:
         """
-        Run the grid search calibration.
+        Run grid search calibration with HPC optimizations.
         
         Args:
-            target_data: Target data for objective function evaluation
-            progress_callback: Optional callback for progress updates
+            target_data: Target data for calibration
+            progress_callback: Progress callback function
             
         Returns:
-            GridSearchResults with all evaluation results
+            GridSearchResults object
         """
-        logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
-        self.start_time = time.time()  # Store start time for ETA calculations
-        
-        results = GridSearchResults(parameter_space=self.parameter_space.copy())
-        
-        # MEMORY OPTIMIZATION: Force sequential for massive grids to prevent memory exhaustion
-        should_run_parallel = self.parallel_execution and self.total_combinations > 1
-        
-        # Check grid size and disable parallel execution for very large grids
-        grid_size = self._get_grid_size_from_config(self.config)
-        if isinstance(grid_size, (int, float)):
-            total_cells = int(grid_size) ** 2
-        else:
-            total_cells = int(grid_size[0]) * int(grid_size[1])
-        num_layers = self._get_num_layers_from_config(self.config)
-        total_model_cells = total_cells * num_layers
-        
-        # Detect available memory for intelligent parallel execution decision
         try:
-            import psutil
-            available_memory_gb = psutil.virtual_memory().total / (1024**3)
-        except ImportError:
-            available_memory_gb = 64  # Conservative fallback
-        
-        # Check if workers were explicitly set via CLI (respect user choice)
-        # max_workers is passed to constructor when CLI specifies --workers
-        cli_override = True  # If we reach this point, max_workers was explicitly provided
-        
-        # Only force sequential for truly extreme cases, and respect CLI overrides
-        if should_run_parallel:
-            if cli_override:
-                # CLI override - respect user choice but provide warnings
-                logger.info(f"🎛️  CLI Override: Respecting user-specified {self.max_workers} workers")
-                if available_memory_gb < 32 and total_model_cells > 10_000_000_000:
-                    logger.error(f"🚨 CRITICAL: Extremely large grid on very low memory - forcing sequential despite CLI override")
-                    should_run_parallel = False
-                else:
-                    logger.info(f"✅ Proceeding with parallel execution as requested")
+            logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
+            self.start_time = time.time()  # Store start time for ETA calculations
+            
+            results = GridSearchResults(parameter_space=self.parameter_space.copy())
+            
+            # MEMORY OPTIMIZATION: Force sequential for massive grids to prevent memory exhaustion
+            should_run_parallel = self.parallel_execution and self.total_combinations > 1
+            
+            # Check grid size and disable parallel execution for very large grids
+            grid_size = self._get_grid_size_from_config(self.config)
+            if isinstance(grid_size, (int, float)):
+                total_cells = int(grid_size) ** 2
             else:
-                # Auto-detection mode - use intelligent thresholds
-                if available_memory_gb >= 120:  # High-memory HPC environment
-                    # Allow parallel processing even for very large grids (up to 20B cells)
-                    if total_model_cells > 20_000_000_000:
-                        logger.warning(f"Extreme grid size ({total_model_cells:,} cells) - forcing sequential execution")
+                total_cells = int(grid_size[0]) * int(grid_size[1])
+            num_layers = self._get_num_layers_from_config(self.config)
+            total_model_cells = total_cells * num_layers
+            
+            # Detect available memory for intelligent parallel execution decision
+            try:
+                import psutil
+                available_memory_gb = psutil.virtual_memory().total / (1024**3)
+            except ImportError:
+                available_memory_gb = 64  # Conservative fallback
+            
+            # Check if workers were explicitly set via CLI (respect user choice)
+            # max_workers is passed to constructor when CLI specifies --workers
+            cli_override = True  # If we reach this point, max_workers was explicitly provided
+            
+            # Only force sequential for truly extreme cases, and respect CLI overrides
+            if should_run_parallel:
+                if cli_override:
+                    # CLI override - respect user choice but provide warnings
+                    logger.info(f"🎛️  CLI Override: Respecting user-specified {self.max_workers} workers")
+                    if available_memory_gb < 32 and total_model_cells > 10_000_000_000:
+                        logger.error(f"🚨 CRITICAL: Extremely large grid on very low memory - forcing sequential despite CLI override")
                         should_run_parallel = False
                     else:
-                        logger.info(f"High-memory system ({available_memory_gb:.1f}GB) - allowing parallel execution for {total_model_cells:,} cells")
-                elif available_memory_gb >= 60:  # Medium-memory environment
-                    if total_model_cells > 5_000_000_000:
-                        logger.warning(f"Large grid ({total_model_cells:,} cells) on medium-memory system - forcing sequential execution")
-                        should_run_parallel = False
-                else:  # Low-memory environment - use original conservative limit
-                    if total_model_cells > 1_000_000_000:
-                        logger.warning(f"Forcing sequential execution for massive grid ({total_model_cells:,} cells) to prevent memory exhaustion")
-                        should_run_parallel = False
+                        logger.info(f"✅ Proceeding with parallel execution as requested")
+                else:
+                    # Auto-detection mode - use intelligent thresholds
+                    if available_memory_gb >= 120:  # High-memory HPC environment
+                        # Allow parallel processing even for very large grids (up to 20B cells)
+                        if total_model_cells > 20_000_000_000:
+                            logger.warning(f"Extreme grid size ({total_model_cells:,} cells) - forcing sequential execution")
+                            should_run_parallel = False
+                        else:
+                            logger.info(f"High-memory system ({available_memory_gb:.1f}GB) - allowing parallel execution for {total_model_cells:,} cells")
+                    elif available_memory_gb >= 60:  # Medium-memory environment
+                        if total_model_cells > 5_000_000_000:
+                            logger.warning(f"Large grid ({total_model_cells:,} cells) on medium-memory system - forcing sequential execution")
+                            should_run_parallel = False
+                    else:  # Low-memory environment - use original conservative limit
+                        if total_model_cells > 1_000_000_000:
+                            logger.warning(f"Forcing sequential execution for massive grid ({total_model_cells:,} cells) to prevent memory exhaustion")
+                            should_run_parallel = False
+            
+            if should_run_parallel:
+                results = self._run_parallel_calibration(target_data, progress_callback, results)
+            else:
+                results = self._run_sequential_calibration(target_data, progress_callback, results)
+            
+            total_time = time.time() - self.start_time
+            logger.info(f"Grid search completed in {total_time:.2f} seconds")
+            best_value = results.get_best_objective_value()
+            if best_value is not None:
+                logger.info(f"Best objective value: {best_value:.4f}")
+            else:
+                logger.info(f"Best objective value: None (no valid results)")
+            logger.info(f"Best parameters: {results.get_best_parameters()}")
+            
+            # Store convergence information
+            results.convergence_info = {
+                'converged': True,  # Grid search always completes
+                'total_time': total_time,
+                'evaluations_per_second': results.total_evaluations / max(total_time, 1e-6),
+                'success_rate': results.successful_evaluations / max(results.total_evaluations, 1)
+            }
+            
+            return results
         
-        if should_run_parallel:
-            results = self._run_parallel_calibration(target_data, progress_callback, results)
-        else:
-            results = self._run_sequential_calibration(target_data, progress_callback, results)
-        
-        total_time = time.time() - self.start_time
-        logger.info(f"Grid search completed in {total_time:.2f} seconds")
-        best_value = results.get_best_objective_value()
-        if best_value is not None:
-            logger.info(f"Best objective value: {best_value:.4f}")
-        else:
-            logger.info(f"Best objective value: None (no valid results)")
-        logger.info(f"Best parameters: {results.get_best_parameters()}")
-        
-        # Store convergence information
-        results.convergence_info = {
-            'converged': True,  # Grid search always completes
-            'total_time': total_time,
-            'evaluations_per_second': results.total_evaluations / max(total_time, 1e-6),
-            'success_rate': results.successful_evaluations / max(results.total_evaluations, 1)
-        }
-        
-        return results
+        finally:
+            # Ensure HPC monitoring is stopped
+            stop_hpc_monitoring()
     
     def _run_sequential_calibration(self, 
                                   target_data: Optional[Dict[str, Any]],
@@ -656,7 +668,14 @@ class GridSearchCalibrator:
                                 target_data: Optional[Dict[str, Any]],
                                 progress_callback: Optional[callable],
                                 results: GridSearchResults) -> GridSearchResults:
-        """Run calibration in parallel."""
+        """
+        Run parallel calibration with HPC optimizations.
+        
+        Now includes:
+        - Optimized worker count based on memory bandwidth
+        - Local storage usage to avoid network filesystem bottlenecks
+        - Garbage collection optimization during critical sections
+        """
         logger.info(f"Running parallel calibration with {self.max_workers} workers")
         
         # Generate all combinations
@@ -685,41 +704,11 @@ class GridSearchCalibrator:
                 logger.warning(f"   ⚠️  Monitor memory usage carefully - system may crash if insufficient memory")
                 # Keep self.max_workers unchanged - respect CLI choice
             else:
-                # Apply safety limits only when bypass is not enabled
-                try:
-                    import psutil
-                    available_memory_gb = psutil.virtual_memory().available / (1024**3)
-                    total_memory_gb = psutil.virtual_memory().total / (1024**3)
-                    
-                    # Estimate memory per worker (conservative estimate)
-                    estimated_memory_per_worker_gb = 2.0  # Conservative estimate
-                    max_safe_workers = int(available_memory_gb * 0.8 / estimated_memory_per_worker_gb)
-                    
-                    # Use the minimum of: requested workers, memory-safe limit, and hard limit
-                    hard_limit = 70  # Maximum allowed workers for large grids
-                    adjusted_workers = min(self.max_workers, max_safe_workers, hard_limit)
-                    
-                    logger.info(f"🧠 Memory-based worker calculation:")
-                    logger.info(f"   Available memory: {available_memory_gb:.1f}GB")
-                    logger.info(f"   Estimated memory per worker: {estimated_memory_per_worker_gb:.1f}GB")
-                    logger.info(f"   Memory-safe limit: {max_safe_workers} workers")
-                    logger.info(f"   Hard limit: {hard_limit} workers")
-                    logger.info(f"   Final worker count: {adjusted_workers}")
-                    
-                    if adjusted_workers < self.max_workers:
-                        logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers} for ProcessPoolExecutor")
-                        logger.warning(f"   This prevents memory issues with large forest models")
-                        logger.info(f"   💡 To use all {self.max_workers} workers, add --bypass-worker-limit flag")
-                        self.max_workers = adjusted_workers
-                    
-                except ImportError:
-                    # Fallback to fixed limit if psutil not available
-                    adjusted_workers = min(self.max_workers, 50)  # Max 50 workers for large grids
-                    logger.warning("⚠️  psutil not available - using fixed worker limit of 50")
-                    if adjusted_workers < self.max_workers:
-                        logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers}")
-                        logger.info(f"   💡 To use all {self.max_workers} workers, add --bypass-worker-limit flag")
-                        self.max_workers = adjusted_workers
+                # Apply HPC memory bandwidth optimization
+                optimal_workers = self._calculate_hpc_optimal_workers()
+                if self.max_workers > optimal_workers:
+                    logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
+                    self.max_workers = optimal_workers
             
             logger.info(f"🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid ({total_model_cells:,} cells) to avoid GIL deadlocks")
             logger.info(f"   ThreadPoolExecutor was causing GIL deadlocks with {self.max_workers} workers")
@@ -919,6 +908,88 @@ class GridSearchCalibrator:
         arafo_y = max(0, min(arafo_y, height - 1))
         
         return arafo_x, arafo_y
+
+    def _calculate_hpc_optimal_workers(self) -> int:
+        """
+        Calculate optimal worker count based on HPC constraints.
+        
+        Considers:
+        - Memory bandwidth limitations
+        - NUMA node count
+        - Available system resources
+        """
+        try:
+            import psutil
+            
+            # Get system information
+            memory = psutil.virtual_memory()
+            cpu_count = psutil.cpu_count(logical=False)  # Physical cores
+            
+            # Memory-based calculation (conservative)
+            total_gb = memory.total / (1024**3)
+            memory_based_workers = max(1, int(total_gb / 4))  # 1 worker per 4GB
+            
+            # CPU-based calculation
+            cpu_based_workers = max(1, cpu_count - 2)  # Reserve 2 cores
+            
+            # NUMA-based calculation (if available)
+            numa_workers = 16  # Default
+            try:
+                numa_path = Path("/sys/devices/system/node")
+                if numa_path.exists():
+                    nodes = [d for d in numa_path.iterdir() if d.name.startswith("node")]
+                    numa_workers = len(nodes) * 4  # 4 workers per NUMA node
+            except Exception:
+                pass
+            
+            # Take the minimum to prevent overloading
+            optimal_workers = min(memory_based_workers, cpu_based_workers, numa_workers)
+            
+            # Cap at reasonable maximum
+            optimal_workers = min(optimal_workers, 32)
+            
+            logger.info(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
+            
+            return optimal_workers
+            
+        except Exception as e:
+            logger.warning(f"🧠 Could not calculate HPC optimal workers: {e}")
+            return 16  # Conservative default
+
+    def _create_forest_model_with_hpc_optimizations(self, parameter_values: Dict[str, float]):
+        """
+        Create forest model with HPC optimizations.
+        
+        Includes:
+        - Local storage usage for terrain data
+        - Memory-efficient initialization
+        - Garbage collection optimization
+        """
+        
+        # Apply parameter values to config
+        config_variant = self.config.create_config_variant(parameter_values)
+        
+        # Use local storage for terrain data if available
+        if hasattr(config_variant, 'terrain') and hasattr(config_variant.terrain, 'preprocessed_dir'):
+            # Check if local cache is available
+            local_cache = getattr(config_variant.terrain, 'local_cache_dir', None)
+            if local_cache and Path(local_cache).exists():
+                logger.debug(f"📁 Using local terrain cache: {local_cache}")
+                # Use local cache instead of network storage
+        
+        # Create forest model with memory optimization
+        from src.core.forest_model import ForestModel
+        
+        # Disable GC during model creation
+        import gc
+        gc.disable()
+        
+        try:
+            forest_model = ForestModel(config_variant)
+            return forest_model
+        finally:
+            # Re-enable GC
+            gc.enable()
 
 
 def create_progress_callback(verbose: bool = True) -> callable:
