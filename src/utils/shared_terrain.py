@@ -284,6 +284,11 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
     Returns:
         Dictionary of terrain arrays
     """
+    # CRITICAL FIX: Prevent multiple calls in the same process
+    if hasattr(load_shared_terrain_data, '_process_loaded') and load_shared_terrain_data._process_loaded:
+        logger.debug("🔄 Shared terrain already loaded in this process - returning cached data")
+        return getattr(load_shared_terrain_data, '_cached_data', {})
+    
     terrain_data = {}
     
     try:
@@ -318,8 +323,15 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
         
         # Only log once per process to reduce spam
         if not hasattr(load_shared_terrain_data, '_logged_this_process'):
-            logger.info(f"✅ Loaded {len(terrain_data)} terrain arrays from shared memory")
+            # CRITICAL FIX: Count only actual terrain arrays, not shared memory references
+            terrain_array_count = len([k for k in terrain_data.keys() if not k.startswith('_shm_ref_')])
+            logger.info(f"✅ Loaded {terrain_array_count} terrain arrays from shared memory")
             load_shared_terrain_data._logged_this_process = True
+        
+        # CRITICAL FIX: Cache the data for this process to prevent reloading
+        load_shared_terrain_data._process_loaded = True
+        load_shared_terrain_data._cached_data = terrain_data
+        
         return terrain_data
         
     except Exception as e:
@@ -355,6 +367,10 @@ def reset_shared_terrain_logging():
     """Reset shared terrain logging flags for fresh simulation runs."""
     if hasattr(load_shared_terrain_data, '_logged_this_process'):
         delattr(load_shared_terrain_data, '_logged_this_process')
+    if hasattr(load_shared_terrain_data, '_process_loaded'):
+        delattr(load_shared_terrain_data, '_process_loaded')
+    if hasattr(load_shared_terrain_data, '_cached_data'):
+        delattr(load_shared_terrain_data, '_cached_data')
     logger.debug("🔄 Shared terrain logging flags reset")
 
 
