@@ -312,3 +312,4 @@
  TAB ...................................... Complete filename & cycle.
  SHIFT-TAB ...................... ESC-TAB   Complete filename & reverse cycle.
  ctrl-L ................................... Complete filename, list all.
+[33m6aaacae[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mclean-hpc-branch[m[33m)[m Improve fire simulation logging for better readability and progress tracking

@@ -133,77 +133,48 @@ def estimate_calibration_time(parameters: List[str], grid_points: int, workers: 
     }
 
 
-def display_calibration_plan(parameters: List[str], 
-                           grid_points: int, 
-                           workers: int, 
+def display_calibration_plan(parameters: List[str],
+                           grid_points: int,
+                           workers: int,
                            memory_gb: int,
                            training_days: List[int],
-                           test_days: List[int]):
-    """Display detailed calibration plan."""
-    print(f"\n🎯 CALIBRATION EXECUTION PLAN")
-    print(f"=" * 70)
+                           test_days: List[int],
+                           dynamic_grid_size: Optional[Tuple[int, int]] = None):
+    """Display concise calibration plan."""
+    print(f"\n🎯 CALIBRATION PLAN")
+    print(f"=" * 50)
     
     # Domain configuration
-    print(f"🌍 DOMAIN CONFIGURATION:")
-    print(f"   Area: Full Tenerife Island")
-    print(f"   Grid size: 15,121 × 24,741 × 25 layers")
-    print(f"   Total cells: 9,347,092,500 (~9.35 billion)")
-    print(f"   Resolution: 5m per cell")
-    print(f"   CRS: EPSG:25828 (UTM Zone 28N)")
+    if dynamic_grid_size:
+        grid_width, grid_height = dynamic_grid_size
+        total_cells = grid_width * grid_height * 25
+        area_km2 = (grid_width * 5 / 1000) * (grid_height * 5 / 1000)
+        print(f"🌍 Grid: {grid_width:,} × {grid_height:,} × 25 = {total_cells/1e6:.1f}M cells ({area_km2:.1f} km²)")
+    else:
+        print(f"🌍 Grid: Dynamic (Day 4 fire area + buffer)")
     
-    # Parameter configuration
-    print(f"\n📋 PARAMETER CONFIGURATION:")
-    print(f"   Parameters to calibrate: {len(parameters)}")
-    for i, param in enumerate(parameters, 1):
-        print(f"     {i}. {param}")
-    print(f"   Grid points per parameter: {grid_points}")
-    
-    # Resource configuration
-    print(f"\n🖥️  RESOURCE CONFIGURATION:")
-    print(f"   Memory framework: {memory_gb} GB")
-    print(f"   Parallel workers: {workers}")
-    print(f"   Memory optimization: Level 3 (maximum)")
-    print(f"   Disk storage: Enabled")
-    print(f"   Sparse storage: Enabled")
-    
-    # Data configuration
-    print(f"\n📅 DATA CONFIGURATION:")
-    print(f"   Training days: {training_days}")
-    print(f"   Test days: {test_days}")
+    # Key configuration
+    print(f"📋 Parameters: {len(parameters)} ({grid_points} points each)")
+    print(f"🖥️  Resources: {memory_gb}GB memory, {workers} workers")
+    print(f"📅 Data: Training days {training_days}, Test days {test_days}")
     
     # Estimates
     estimates = estimate_calibration_time(parameters, grid_points, workers)
-    print(f"\n⏱️  TIME & RESOURCE ESTIMATES:")
-    print(f"   Total combinations: {estimates['total_combinations']:,}")
-    print(f"   Time per simulation: ~{estimates['time_per_sim_minutes']:.1f} minutes")
-    print(f"   Sequential time: ~{estimates['sequential_time_hours']:.1f} hours")
-    print(f"   Parallel time: ~{estimates['parallel_time_hours']:.1f} hours")
-    print(f"   Expected speedup: ~{estimates['speedup']:.1f}x")
-    print(f"   Memory per simulation: ~{estimates['memory_per_sim_gb']:.1f} GB")
-    print(f"   Peak memory usage: ~{estimates['peak_memory_gb']:.1f} GB")
+    print(f"⏱️  Time: ~{estimates['parallel_time_hours']:.1f}h ({estimates['total_combinations']:,} combinations)")
+    print(f"💾 Memory: ~{estimates['peak_memory_gb']:.1f}GB peak")
     
-    # Risk assessment
-    print(f"\n⚠️  RISK ASSESSMENT:")
+    # Risk assessment (simplified)
     if estimates['peak_memory_gb'] > memory_gb * 0.9:
-        print(f"   ❌ HIGH MEMORY RISK: Peak usage ({estimates['peak_memory_gb']:.1f}GB) near limit ({memory_gb}GB)")
-        print(f"      Recommendation: Reduce workers or use 128GB configuration")
-    elif estimates['peak_memory_gb'] > memory_gb * 0.7:
-        print(f"   ⚠️  MODERATE MEMORY RISK: Monitor memory usage carefully")
+        print(f"⚠️  HIGH MEMORY RISK - consider reducing workers")
+    elif estimates['parallel_time_hours'] > 24:
+        print(f"⚠️  LONG RUNTIME - consider job splitting")
     else:
-        print(f"   ✅ MEMORY RISK: Low")
-    
-    if estimates['parallel_time_hours'] > 24:
-        print(f"   ⚠️  LONG RUNTIME: {estimates['parallel_time_hours']:.1f} hours may require job splitting")
-    elif estimates['parallel_time_hours'] > 8:
-        print(f"   📊 MODERATE RUNTIME: {estimates['parallel_time_hours']:.1f} hours - plan accordingly")
-    else:
-        print(f"   ✅ RUNTIME: Reasonable ({estimates['parallel_time_hours']:.1f} hours)")
+        print(f"✅ Configuration looks good")
 
 
 def run_discovery_and_validation(emsr_dir: str = "EMSR Delineations"):
     """Run fire perimeter discovery and validation."""
-    print(f"🔍 DISCOVERING FIRE PERIMETERS")
-    print(f"=" * 50)
+    print(f"🔍 Discovering fire perimeters...")
     
     # Initialize discovery
     discovery = FirePerimeterDiscovery(emsr_dir)
@@ -213,38 +184,18 @@ def run_discovery_and_validation(emsr_dir: str = "EMSR Delineations"):
     
     if not fire_dataset.fire_perimeters:
         print(f"❌ No fire perimeters found in {emsr_dir}")
-        print(f"   Check that the directory exists and contains EMSR shapefiles")
         return None
     
-    # Validate dataset
-    print(f"\n🔬 VALIDATING DATASET")
-    print(f"=" * 30)
-    
-    # Check temporal coverage
+    # Quick validation
     day_numbers = [fp.day_number for fp in fire_dataset.fire_perimeters]
-    if len(set(day_numbers)) != len(day_numbers):
-        print(f"⚠️  Warning: Duplicate day numbers detected")
-    
-    # Check CRS consistency
     crs_list = [fp.crs for fp in fire_dataset.fire_perimeters if fp.crs]
+    
+    print(f"✅ Found {len(fire_dataset.fire_perimeters)} fire perimeters (days {min(day_numbers)}-{max(day_numbers)})")
+    
     if len(set(crs_list)) > 1:
-        print(f"❌ CRS inconsistency detected:")
-        for crs in set(crs_list):
-            count = crs_list.count(crs)
-            print(f"     {crs}: {count} files")
-        print(f"   All files must use the same CRS (preferably EPSG:25828)")
+        print(f"❌ CRS inconsistency - all files must use same CRS")
         return None
     
-    # Check area progression (should generally increase over time)
-    sorted_fps = sorted(fire_dataset.fire_perimeters, key=lambda x: x.day_number)
-    areas = [fp.area_hectares for fp in sorted_fps if fp.area_hectares]
-    
-    if len(areas) >= 2:
-        if areas[-1] < areas[0]:
-            print(f"⚠️  Warning: Fire area appears to decrease over time")
-            print(f"   Day 1: {areas[0]:.1f} ha → Day {len(areas)}: {areas[-1]:.1f} ha")
-    
-    print(f"✅ Dataset validation complete")
     return fire_dataset
 
 
@@ -393,12 +344,10 @@ Examples:
         print(f"🔧 Using TOP 5 parameters from sensitivity analysis results")
         print(f"   ✅ Based on Method 2 Range-Based sensitivity analysis")
     
-    print(f"🔥 TENERIFE FIRE PERIMETER CALIBRATION")
-    print(f"=" * 70)
+    print(f"🔥 TENERIFE FIRE CALIBRATION")
+    print(f"=" * 50)
     print(f"Experiment: {args.experiment_name}")
-    print(f"Configuration: {args.memory}GB memory / {args.workers} workers")
-    print(f"Grid search: {args.grid_points} points per parameter")
-    print(f"Parameters: {len(args.parameters)} parameters")
+    print(f"Config: {args.memory}GB / {args.workers} workers / {args.grid_points} points")
     
     try:
         # Step 0: Handle emergency small-scale mode
@@ -413,8 +362,7 @@ Examples:
         # Step 0.5: Setup production memory protection
         memory_manager = None
         if args.enable_memory_protection and not args.emergency_small_scale:
-            print(f"🛡️  SETTING UP PRODUCTION MEMORY PROTECTION")
-            print(f"=" * 60)
+            print(f"🛡️  Setting up memory protection...")
             
             # Production thresholds for massive scale
             thresholds = ProductionMemoryThresholds(
@@ -438,7 +386,7 @@ Examples:
             
             memory_manager.add_callback('emergency', calibration_emergency_callback)
             
-            logger.debug("✅ Production memory protection active")
+            logger.debug("✅ Memory protection active")
         
         # Step 1: Validate system resources
         if not validate_system_resources(args.memory, args.workers):
@@ -452,6 +400,35 @@ Examples:
         if fire_dataset is None:
             sys.exit(1)
         
+        # Step 2.5: Calculate dynamic grid size from Day 4 fire perimeter
+        dynamic_grid_size = None
+        if not args.emergency_small_scale:
+            try:
+                print(f"🔍 Calculating grid size from Day 4 fire perimeter...")
+                
+                # Create temporary calibrator to access grid size calculation
+                temp_calibrator = TenerifeFirePerimeterCalibrator(
+                    memory_gb=args.memory,
+                    workers=args.workers,
+                    grid_search_points=args.grid_points,
+                    experiment_name="temp_grid_calc"
+                )
+                
+                # Calculate optimal grid size from Day 4
+                dynamic_grid_size = temp_calibrator._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+                
+                if dynamic_grid_size:
+                    grid_width, grid_height = dynamic_grid_size
+                    total_cells = grid_width * grid_height * 25
+                    area_km2 = (grid_width * 5 / 1000) * (grid_height * 5 / 1000)
+                    print(f"✅ Grid: {grid_width:,} × {grid_height:,} = {total_cells/1e6:.1f}M cells ({area_km2:.1f} km²)")
+                else:
+                    print(f"⚠️  Using fallback grid size")
+                    
+            except Exception as e:
+                print(f"⚠️  Error calculating grid size: {e}")
+                print(f"   Using fallback configuration")
+        
         # Step 3: Display calibration plan
         display_calibration_plan(
             parameters=args.parameters,
@@ -459,7 +436,8 @@ Examples:
             workers=args.workers,
             memory_gb=args.memory,
             training_days=args.training_days,
-            test_days=args.test_days
+            test_days=args.test_days,
+            dynamic_grid_size=dynamic_grid_size
         )
         
         # Step 4: Create calibrator with enhanced configuration
@@ -470,9 +448,15 @@ Examples:
             'experiment_name': args.experiment_name
         }
         
-        # Add emergency configuration if needed
-        if args.emergency_small_scale:
+        # Add dynamic grid size configuration
+        if dynamic_grid_size and not args.emergency_small_scale:
+            calibrator_kwargs['grid_size'] = dynamic_grid_size
+            print(f"🎯 Using dynamic grid size: {dynamic_grid_size[0]:,} × {dynamic_grid_size[1]:,}")
+        elif args.emergency_small_scale:
             calibrator_kwargs['grid_size'] = (1000, 1000)  # Override grid size
+            print(f"🚨 Using emergency small-scale grid: 1000 × 1000")
+        else:
+            print(f"⚠️  Using default grid size configuration")
         
         # Emergency mode is automatically enabled in FireSimulationEngine for large grids
         if args.emergency_mode:
@@ -495,39 +479,35 @@ Examples:
         )
         
         # Step 7: Final confirmation and execution
-        print(f"\n🚀 READY TO EXECUTE CALIBRATION")
-        print(f"=" * 50)
+        print(f"\n🚀 READY TO EXECUTE")
+        print(f"=" * 30)
         
         estimates = estimate_calibration_time(args.parameters, args.grid_points, args.workers)
         
         if args.dry_run:
-            logger.info(f"✅ DRY RUN COMPLETE - Configuration validated successfully")
-            logger.info(f"📊 Runtime: {estimates['parallel_time_hours']:.1f}h, Peak memory: {estimates['peak_memory_gb']:.1f}GB")
-            logger.info(f"📁 Results dir: {calibrator.results_dir}")
+            logger.info(f"✅ DRY RUN COMPLETE - Configuration validated")
+            logger.info(f"📊 Runtime: {estimates['parallel_time_hours']:.1f}h, Memory: {estimates['peak_memory_gb']:.1f}GB")
+            logger.info(f"📁 Results: {calibrator.results_dir}")
             logger.info("To run actual calibration, remove --dry-run flag")
             return
         
         # Final user confirmation for long-running calibration
         if estimates['parallel_time_hours'] > 4:
-            print(f"⚠️  This calibration will take approximately {estimates['parallel_time_hours']:.1f} hours")
-            print(f"   Make sure you're running on a stable interactive node")
-            print(f"   Consider using screen or tmux for long sessions")
+            print(f"⚠️  This will take ~{estimates['parallel_time_hours']:.1f} hours")
+            print(f"   Make sure you're on a stable node")
             
-            response = input(f"\nContinue with calibration? (y/N): ").strip().lower()
+            response = input(f"\nContinue? (y/N): ").strip().lower()
             if response not in ['y', 'yes']:
-                print(f"❌ Calibration cancelled by user")
+                print(f"❌ Cancelled by user")
                 return
         
         # Run calibration with memory monitoring
-        print(f"\n🔥 STARTING CALIBRATION EXECUTION")
-        print(f"⏱️  Estimated completion: {estimates['parallel_time_hours']:.1f} hours")
-        print(f"📁 Monitor progress in: {calibrator.results_dir}")
+        print(f"\n🔥 STARTING CALIBRATION")
+        print(f"⏱️  Estimated: {estimates['parallel_time_hours']:.1f} hours")
+        print(f"📁 Progress: {calibrator.results_dir}")
         
         if memory_manager:
             logger.info("🛡️  Memory protection active")
-            status = memory_manager.check_memory_status()
-            stats = status['stats']
-            logger.debug(f"Memory check: {stats.process_rss_gb:.1f}GB process, {stats.system_percent:.1f}% system")
         
         start_time = time.time()
         

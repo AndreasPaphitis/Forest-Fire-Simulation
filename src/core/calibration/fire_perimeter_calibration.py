@@ -456,7 +456,8 @@ class TenerifeFirePerimeterCalibrator:
                  memory_gb: int = 64,
                  workers: int = 60,
                  grid_search_points: int = 3,
-                 experiment_name: str = "tenerife_fire_calibration"):
+                 experiment_name: str = "tenerife_fire_calibration",
+                 grid_size: Optional[Tuple[int, int]] = None):
         """
         Initialize Tenerife fire perimeter calibrator.
         
@@ -465,11 +466,13 @@ class TenerifeFirePerimeterCalibrator:
             workers: Number of parallel workers (60 or 120)
             grid_search_points: Points per parameter (3 or 4)
             experiment_name: Name for calibration experiment
+            grid_size: Optional grid size (width, height) - if None, uses dynamic calculation
         """
         self.memory_gb = memory_gb
         self.workers = workers
         self.grid_search_points = grid_search_points
         self.experiment_name = experiment_name
+        self.grid_size = grid_size
         
         # Validate configuration
         if memory_gb not in [64, 128]:
@@ -482,17 +485,23 @@ class TenerifeFirePerimeterCalibrator:
         self.results_dir = Path(f"calibration_results/{experiment_name}")
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
-        print(f"🔥 TENERIFE FIRE PERIMETER CALIBRATOR")
-        print(f"=" * 70)
-        print(f"Memory framework: {memory_gb}GB with {workers} workers")
-        print(f"Grid search points: {grid_search_points} per parameter")
-        print(f"Domain: Full Tenerife (15,121 × 24,741 × 25)")
-        print(f"Results directory: {self.results_dir}")
+        print(f"🔥 TENERIFE FIRE CALIBRATOR")
+        print(f"=" * 50)
+        
+        if grid_size:
+            grid_width, grid_height = grid_size
+            total_cells = grid_width * grid_height * 25
+            area_km2 = (grid_width * 5 / 1000) * (grid_height * 5 / 1000)
+            print(f"Grid: {grid_width:,} × {grid_height:,} × 25 = {total_cells/1e6:.1f}M cells ({area_km2:.1f} km²)")
+        else:
+            print(f"Grid: Dynamic (Day 4 fire area)")
+        
+        print(f"Config: {memory_gb}GB / {workers} workers / {grid_search_points} points")
+        print(f"Results: {self.results_dir}")
         
         # Optimize NumExpr threading for performance
         numexpr_info = optimize_numexpr_threading()
         logger.info(f"⚡ NumExpr optimization: {numexpr_info}")
-        print(f"NumExpr threads: {numexpr_info.get('numexpr_max_threads', 'unknown')}")
         
         # Set up EMSR directory for grid size calculation
         self.base_directory = self._find_emsr_directory("EMSR Delineations")
@@ -738,10 +747,7 @@ class TenerifeFirePerimeterCalibrator:
             
             logger.info(f"🗺️  Day 4 fire bounds (EPSG:25828): {bounds}")
             logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
-            logger.info(f"🔄 With {buffer_percent}% buffer: {buffered_width_m:.0f}m × {buffered_height_m:.0f}m")
-            logger.info(f"🎯 Grid size: {grid_width} × {grid_height} cells")
-            logger.info(f"📏 Grid area: {grid_area_km2:.1f} km²")
-            logger.info(f"📊 Total cells: {total_cells:,} ({total_cells/1e6:.1f}M)")
+            logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
             
             return (grid_width, grid_height)
             
@@ -763,8 +769,7 @@ class TenerifeFirePerimeterCalibrator:
         Returns:
             CalibrationConfig for full-scale calibration
         """
-        print(f"⚙️  CREATING CALIBRATION CONFIGURATION")
-        print(f"=" * 50)
+        print(f"⚙️  Creating calibration configuration...")
         
         # Use top 5 parameters from sensitivity analysis or defaults
         if top_5_parameters is None:
@@ -776,18 +781,14 @@ class TenerifeFirePerimeterCalibrator:
                 'slope_influence',         # 0.023 - Fourth
                 'ember_height_factor'      # 0.019 - Fifth
             ]
-            print("🔧 Using TOP 5 parameters from Method 2 Range-Based sensitivity analysis")
+            print("🔧 Using top 5 parameters from sensitivity analysis")
         else:
             calibration_parameters = top_5_parameters
-            print("✅ Using provided top 5 parameters from sensitivity analysis")
-        
-        print(f"📋 Calibration parameters ({len(calibration_parameters)}):")
-        for i, param in enumerate(calibration_parameters, 1):
-            print(f"   {i}. {param}")
+            print("✅ Using provided parameters")
         
         # Calculate total combinations
         total_combinations = self.grid_search_points ** len(calibration_parameters)
-        print(f"\n🔢 Grid search combinations: {total_combinations:,}")
+        print(f"📋 Parameters: {len(calibration_parameters)} ({self.grid_search_points} points each) = {total_combinations:,} combinations")
         
         # Estimate memory and time requirements
         memory_per_sim_gb = self._estimate_memory_per_simulation()
@@ -796,23 +797,22 @@ class TenerifeFirePerimeterCalibrator:
         total_time_hours = (total_combinations * time_per_sim_minutes) / (60 * self.workers)
         peak_memory_gb = memory_per_sim_gb * min(self.workers, total_combinations)
         
-        print(f"📊 Resource estimates:")
-        print(f"   Memory per simulation: ~{memory_per_sim_gb:.1f} GB")
-        print(f"   Peak memory usage: ~{peak_memory_gb:.1f} GB")
-        print(f"   Time per simulation: ~{time_per_sim_minutes:.1f} minutes")
-        print(f"   Total estimated time: ~{total_time_hours:.1f} hours")
+        print(f"📊 Estimates: ~{time_per_sim_minutes:.1f}min/sim, ~{peak_memory_gb:.1f}GB peak, ~{total_time_hours:.1f}h total")
         
         if peak_memory_gb > self.memory_gb * 0.9:
-            print(f"⚠️  WARNING: Peak memory ({peak_memory_gb:.1f}GB) approaches limit ({self.memory_gb}GB)")
-            print(f"   Consider reducing workers or grid points")
+            print(f"⚠️  HIGH MEMORY RISK - consider reducing workers")
         
         # Validate and get available data paths
         path_config = self._validate_paths()
         
         # Calculate optimal grid size based on fire perimeter with buffer
-        optimal_grid_size = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
-        print(f"🎯 Dynamic grid size calculated: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
-        print(f"   Based on Day 4 fire perimeter + 10% buffer + 10% northern expansion")
+        if self.grid_size:
+            optimal_grid_size = self.grid_size
+            print(f"🎯 Using provided grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+        else:
+            optimal_grid_size = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+            print(f"🎯 Dynamic grid size calculated: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+            print(f"   Based on Day 4 fire perimeter + 10% buffer + 10% northern expansion")
         
         # Create base configuration with dynamic grid sizing
         base_config = ModelConfig(
@@ -905,11 +905,7 @@ class TenerifeFirePerimeterCalibrator:
             verbose=True
         )
         
-        print(f"✅ Calibration configuration created")
-        print(f"   Training targets: {len(calib_config.calibration_targets)}")
-        print(f"   Memory optimization: Level {base_config.memory_optimization_level}")
-        print(f"   Disk storage: {base_config.use_disk_storage}")
-        print(f"   Sparse storage: {base_config.use_sparse_storage}")
+        print(f"✅ Configuration created ({len(calib_config.calibration_targets)} targets)")
         
         return calib_config
     
@@ -1211,18 +1207,15 @@ class TenerifeFirePerimeterCalibrator:
             end_time = datetime.now()
             runtime = (end_time - start_time).total_seconds() / 3600  # hours
             
-            print(f"\n✅ Calibration completed successfully!")
-            print(f"⏱️  Runtime: {runtime:.2f} hours")
+            print(f"\n✅ Calibration completed in {runtime:.2f}h")
             best_value = results.get_best_objective_value()
             if best_value is not None:
-                print(f"🎯 Best objective value: {best_value:.4f}")
-            else:
-                print(f"🎯 Best objective value: None (no valid results)")
+                print(f"🎯 Best objective: {best_value:.4f}")
             
             # Validate on test data
             best_parameters = results.get_best_parameters()
             if best_parameters is None:
-                print("⚠️  No valid parameters found - skipping validation")
+                print("⚠️  No valid parameters - skipping validation")
                 validation_results = {'status': 'skipped', 'reason': 'no_valid_parameters'}
             else:
                 validation_results = self._validate_on_test_data(
@@ -1295,11 +1288,9 @@ class TenerifeFirePerimeterCalibrator:
             target = calibration_targets[0]
             shapefile_path = target.fire_perimeter_path
             
-            logger.info(f"📍 Loading fire perimeter from: {shapefile_path}")
-            
             # Load shapefile
             gdf = gpd.read_file(shapefile_path)
-            logger.info(f"   Loaded {len(gdf)} features with CRS: {gdf.crs}")
+            logger.info(f"📍 Loaded {len(gdf)} features from {shapefile_path}")
             
             # Ensure CRS is EPSG:25828 (Tenerife UTM Zone 28N)
             if gdf.crs != "EPSG:25828":
@@ -1428,8 +1419,7 @@ class TenerifeFirePerimeterCalibrator:
                               test_data: List[FirePerimeterData],
                               calibration_config: CalibrationConfig) -> Dict[str, Any]:
         """Validate calibrated parameters on test fire perimeters."""
-        print(f"\n🧪 VALIDATING ON TEST DATA")
-        print(f"=" * 40)
+        print(f"\n🧪 Validating on {len(test_data)} test cases...")
         
         # Safety check for None parameters
         if best_parameters is None:
@@ -1439,7 +1429,7 @@ class TenerifeFirePerimeterCalibrator:
         validation_results = {}
         
         for i, test_fp in enumerate(test_data, 1):
-            print(f"Testing on Day {test_fp.day_number} ({test_fp.date})...")
+            print(f"  Day {test_fp.day_number} ({test_fp.date})...")
             
             # Create config with best parameters
             test_config = calibration_config.create_config_variant(best_parameters)
@@ -1454,7 +1444,7 @@ class TenerifeFirePerimeterCalibrator:
                 'status': 'pending_implementation'
             }
         
-        print(f"✅ Validation setup complete for {len(test_data)} test cases")
+        print(f"✅ Validation setup complete")
         return validation_results
     
     def _save_calibration_results(self, 
@@ -1462,13 +1452,11 @@ class TenerifeFirePerimeterCalibrator:
                                  validation_results: Dict[str, Any],
                                  runtime_hours: float):
         """Save calibration results to files."""
-        print(f"\n💾 SAVING CALIBRATION RESULTS")
-        print(f"=" * 40)
+        print(f"\n💾 Saving results...")
         
         # Save grid search results
         results_file = self.results_dir / f"{self.experiment_name}_grid_search_results.json"
         results.save_results(results_file)
-        print(f"✅ Saved grid search results: {results_file.name}")
         
         # Save validation results
         validation_file = self.results_dir / f"{self.experiment_name}_validation_results.json"
@@ -1480,7 +1468,6 @@ class TenerifeFirePerimeterCalibrator:
         
         with open(validation_file, 'w') as f:
             json.dump(validation_results, f, indent=2, default=str)
-        print(f"✅ Saved validation results: {validation_file.name}")
         
         # Save summary report
         summary_file = self.results_dir / f"{self.experiment_name}_calibration_summary.json"
@@ -1488,7 +1475,7 @@ class TenerifeFirePerimeterCalibrator:
             'experiment_info': {
                 'name': self.experiment_name,
                 'timestamp': datetime.now().isoformat(),
-                'domain': 'Full Tenerife (15,121 × 24,741 × 25)',
+                'domain': 'Dynamic grid size (Day 4 fire area)',
                 'memory_framework': f"{self.memory_gb}GB / {self.workers} workers",
                 'grid_search_points': self.grid_search_points
             },
