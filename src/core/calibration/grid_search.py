@@ -663,10 +663,19 @@ class GridSearchCalibrator:
         num_layers = self._get_num_layers_from_config(self.config)
         total_model_cells = total_cells * num_layers
         
+        # CRITICAL FIX: Force ProcessPoolExecutor for CPU-intensive forest fire simulations
+        # ThreadPoolExecutor with GIL is causing deadlocks for CPU-intensive tasks
         if total_model_cells > 100_000_000:  # 100M+ cells
-            # Force ThreadPoolExecutor for large grids to avoid serialization overhead
-            executor_class = ThreadPoolExecutor
-            logger.info(f"Using ThreadPoolExecutor for large grid ({total_model_cells:,} cells) to avoid serialization overhead")
+            # Use ProcessPoolExecutor for large grids to avoid GIL deadlocks
+            executor_class = ProcessPoolExecutor
+            # CRITICAL: Reduce workers for ProcessPoolExecutor to prevent memory issues
+            adjusted_workers = min(self.max_workers, 20)  # Max 20 workers for large grids
+            if adjusted_workers < self.max_workers:
+                logger.warning(f"⚠️  Reducing workers from {self.max_workers} to {adjusted_workers} for ProcessPoolExecutor")
+                logger.warning(f"   This prevents memory issues with large forest models")
+            self.max_workers = adjusted_workers
+            logger.info(f"🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid ({total_model_cells:,} cells) to avoid GIL deadlocks")
+            logger.info(f"   ThreadPoolExecutor was causing GIL deadlocks with {self.max_workers} workers")
         else:
             # Use ProcessPoolExecutor for smaller grids for better CPU utilization
             executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
@@ -779,7 +788,7 @@ class GridSearchCalibrator:
                     completed += 1
                     
                 except Exception as e:
-                    logger.error(f"Evaluation failed: {e}")
+                    logger.error(f"❌ CRITICAL: Worker failed with error: {e}")
                     # Create a failed result
                     failed_result = GridSearchResult(
                         parameter_values=future_to_params[future],
@@ -788,7 +797,7 @@ class GridSearchCalibrator:
                         simulation_stats={},
                         evaluation_time=0.0,
                         is_valid=False,
-                        error_message=str(e)
+                        error_message=f"Worker failed: {str(e)}"
                     )
                     results.add_result(failed_result)
                     completed += 1
