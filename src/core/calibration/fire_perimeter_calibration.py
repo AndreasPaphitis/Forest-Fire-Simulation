@@ -1096,7 +1096,27 @@ class TenerifeFirePerimeterCalibrator:
             target_shape = (grid_size[0], grid_size[1])  # Keep consistent with terrain file format (width, height)
             abs_preprocessed_dir = str(Path(preprocessed_dir).resolve())
             logger.info(f"🗂️  Using absolute path for shared terrain: {abs_preprocessed_dir}")
-            success = shared_manager.load_terrain_data(abs_preprocessed_dir, target_shape)
+            
+            # CRITICAL FIX: Get actual Day 4 fire bounds for accurate terrain targeting
+            fire_bounds = None
+            try:
+                # Try to get the actual fire bounds from Day 4 data
+                day4_path = Path(self.base_directory) / "Day 4 (26_08_23)"
+                if day4_path.exists():
+                    shp_files = list(day4_path.glob("*.shp"))
+                    if shp_files:
+                        import geopandas as gpd
+                        gdf = gpd.read_file(shp_files[0])
+                        if gdf.crs != "EPSG:25828":
+                            gdf = gdf.to_crs("EPSG:25828")
+                        fire_bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
+                        logger.info(f"🎯 Retrieved Day 4 fire bounds: {fire_bounds}")
+                        logger.info(f"   Fire area: {(fire_bounds[2]-fire_bounds[0])*(fire_bounds[3]-fire_bounds[1])/10000:.1f} hectares")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not retrieve fire bounds: {e}")
+                logger.info("   Will use estimated fire area location for terrain targeting")
+            
+            success = shared_manager.load_terrain_data(abs_preprocessed_dir, target_shape, fire_bounds)
             
             if success:
                 shared_terrain_info = shared_manager.get_shared_terrain_info()
