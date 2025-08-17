@@ -538,6 +538,10 @@ class GridSearchCalibrator:
         except Exception as e:
             evaluation_time = time.time() - start_time
             logger.error(f"Evaluation failed: {e}")
+            logger.error(f"Parameter values: {parameter_values}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
             # Force garbage collection on error
             try:
@@ -596,10 +600,15 @@ class GridSearchCalibrator:
             
             # Check grid size and disable parallel execution for very large grids
             grid_size = self._get_grid_size_from_config(self.config)
+            logger.debug(f"Grid size from config: {grid_size} (type: {type(grid_size)})")
+            
             if isinstance(grid_size, (int, float)):
                 total_cells = int(grid_size) ** 2
-            else:
+            elif isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
                 total_cells = int(grid_size[0]) * int(grid_size[1])
+            else:
+                logger.error(f"Invalid grid_size format: {grid_size} (type: {type(grid_size)})")
+                total_cells = 100_000_000  # Default fallback
             num_layers = self._get_num_layers_from_config(self.config)
             total_model_cells = total_cells * num_layers
             
@@ -756,7 +765,7 @@ class GridSearchCalibrator:
                     completed += 1
                     
                     if progress_callback:
-                        progress_callback(completed, len(combinations_list))
+                        progress_callback(completed, len(combinations_list), result)
                     
                     logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
                     
@@ -926,10 +935,15 @@ class GridSearchCalibrator:
         
         # Create forest model
         from src.core.forest_model import ForestModel
+        from src.config.config_tools import ModelConfig
         import gc
         gc.disable()
         try:
-            forest_model = ForestModel(config_variant)
+            # Convert config_variant to ModelConfig if it's a dict
+            if isinstance(config_variant, dict):
+                forest_model = ForestModel(config=ModelConfig(**config_variant))
+            else:
+                forest_model = ForestModel(config=config_variant)
             return forest_model
         finally:
             gc.enable()
