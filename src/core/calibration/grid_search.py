@@ -470,34 +470,18 @@ class GridSearchCalibrator:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("🚀 Starting simulation with safety monitoring")
                 
-                # CRITICAL FIX: Add timeout to prevent deadlock
-                import signal
+                # CRITICAL FIX: Remove signal timeout for parallel processing compatibility
+                # Signal handlers only work in main thread, so we'll use a simpler approach
                 
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("Simulation timeout - possible deadlock")
+                # Run simulation with enhanced error handling (no signal timeout)
+                simulation_result = engine.run_simulation(
+                    max_steps=config.max_steps,
+                    store_history=False,  # Don't store full history for calibration
+                    stop_when_fire_extinguished=True
+                )
                 
-                # Set timeout for simulation (5 minutes max)
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(300)  # 5 minutes timeout
-                
-                try:
-                    # Run simulation with enhanced error handling and timeout
-                    simulation_result = engine.run_simulation(
-                        max_steps=config.max_steps,
-                        store_history=False,  # Don't store full history for calibration
-                        stop_when_fire_extinguished=True
-                    )
-                    
-                    # Cancel timeout
-                    signal.alarm(0)
-                    
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug("✅ Simulation completed successfully")
-                        
-                except TimeoutError:
-                    signal.alarm(0)  # Cancel timeout
-                    logger.error("❌ CRITICAL: Simulation timed out - possible deadlock")
-                    raise RuntimeError("Simulation timeout - possible deadlock")
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("✅ Simulation completed successfully")
                     
             except Exception as sim_error:
                 logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
