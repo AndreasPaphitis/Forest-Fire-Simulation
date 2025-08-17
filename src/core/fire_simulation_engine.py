@@ -77,10 +77,14 @@ class FireSimulationEngine:
         self._emergency_mode = False
         if forest_model and hasattr(forest_model, 'width') and hasattr(forest_model, 'height'):
             total_cells = forest_model.width * forest_model.height * getattr(forest_model, 'num_layers', 1)
-            if total_cells > 100_000_000:  # 100M cells threshold
+            # INCREASED THRESHOLD: With memory optimizations, we can handle 1B cells safely
+            if total_cells > 1_000_000_000:  # 1B cells threshold (increased from 100M)
                 self._emergency_mode = True
                 logger.warning(f"🚨 EMERGENCY MODE ENABLED for massive grid ({total_cells:,} cells)")
                 logger.warning("Sparse matrix operations will be bypassed to prevent segfaults")
+            elif total_cells > 100_000_000:  # 100M-1B cells: Use optimized mode
+                logger.info(f"📊 Large grid detected ({total_cells:,} cells) - Using optimized mode")
+                logger.info("✅ Shared terrain + sparse storage will be used for memory efficiency")
         
         # Initialize forest model and configuration
         if forest_model is not None:
@@ -941,9 +945,11 @@ class FireSimulationEngine:
         # Temperature and humidity effects removed
         
         # Calculate final probability
-        logger.info(f"FACTORS_BEFORE_PRODUCT: base={base_prob}, fuel={fuel_factor}, wind={wind_factor}, slope={slope_factor}, distance={distance_factor}")
+        if self._emergency_mode:
+            logger.debug(f"FACTORS_BEFORE_PRODUCT: base={base_prob}, fuel={fuel_factor}, wind={wind_factor}, slope={slope_factor}, distance={distance_factor}")
         ignition_prob = base_prob * fuel_factor * wind_factor * slope_factor * distance_factor
-        logger.info(f"    IGNITION_PROB_INTERMEDIATE: {ignition_prob}") 
+        if self._emergency_mode:
+            logger.debug(f"    IGNITION_PROB_INTERMEDIATE: {ignition_prob}") 
         
         # Clip probability to ensure it's within [0, 1]
         effective_spread_prob = max(0.0, min(1.0, ignition_prob))
@@ -951,22 +957,19 @@ class FireSimulationEngine:
         # Deterministic threshold-based ignition (no random number)
         ignition_threshold = getattr(self.config, 'ignition_threshold', 0.5)  # Default threshold of 0.5
         
-        # --- DEBUG PRINT --- 
-        logger.info(f"DEBUG _check_ignition: tgt=({x},{y},{z}), src=({src_x},{src_y},{src_z})")
-        logger.info(f"    is_vertical_spread: {is_vertical_spread}")
-        logger.info(f"    base_prob (raw, before factors): {base_prob}")
-        logger.info(f"    fuel_factor: {fuel_factor}")
-        logger.info(f"    wind_factor (applied): {wind_factor}")
-        logger.info(f"    slope_factor (applied): {slope_factor}")
-        logger.info(f"    distance_factor (applied): {distance_factor}")
-        logger.info(f"    EFFECTIVE_SPREAD_PROB (before clip): {ignition_prob}")
-        logger.info(f"    EFFECTIVE_SPREAD_PROB (after clip): {effective_spread_prob}")
-        logger.info(f"    ignition_threshold: {ignition_threshold}")
-        logger.info(f"    Comparison: {effective_spread_prob} >= {ignition_threshold} is {effective_spread_prob >= ignition_threshold}")
+        # --- DEBUG PRINT --- (Only in emergency mode to reduce log spam)
+        if self._emergency_mode:
+            logger.debug(f"DEBUG _check_ignition: tgt=({x},{y},{z}), src=({src_x},{src_y},{src_z})")
+            logger.debug(f"    EFFECTIVE_SPREAD_PROB: {effective_spread_prob:.6f}")
+            logger.debug(f"    ignition_threshold: {ignition_threshold}")
+            logger.debug(f"    Comparison: {effective_spread_prob >= ignition_threshold}")
         # --- END DEBUG PRINT ---
 
         result_comparison = (effective_spread_prob >= ignition_threshold)
-        logger.info(f"    CALCULATED RESULT: {result_comparison}")
+        
+        # Only log result in emergency mode to reduce spam
+        if self._emergency_mode:
+            logger.debug(f"    CALCULATED RESULT: {result_comparison}")
 
         return result_comparison
     
