@@ -315,8 +315,11 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
                 
             except Exception as e:
                 logger.warning(f"⚠️  Could not load shared terrain data for {terrain_name}: {e}")
-                
-        logger.info(f"✅ Loaded {len(terrain_data)} terrain arrays from shared memory")
+        
+        # Only log once per process to reduce spam
+        if not hasattr(load_shared_terrain_data, '_logged_this_process'):
+            logger.info(f"✅ Loaded {len(terrain_data)} terrain arrays from shared memory")
+            load_shared_terrain_data._logged_this_process = True
         return terrain_data
         
     except Exception as e:
@@ -346,6 +349,13 @@ def cleanup_shared_terrain():
         except Exception as e:
             logger.warning(f"⚠️  Error cleaning up global shared terrain manager: {e}")
             _shared_terrain_manager = None
+
+
+def reset_shared_terrain_logging():
+    """Reset shared terrain logging flags for fresh simulation runs."""
+    if hasattr(load_shared_terrain_data, '_logged_this_process'):
+        delattr(load_shared_terrain_data, '_logged_this_process')
+    logger.debug("🔄 Shared terrain logging flags reset")
 
 
 def emergency_cleanup_shared_memory():

@@ -382,7 +382,10 @@ class BaseForestModel(ABC):
                 # Mark as loaded to prevent future calls
                 if terrain_data:
                     self._shared_terrain_loaded = True
-                    logger.debug("✅ Shared terrain loaded and marked as complete")
+                    # Only log once per model instance to reduce spam
+                    if not hasattr(self, '_shared_terrain_logged'):
+                        logger.info("✅ Shared terrain loaded successfully")
+                        self._shared_terrain_logged = True
                 
                 return terrain_data
         except Exception as e:
@@ -2534,53 +2537,64 @@ class SparseLayerAccessor:
 
 class MemoryOptimizedForestModel(ForestModel):
     """
-    Memory-optimized version of the ForestModel for large simulations.
+    Memory-optimized forest model that uses sparse storage and tiling for large domains.
     
-    This class extends the standard ForestModel with various memory optimization
-    techniques to handle large-scale forest fire simulations efficiently.
+    Features:
+    - Sparse storage for fuel load and state arrays
+    - Tiling for processing large domains
+    - Memory-efficient terrain loading
+    - Automatic fallback to dense storage for small domains
     """
     
-    def __init__(self, 
-                 grid_size: Union[int, Tuple[int, int]] = (100, 100), 
-                 num_layers: int = 10, 
-                 layer_height_meters: float = 2.0, 
-                 model_resolution: float = 5.0,
-                 initial_fuel_load: float = 0.0,
-                 config: Optional[ModelConfig] = None,
-                 **kwargs):
+    # Class-level flags to prevent repeated logging
+    _massive_grid_warning_logged = False
+    _shared_terrain_warning_logged = False
+    
+    @classmethod
+    def reset_logging_flags(cls):
+        """Reset logging flags to allow fresh logging in new simulation runs."""
+        cls._massive_grid_warning_logged = False
+        cls._shared_terrain_warning_logged = False
+        logger.debug("🔄 Forest model logging flags reset")
+    
+    def __init__(self, grid_size, num_layers=1, layer_height_meters=1.0, 
+                 model_resolution=1.0, initial_fuel_load=0.0, config=None, **kwargs):
         """
-        Initialize a memory-optimized forest model.
+        Initialize MemoryOptimizedForestModel with memory optimizations.
         
         Args:
-            grid_size: Size of the grid in cells (grid is square by default)
+            grid_size: Grid size (width, height) or single dimension
             num_layers: Number of vertical layers
             layer_height_meters: Height of each layer in meters
-            model_resolution: Spatial resolution in meters
-            initial_fuel_load: Default initial fuel load for cells
-            config: Optional ModelConfig instance
-            **kwargs: Additional parameters
+            model_resolution: Resolution of the model in meters
+            initial_fuel_load: Initial fuel load
+            config: Configuration object
+            **kwargs: Additional arguments
         """
-        # Memory optimization parameters MUST be set before calling super().__init__
-        # because the parent class initialization may trigger property setters that check these
+        # CRITICAL: Initialize memory optimization parameters early
         self.use_sparse_storage = kwargs.get('use_sparse_storage', True)
         self.use_tiling = kwargs.get('use_tiling', True)
         self.tile_size = kwargs.get('tile_size', 200)
         self.overlap = kwargs.get('overlap', int(kwargs.get('tile_size', 200) * 0.1))
         
-        # Calculate total cells to determine if we should skip dense initialization
+        # CRITICAL: Check if this is a massive grid that requires sparse-only mode
         if isinstance(grid_size, tuple):
             width, height = grid_size
         else:
             width = height = grid_size
+            
         total_cells = width * height * num_layers
         
         # CRITICAL: For massive domains (>100M cells), initialize directly as sparse to avoid memory crashes
         # This prevents accidental dense array allocation that would cause OOM
         self._force_sparse_only = total_cells > 100_000_000
         if self._force_sparse_only:
-            logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells ({total_cells/1e9:.1f}B)")
-            logger.warning("   ENFORCING SPARSE-ONLY MODE - Dense arrays FORBIDDEN")
-            logger.warning("   Any attempt to create dense arrays will be blocked")
+            # Only log this warning once per process to avoid spam
+            if not hasattr(MemoryOptimizedForestModel, '_massive_grid_warning_logged'):
+                logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells ({total_cells/1e9:.1f}B)")
+                logger.warning("   ENFORCING SPARSE-ONLY MODE - Dense arrays FORBIDDEN")
+                logger.warning("   Any attempt to create dense arrays will be blocked")
+                MemoryOptimizedForestModel._massive_grid_warning_logged = True
             # Force sparse-only configuration
             self.use_sparse_storage = True
             kwargs['use_sparse_storage'] = True
