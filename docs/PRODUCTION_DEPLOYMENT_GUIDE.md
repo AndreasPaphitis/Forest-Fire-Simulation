@@ -3,7 +3,7 @@
 ## Grid Specifications
 - **Domain**: Full Tenerife Island
 - **Grid Size**: 15,121 × 24,741 × 25 layers
-- **Total Cells**: 9,352,716,525 (9.3 billion cells)
+- **Total Cells**: 9,352,716,525 (9.35 billion cells)
 - **Memory Requirement**: 200-400 GB (optimized sparse storage)
 
 ## 🚨 Critical Memory Fixes Applied
@@ -264,4 +264,4 @@ memory_manager.add_callback('emergency', lambda stats: [
 - **Memory Expert**: For optimization consultation  
 - **Research Supervisor**: For scientific guidance
 
-The production deployment system is now ready for the full 9.3 billion cell Tenerife calibration simulation! 🏔️🔥
+The production deployment system is now ready for the full 9.35 billion cell Tenerife calibration simulation! 🏔️🔥

@@ -1,7 +1,7 @@
-# 🏔️ Tenerife Calibration Guide - Production-Ready 9.3B Cell Simulation
+# 🏔️ Tenerife Calibration Guide - Production-Ready Day 4 Fire Area Simulation
 
 ## Overview
-Your `run_tenerife_calibration.py` script is now **production-ready** for the full 15,121 × 24,741 × 25 Tenerife simulation with comprehensive memory management and OOM protection.
+Your `run_tenerife_calibration.py` script is now **production-ready** for the Day 4 fire area calibration (500 × 500 × 25 cells) with comprehensive memory management and OOM protection.
 
 ## 🚀 Quick Start Commands
 
@@ -114,16 +114,22 @@ pip install -r requirements.txt
 
 ### Memory Allocation Strategy
 ```
-Per-worker allocation (recommended):
-- Process memory: 60 GB max
-- Shared terrain: 10 GB (shared across workers)
-- Sparse storage: 40 GB for active cells
-- System overhead: 10 GB buffer
+Per-worker allocation (Day 4 area):
+- Active fire cells (sparse): 0.01 GB (9.76 MB)
+- Working memory (simulation): 0.50 GB
+- Python runtime overhead: 0.25 GB
+- Calibration overhead: 0.10 GB
+- Framework overhead: 0.25 GB
+- Terrain memory: 0.00 GB (shared)
 
-Total for 32 workers on 512GB system:
-- Worker processes: 32 × 20GB = 640 GB (theoretical)
-- Sparse optimization: Actual ~200-300 GB
-- System reserve: 100-200 GB
+Total per worker: 1.11 GB
+
+Total for 32 workers on 128GB system:
+- Worker processes: 32 × 1.11 GB = 35.5 GB
+- Shared terrain: 9.7 GB
+- System reserve: 50.0 GB
+- Calibration coordination: 5.0 GB
+- TOTAL: 100.2 GB (78% utilization)
 ```
 
 ## 🎯 Execution Examples
@@ -136,11 +142,11 @@ python scripts/run_tenerife_calibration.py
 # Output:
 🔥 TENERIFE FIRE PERIMETER CALIBRATION
 🛡️  SETTING UP PRODUCTION MEMORY PROTECTION
-🔍 SYSTEM RESOURCE CHECK FOR 9.3B CELL SIMULATION:
-   Total memory: 512.0 GB
-   Available memory: 490.2 GB
-   Required memory: 512 GB
-✅ System resources validated for massive scale simulation
+🔍 SYSTEM RESOURCE CHECK FOR DAY 4 FIRE AREA CALIBRATION:
+   Total memory: 128.0 GB
+   Available memory: 120.0 GB
+   Required memory: 100.2 GB
+✅ System resources validated for Day 4 fire area calibration
 🔥 STARTING CALIBRATION EXECUTION
 🛡️  Memory protection active - monitoring every 15 seconds
 ```
@@ -155,9 +161,9 @@ python scripts/run_tenerife_calibration.py \
     --parameters ember_probability fuel_consumption_rate ember_ignition slope_influence
 
 # Expected output:
-⏱️  Estimated completion: 12.5 hours
-💾 Estimated peak memory: 450.0 GB
-🎯 Total combinations: 256
+⏱️  Estimated completion: 23 minutes
+💾 Estimated peak memory: 100.2 GB
+🎯 Total combinations: 243
 ```
 
 ### Emergency Testing
@@ -230,7 +236,7 @@ python scripts/run_tenerife_calibration.py --memory 512 --workers 16
 
 #### System Resource Validation Failed
 ```bash
-# Symptoms: "Insufficient memory for 9.3B cell simulation"
+# Symptoms: "Insufficient memory for Day 4 fire area calibration"
 # Solution: Use emergency mode first
 python scripts/run_tenerife_calibration.py --emergency-small-scale
 ```
@@ -298,4 +304,4 @@ Watch for these concerning patterns:
 3. **Clean up shared memory**
 4. **Document lessons learned**
 
-Your `run_tenerife_calibration.py` script is now **production-ready** for the full 9.3 billion cell Tenerife calibration! 🏔️🔥
+Your `run_tenerife_calibration.py` script is now **production-ready** for the Day 4 fire area calibration with 6.25 million cells! 🏔️🔥

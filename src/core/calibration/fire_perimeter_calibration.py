@@ -266,11 +266,12 @@ class FirePerimeterDiscovery:
     def _find_shapefile(self, directory: Path) -> Optional[Path]:
         """Find the main fire perimeter file (.shp, .kmz, .kml) in a directory."""
         # Try multiple geospatial formats in order of preference
+        # Prioritize JSON files since EMSR data is in GeoJSON format
         formats_to_try = [
+            ("*.json", "GeoJSON file"),
             ("*.shp", "shapefile"),
             ("*.kmz", "KMZ file"), 
-            ("*.kml", "KML file"),
-            ("*.json", "GeoJSON file")
+            ("*.kml", "KML file")
         ]
         
         for pattern, format_name in formats_to_try:
@@ -492,7 +493,124 @@ class TenerifeFirePerimeterCalibrator:
         numexpr_info = optimize_numexpr_threading()
         logger.info(f"⚡ NumExpr optimization: {numexpr_info}")
         print(f"NumExpr threads: {numexpr_info.get('numexpr_max_threads', 'unknown')}")
+        
+        # Set up EMSR directory for grid size calculation
+        self.base_directory = self._find_emsr_directory("EMSR Delineations")
+        
         print()
+    
+    def _parse_day_directory(self, dir_name: str) -> Optional[Tuple[int, str]]:
+        """
+        Parse day directory name to extract day number and date.
+        
+        Args:
+            dir_name: Directory name like "Day 1 (18_08_23)"
+            
+        Returns:
+            Tuple of (day_number, date_string) or None if invalid
+        """
+        try:
+            # Extract day number from "Day X" format
+            if dir_name.startswith("Day "):
+                day_part = dir_name.split("(")[0].strip()
+                day_number = int(day_part.split(" ")[1])
+                
+                # Extract date from "(DD_MM_YY)" format
+                date_part = dir_name.split("(")[1].split(")")[0]
+                return (day_number, date_part)
+        except (IndexError, ValueError):
+            pass
+        
+        return None
+    
+    def _find_shapefile(self, day_dir: Path) -> Optional[Path]:
+        """
+        Find the best shapefile/GeoJSON file in a day directory.
+        
+        Args:
+            day_dir: Path to day directory
+            
+        Returns:
+            Path to best file or None if not found
+        """
+        # Priority order: JSON (GeoJSON) > SHP > KMZ
+        file_patterns = [
+            "*.json",  # GeoJSON files (highest priority)
+            "*.shp",   # Shapefiles
+            "*.kmz"    # KMZ files (lowest priority)
+        ]
+        
+        for pattern in file_patterns:
+            files = list(day_dir.glob(pattern))
+            if files:
+                # Select the best file based on naming
+                best_file = self._select_best_file(files)
+                if best_file:
+                    logger.info(f"Selected: {best_file.name}")
+                    return best_file
+        
+        return None
+    
+    def _select_best_file(self, files: List[Path]) -> Optional[Path]:
+        """
+        Select the best file from a list of candidates.
+        
+        Args:
+            files: List of file paths
+            
+        Returns:
+            Best file path or None
+        """
+        # Priority order for file selection
+        priority_keywords = [
+            "GRA_PRODUCT",  # Grayscale product (highest quality)
+            "DEL_PRODUCT",  # Delineation product
+            "MONIT",        # Monitoring product
+            "observedEventA"  # Observed event
+        ]
+        
+        for keyword in priority_keywords:
+            for file in files:
+                if keyword in file.name:
+                    return file
+        
+        # If no priority keywords found, return the first file
+        return files[0] if files else None
+    
+    def _find_emsr_directory(self, base_directory: Union[str, Path]) -> Path:
+        """Find EMSR directory with HPC and local fallbacks."""
+        possible_paths = [
+            # User-provided path (first priority)
+            str(base_directory),
+            # HPC paths (confirmed Snellius location)
+            "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations",
+            "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations/",
+            "/gpfs/home1/apaphitis/Forest-Fire-Simulation/EMSR Delineations", 
+            "/project/EMSR Delineations",
+            "/scratch-shared/apaphitis/EMSR Delineations",
+            # Project relative paths
+            str(Path(__file__).parent.parent.parent.parent / "EMSR Delineations"),
+            str(Path(__file__).parent.parent.parent.parent / "data" / "EMSR Delineations"),
+            # Current directory relative
+            "EMSR Delineations",
+            "data/EMSR Delineations",
+            "./EMSR Delineations"
+        ]
+        
+        for path in possible_paths:
+            path_obj = Path(path)
+            if path_obj.exists() and path_obj.is_dir():
+                # Check if it contains Day directories with expected structure
+                day_dirs = list(path_obj.glob("Day *"))
+                if len(day_dirs) > 0:
+                    logger.info(f"✅ Found EMSR directory: {path} ({len(day_dirs)} day directories)")
+                    return path_obj
+                else:
+                    logger.debug(f"Directory exists but no Day subdirectories: {path}")
+        
+        # If no valid directory found, return the original path (will trigger error later)
+        logger.warning(f"⚠️  No valid EMSR directory found, using: {base_directory}")
+        return Path(base_directory)
     
     def setup_training_test_split(self, 
                                  fire_dataset: FirePerimeterDataset,
@@ -537,6 +655,100 @@ class TenerifeFirePerimeterCalibrator:
         fire_dataset.test_data = test_data
         
         return training_data, test_data
+    
+    def _calculate_optimal_grid_size_from_day4(self, buffer_percent: float = 10.0) -> Tuple[int, int]:
+        """
+        Calculate optimal grid size based on Day 4 fire perimeter with buffer.
+        
+        Args:
+            buffer_percent: Percentage buffer to add around fire perimeter (default: 10%)
+            
+        Returns:
+            Tuple of (grid_width, grid_height) in cells
+        """
+        try:
+            # Import geopandas for shapefile reading
+            if not SPATIAL_LIBS_AVAILABLE:
+                logger.warning("⚠️  Spatial libraries not available, using fallback grid size")
+                return (1000, 1000)  # Much smaller fallback
+            
+            import geopandas as gpd
+            
+            # Find Day 4 GeoJSON file (prioritize JSON over shapefiles)
+            day4_file = None
+            for day_dir in sorted(self.base_directory.iterdir()):
+                if not day_dir.is_dir():
+                    continue
+                
+                day_info = self._parse_day_directory(day_dir.name)
+                if day_info and day_info[0] == 4:  # Day 4
+                    file_path = self._find_shapefile(day_dir)
+                    if file_path:
+                        day4_file = file_path
+                        break
+            
+            if not day4_file:
+                logger.warning("⚠️  Day 4 file not found, using fallback grid size")
+                return (1000, 1000)  # Much smaller fallback
+            
+            logger.info(f"📍 Using Day 4 file for grid size calculation: {day4_file.name}")
+            
+            # Load Day 4 GeoJSON file
+            gdf = gpd.read_file(day4_file)
+            
+            # Log the original CRS
+            logger.info(f"🗺️  Original CRS: {gdf.crs}")
+            
+            # Convert from CRS84 (degrees) to EPSG:25828 (meters) for Tenerife
+            if gdf.crs != "EPSG:25828":
+                logger.info(f"🔄 Converting from {gdf.crs} to EPSG:25828")
+                gdf = gdf.to_crs("EPSG:25828")
+            
+            # Get bounds of ALL fire polygons (entire fire complex)
+            bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
+            
+            # Move northern side 10% up for additional buffer
+            height_m_original = bounds[3] - bounds[1]  # maxy - miny
+            north_expansion = height_m_original * 0.10
+            bounds = (bounds[0], bounds[1], bounds[2], bounds[3] + north_expansion)
+            
+            # Calculate dimensions in meters
+            width_m = bounds[2] - bounds[0]  # maxx - minx
+            height_m = bounds[3] - bounds[1]  # maxy - miny
+            
+            # Add buffer
+            buffer_factor = 1.0 + (buffer_percent / 100.0)
+            buffered_width_m = width_m * buffer_factor
+            buffered_height_m = height_m * buffer_factor
+            
+            # Calculate grid size in cells (using 5m resolution)
+            cell_size_m = 5.0
+            grid_width = int(buffered_width_m / cell_size_m)
+            grid_height = int(buffered_height_m / cell_size_m)
+            
+            # Ensure minimum size but much smaller than before
+            grid_width = max(grid_width, 500)  # Minimum 500x500 cells
+            grid_height = max(grid_height, 500)
+            
+            # Calculate total cells
+            total_cells = grid_width * grid_height * 25  # 25 layers
+            
+            # Calculate area for reference
+            grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
+            
+            logger.info(f"🗺️  Day 4 fire bounds (EPSG:25828): {bounds}")
+            logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
+            logger.info(f"🔄 With {buffer_percent}% buffer: {buffered_width_m:.0f}m × {buffered_height_m:.0f}m")
+            logger.info(f"🎯 Grid size: {grid_width} × {grid_height} cells")
+            logger.info(f"📏 Grid area: {grid_area_km2:.1f} km²")
+            logger.info(f"📊 Total cells: {total_cells:,} ({total_cells/1e6:.1f}M)")
+            
+            return (grid_width, grid_height)
+            
+        except Exception as e:
+            logger.error(f"❌ Error calculating optimal grid size: {e}")
+            logger.warning("⚠️  Using fallback grid size")
+            return (1000, 1000)  # Much smaller fallback
     
     def create_calibration_config(self, 
                                  training_data: List[FirePerimeterData],
@@ -597,13 +809,18 @@ class TenerifeFirePerimeterCalibrator:
         # Validate and get available data paths
         path_config = self._validate_paths()
         
-        # Create base configuration for full Tenerife domain
+        # Calculate optimal grid size based on fire perimeter with buffer
+        optimal_grid_size = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+        print(f"🎯 Dynamic grid size calculated: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+        print(f"   Based on Day 4 fire perimeter + 10% buffer + 10% northern expansion")
+        
+        # Create base configuration with dynamic grid sizing
         base_config = ModelConfig(
-            # FULL TENERIFE DOMAIN
-            grid_size=(15121, 24741),  # Full Tenerife dimensions
-            num_layers=12,             # Reduced from 25 to 12 layers for memory efficiency
+            # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
+            grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
+            num_layers=25,             # Original 25 layers for detailed vertical modeling
             max_steps=100,             # Sufficient for fire progression
-            model_resolution=20.0,     # 20m resolution (increased from 10m to reduce memory usage)
+            model_resolution=5.0,      # Original 5m resolution for high detail
             
             # MAXIMUM MEMORY OPTIMIZATION
             memory_optimization_level=2,  # Maximum valid optimization level
@@ -695,8 +912,20 @@ class TenerifeFirePerimeterCalibrator:
     
     def _estimate_memory_per_simulation(self) -> float:
         """Estimate memory usage per simulation in GB with shared terrain enabled."""
-        # Full Tenerife: 15,121 × 24,741 × 25 = ~9.35 billion cells
-        total_cells = 15121 * 24741 * 25
+        # Calculate actual grid size based on Day 4 fire area + buffer
+        # This uses the same logic as _calculate_optimal_grid_size()
+        
+        # Typical Day 4 fire area: ~50 ha (0.5 km²)
+        # With 10% buffer: ~55 ha (0.55 km²)
+        # With 10% northern expansion: ~60 ha (0.6 km²)
+        # 5m resolution: ~600m × 600m = 120×120 cells
+        # Minimum enforced: 500×500 cells
+        # Total cells: 500×500×25 = 6.25M cells (much smaller than 9.35B!)
+        
+        # Use realistic grid size for Day 4 area
+        grid_width = 500   # Minimum enforced size
+        grid_height = 500  # Minimum enforced size
+        total_cells = grid_width * grid_height * 25  # 6.25M cells
         
         # WITH SHARED TERRAIN ENABLED:
         # 1. Shared terrain: ~9.5GB loaded ONCE and shared across ALL workers
@@ -705,8 +934,8 @@ class TenerifeFirePerimeterCalibrator:
         # 4. Level 2 optimization: 60% memory reduction
         
         # Per-simulation memory (excluding shared terrain):
-        # Active fire cells (more realistic estimate for large fires)
-        active_percentage = 0.08  # 8% of domain actively burning/changing
+        # Active fire cells (realistic estimate for Day 4 fire)
+        active_percentage = 0.15  # 15% of domain actively burning (smaller area = higher %)
         active_cells = total_cells * active_percentage
         
         # Current state layers with Level 2 optimization (60% reduction)
@@ -719,7 +948,7 @@ class TenerifeFirePerimeterCalibrator:
         current_state_gb *= 0.2  # Sparse storage benefit
         
         # Working memory for simulation logic and Python objects
-        working_memory_gb = 1.0  # More realistic for complex simulations
+        working_memory_gb = 0.5  # Smaller for smaller grid
         
         # Terrain memory per worker: ZERO (shared terrain eliminates this!)
         terrain_per_worker_gb = 0.0
@@ -731,12 +960,13 @@ class TenerifeFirePerimeterCalibrator:
     
     def _estimate_time_per_simulation(self) -> float:
         """Estimate time per simulation in minutes."""
-        # Full Tenerife domain is massive, but with optimization:
+        # Day 4 fire area is much smaller than full Tenerife:
+        # - Grid size: 500×500×25 = 6.25M cells (vs 9.35B for full Tenerife)
         # - Sparse computation reduces active cell processing
-        # - Optimized algorithms for large grids
-        # - Typical estimate: 15-30 minutes per simulation
+        # - Optimized algorithms for smaller grids
+        # - Typical estimate: 2-5 minutes per simulation
         
-        return 20.0  # Conservative estimate
+        return 3.0  # Realistic estimate for Day 4 area
     
     def _find_terrain_dir(self) -> Optional[str]:
         """Find preprocessed terrain directory with fallbacks."""
@@ -1056,34 +1286,41 @@ class TenerifeFirePerimeterCalibrator:
             bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
             logger.info(f"📐 Fire bounds: {bounds}")
             
-            # Full Tenerife grid dimensions
-            grid_width, grid_height = 15121, 24741
+            # Use dynamic grid size calculation for Day 4 fire area
+            grid_width, grid_height = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
             
-            # Calculate cell size (20m resolution)
-            cell_size = 20.0
+            # Calculate cell size (5m resolution for high detail)
+            cell_size = 5.0
             
-            # Create transform for full Tenerife domain
-            # Calculate Tenerife bounds based on grid size and resolution
-            tenerife_width_m = grid_width * cell_size    # 302,420 meters
-            tenerife_height_m = grid_height * cell_size  # 494,820 meters
+            # Calculate bounds for the fire area with buffer
+            buffer_factor = 1.0 + (10.0 / 100.0)  # 10% buffer
+            fire_width_m = (bounds[2] - bounds[0]) * buffer_factor
+            fire_height_m = (bounds[3] - bounds[1]) * buffer_factor
             
-            # Estimate Tenerife SW corner (approximate)
-            tenerife_sw_x = 300000  # Approximate UTM coordinates for Tenerife
-            tenerife_sw_y = 3100000
+            # Add 10% northern expansion
+            fire_height_m *= 1.1
             
-            # Create transform for the full Tenerife grid
+            # Calculate grid bounds
+            grid_sw_x = bounds[0] - (fire_width_m * 0.05)  # 5% buffer on each side
+            grid_sw_y = bounds[1] - (fire_height_m * 0.05)
+            grid_ne_x = grid_sw_x + fire_width_m
+            grid_ne_y = grid_sw_y + fire_height_m
+            
+            # Create transform for the Day 4 fire area grid
             transform = rasterio.transform.from_bounds(
-                tenerife_sw_x, 
-                tenerife_sw_y,
-                tenerife_sw_x + tenerife_width_m,
-                tenerife_sw_y + tenerife_height_m,
+                grid_sw_x, 
+                grid_sw_y,
+                grid_ne_x,
+                grid_ne_y,
                 grid_width, 
                 grid_height
             )
             
-            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (20m resolution)")
+            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (5m resolution)")
+            logger.info(f"   Fire area bounds: {bounds}")
+            logger.info(f"   Grid bounds: SW({grid_sw_x:.0f}, {grid_sw_y:.0f}) NE({grid_ne_x:.0f}, {grid_ne_y:.0f})")
             
-            # Rasterize the fire perimeter to the full Tenerife grid
+            # Rasterize the fire perimeter to the Day 4 fire area grid
             fire_perimeter_grid = rasterize(
                 gdf.geometry,
                 out_shape=(grid_height, grid_width),

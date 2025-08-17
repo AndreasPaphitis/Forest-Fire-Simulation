@@ -5,7 +5,7 @@
 Your forest fire simulation was killed by the OOM (Out-of-Memory) manager due to critical memory issues:
 
 ### Root Causes Identified:
-1. **Massive Grid Size**: 15,121 × 24,741 = 374 million cells
+1. **Massive Grid Size**: 15,121 × 24,741 × 25 = 9.35 billion cells
 2. **Memory Leaks**: Shared memory copying creates duplicate terrain data
 3. **Large Terrain Files**: 9.41 GB of preprocessed terrain data
 4. **Multiple Loading**: Repeated terrain loading by different processes
@@ -78,7 +78,7 @@ watch -n 1 'free -h && ps aux --sort=-%mem | head'
 | 2,000² | 4M | 4-8 GB | ✅ Safe |
 | 5,000² | 25M | 25-50 GB | ⚠️ Monitor |
 | 10,000² | 100M | 100-200 GB | ❌ Risk |
-| 15,121×24,741 | 374M | 200-400 GB | 🚨 OOM Risk |
+| 15,121×24,741×25 | 9.35B | 500-1000 GB | 🚨 OOM Risk |
 
 ## 🛡️ Memory Protection Tools Created
 

@@ -472,12 +472,10 @@ Examples:
         
         # Add emergency configuration if needed
         if args.emergency_small_scale:
-            calibrator_kwargs['emergency_mode'] = True
             calibrator_kwargs['grid_size'] = (1000, 1000)  # Override grid size
         
-        # Add emergency mode for segfault prevention
+        # Emergency mode is automatically enabled in FireSimulationEngine for large grids
         if args.emergency_mode:
-            calibrator_kwargs['emergency_mode'] = True
             print(f"🚨 EMERGENCY MODE ENABLED - Sparse matrix operations will be bypassed")
             print(f"   This prevents segfaults but may reduce simulation accuracy")
         

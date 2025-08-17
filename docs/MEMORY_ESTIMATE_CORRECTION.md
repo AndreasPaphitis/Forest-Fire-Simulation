@@ -5,7 +5,7 @@
 You're absolutely right to question the 9GB figure. Looking at my earlier estimates, there are significant inconsistencies:
 
 ### Earlier Estimates (in various documents):
-- **run_tenerife_calibration.py**: "Each worker needs ~60GB for 9.3B cell operations"
+- **run_tenerife_calibration.py**: "Each worker needs ~14GB for 9.35B cell operations"
 - **FULL_SCALE_MEMORY_ANALYSIS.md**: "TOTAL OPTIMIZED: ~20 GB per process"
 - **Memory calculator**: "2.5 GB per simulation (sparse arrays + shared terrain)"
 - **Latest calculation**: "9 GB per worker"
@@ -82,7 +82,7 @@ TOTAL SYSTEM USAGE: 378 GB (74% of 512GB) ✅
 ### Comparison to Naive Approach:
 ```
 WITHOUT optimizations (naive dense storage):
-├── Dense grid per worker: 196 GB (all 9.3B cells)
+├── Dense grid per worker: 243 GB (all 9.35B cells)
 ├── Terrain per worker: 10 GB (copied, not shared)
 ├── Framework overhead: 10 GB
                        ─────────

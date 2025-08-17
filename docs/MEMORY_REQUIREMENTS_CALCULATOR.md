@@ -1,8 +1,8 @@
-# 📊 Memory Requirements Calculator - 9.3B Cell Tenerife Calibration
+# 📊 Memory Requirements Calculator - 9.35B Cell Tenerife Calibration
 
 ## Grid Specifications
 - **Grid Size**: 15,121 × 24,741 × 25 layers
-- **Total Cells**: 9,352,716,525 (9.3 billion cells)
+- **Total Cells**: 9,352,716,525 (9.35 billion cells)
 - **Surface Cells**: 374,078,361 (374 million surface cells)
 - **Cell Resolution**: 10m × 10m
 
@@ -29,22 +29,22 @@ With our ultra-sparse optimization:
 
 ```
 CONSERVATIVE ESTIMATE (1% active cells):
-├── Active fire cells: 93.5M cells (1% of 9.3B)
-├── Per-cell data: 21 bytes (state + fuel + temp + moisture + wind)
-├── Active cell memory: 93.5M × 21 bytes = 1.96 GB
+├── Active fire cells: 93.5M cells (1% of 9.35B)
+├── Per-cell data: 26 bytes (accurate data types)
+├── Active cell memory: 93.5M × 26 bytes = 2.43 GB
 ├── Sparse matrix overhead: 0.5 GB
 ├── Python object overhead: 0.5 GB
                            ──────────
-Per-process sparse storage: 3.0 GB
+Per-process sparse storage: 3.43 GB
 
 REALISTIC ESTIMATE (0.1% active cells):
-├── Active fire cells: 9.35M cells (0.1% of 9.3B)
-├── Per-cell data: 21 bytes
-├── Active cell memory: 9.35M × 21 bytes = 196 MB
+├── Active fire cells: 9.35M cells (0.1% of 9.35B)
+├── Per-cell data: 26 bytes
+├── Active cell memory: 9.35M × 26 bytes = 243 MB
 ├── Sparse matrix overhead: 300 MB
 ├── Python object overhead: 500 MB
                            ──────────
-Per-process sparse storage: 1.0 GB
+Per-process sparse storage: 1.04 GB
 ```
 
 ### 3. Calibration-Specific Memory (Per Worker)
@@ -76,35 +76,35 @@ Framework overhead: 6.0 GB per process
 ### Configuration 1: Conservative (1% active cells)
 ```
 Memory per worker process:
-├── Sparse storage:        3.0 GB
-├── Calibration overhead:  2.0 GB
-├── Framework overhead:    6.0 GB
+├── Sparse storage:        3.43 GB
+├── Calibration overhead:  4.5 GB
+├── Framework overhead:    8.5 GB
                           ──────────
-Total per worker:         11.0 GB
+Total per worker:         16.43 GB
 
 For 32 workers:
-├── Worker processes: 32 × 11.0 GB = 352 GB
+├── Worker processes: 32 × 16.43 GB = 526 GB
 ├── Shared terrain:        9.7 GB
 ├── System reserve:       50.0 GB
                          ──────────
-TOTAL SYSTEM MEMORY:     412 GB
+TOTAL SYSTEM MEMORY:     586 GB
 ```
 
 ### Configuration 2: Realistic (0.1% active cells)
 ```
 Memory per worker process:
-├── Sparse storage:        1.0 GB
-├── Calibration overhead:  2.0 GB  
-├── Framework overhead:    6.0 GB
+├── Sparse storage:        1.04 GB
+├── Calibration overhead:  4.5 GB  
+├── Framework overhead:    8.5 GB
                           ──────────
-Total per worker:          9.0 GB
+Total per worker:         14.04 GB
 
 For 32 workers:
-├── Worker processes: 32 × 9.0 GB = 288 GB
+├── Worker processes: 32 × 14.04 GB = 449 GB
 ├── Shared terrain:        9.7 GB
 ├── System reserve:       50.0 GB
                          ──────────
-TOTAL SYSTEM MEMORY:     348 GB
+TOTAL SYSTEM MEMORY:     509 GB
 ```
 
 ### Configuration 3: Optimal (0.05% active cells)
@@ -163,11 +163,11 @@ Hardware Requirements:
 
 | Workers | Per-Worker Memory | Total Process Memory | Shared Memory | System Reserve | **Total Required** |
 |---------|-------------------|---------------------|---------------|----------------|-------------------|
-| 16      | 9.0 GB           | 144 GB              | 10 GB         | 50 GB          | **204 GB**        |
-| 24      | 9.0 GB           | 216 GB              | 10 GB         | 50 GB          | **276 GB**        |
-| 32      | 9.0 GB           | 288 GB              | 10 GB         | 50 GB          | **348 GB**        |
-| 48      | 9.0 GB           | 432 GB              | 10 GB         | 100 GB         | **542 GB**        |
-| 64      | 9.0 GB           | 576 GB              | 10 GB         | 150 GB         | **736 GB**        |
+| 16      | 14.04 GB         | 225 GB              | 10 GB         | 50 GB          | **285 GB**        |
+| 24      | 14.04 GB         | 337 GB              | 10 GB         | 50 GB          | **397 GB**        |
+| 32      | 14.04 GB         | 449 GB              | 10 GB         | 50 GB          | **509 GB**        |
+| 48      | 14.04 GB         | 674 GB              | 10 GB         | 100 GB         | **784 GB**        |
+| 64      | 14.04 GB         | 899 GB              | 10 GB         | 150 GB         | **1,059 GB**      |
 
 ## 🚨 Memory Safety Thresholds
 

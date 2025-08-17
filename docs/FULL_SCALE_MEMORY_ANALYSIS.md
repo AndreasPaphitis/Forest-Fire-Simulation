@@ -2,7 +2,7 @@
 
 ## Grid Specifications
 - **Dimensions**: 15,121 × 24,741 × 25 layers
-- **Total Cells**: 9,352,716,525 cells (9.3 billion)
+- **Total Cells**: 9,352,716,525 cells (9.35 billion)
 - **Domain**: Full Tenerife Island
 - **Resolution**: ~10m per cell
 

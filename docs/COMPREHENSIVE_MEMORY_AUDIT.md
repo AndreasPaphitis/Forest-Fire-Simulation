@@ -20,7 +20,7 @@ self._force_sparse_only = total_cells > 100_000_000
 if self._force_sparse_only:
     logger.warning("ENFORCING SPARSE-ONLY MODE - Dense arrays FORBIDDEN")
 ```
-**Impact**: Only stores 0.05-0.1% of 9.3B cells (active fire cells only)
+**Impact**: Only stores 0.05-0.1% of 9.35B cells (active fire cells only)
 
 ### 3. **Direct Sparse Initialization** (`src/core/forest_model.py`)
 ```python
@@ -86,7 +86,7 @@ store_full_states: bool = False  # Only current timestep in memory
 
 ### Sparse Fire Data (Per Worker):
 ```
-9.3B total cells × 0.08% active = 744,000 active cells
+9.35B total cells × 0.08% active = 748,000 active cells
 744K cells × 21 bytes/cell = 15.6 MB base
 15.6 MB × 0.4 (Level 2 opt) × 0.2 (sparse) = 1.25 MB
 Round up for safety: 10 MB per worker
