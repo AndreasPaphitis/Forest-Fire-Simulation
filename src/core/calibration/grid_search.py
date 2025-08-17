@@ -514,19 +514,19 @@ class GridSearchCalibrator:
             simulation_result = engine.run_simulation()
             
             # Calculate objective value
-            objective_value = self.objective_function(simulation_result, target_data)
+            objective_result = self.objective_function(simulation_result, target_data)
             
             evaluation_time = time.time() - start_time
             
             # Create result
             result = GridSearchResult(
                 parameter_values=parameter_values.copy(),
-                objective_value=objective_value,
-                objective_components={},
+                objective_value=objective_result.value if objective_result.is_valid else 0.0,
+                objective_components=objective_result.components,
                 simulation_stats=simulation_result.get('stats', {}),
                 evaluation_time=evaluation_time,
-                is_valid=True,
-                error_message=""
+                is_valid=objective_result.is_valid,
+                error_message=objective_result.error_message
             )
             
             # Clean up
