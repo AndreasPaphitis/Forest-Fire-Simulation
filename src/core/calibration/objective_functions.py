@@ -14,6 +14,7 @@ Version: 1.0
 """
 
 import numpy as np
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Union, Optional, Tuple, Callable
 from dataclasses import dataclass
@@ -172,6 +173,36 @@ class ObjectiveResult:
     components: Dict[str, float]
     is_valid: bool = True
     error_message: str = ""
+    
+    def __lt__(self, other):
+        """Compare ObjectiveResult objects by their value."""
+        if not isinstance(other, ObjectiveResult):
+            return NotImplemented
+        return self.value < other.value
+    
+    def __le__(self, other):
+        """Compare ObjectiveResult objects by their value."""
+        if not isinstance(other, ObjectiveResult):
+            return NotImplemented
+        return self.value <= other.value
+    
+    def __gt__(self, other):
+        """Compare ObjectiveResult objects by their value."""
+        if not isinstance(other, ObjectiveResult):
+            return NotImplemented
+        return self.value > other.value
+    
+    def __ge__(self, other):
+        """Compare ObjectiveResult objects by their value."""
+        if not isinstance(other, ObjectiveResult):
+            return NotImplemented
+        return self.value >= other.value
+    
+    def __eq__(self, other):
+        """Compare ObjectiveResult objects by their value."""
+        if not isinstance(other, ObjectiveResult):
+            return NotImplemented
+        return self.value == other.value
 
 
 class ObjectiveFunction(ABC):
