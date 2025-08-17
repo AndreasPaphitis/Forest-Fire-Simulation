@@ -22,7 +22,7 @@ Version: 1.0
 import os
 # import sys # Removed sys.path manipulation
 import time
-# import logging # Replaced by get_logger
+import logging # Added back for fallback error handler
 import numpy as np
 import math
 import functools # For fallback error handler
@@ -78,7 +78,6 @@ except ImportError:
     logger.warning("Core error handling utilities (src.utils.error_handling) not found. Using basic fallback error handling.")
     
     # Fallback error handler and basic error classes
-    import logging  # Import logging for fallback error handler
     def handle_errors(func=None, error_type=Exception, default_return=None, log_level=logging.ERROR):
         def decorator(f):
             @functools.wraps(f)
