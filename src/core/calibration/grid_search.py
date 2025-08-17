@@ -93,6 +93,34 @@ class GridSearchResults:
         self.results.append(result)
         self._update_statistics()
     
+    def add_error(self):
+        """Add an error result to track failed evaluations."""
+        error_result = GridSearchResult(
+            parameter_values={},
+            objective_value=0.0,
+            objective_components={},
+            simulation_stats={},
+            evaluation_time=0.0,
+            is_valid=False,
+            error_message="Evaluation failed"
+        )
+        self.results.append(error_result)
+        self._update_statistics()
+    
+    def add_timeout(self):
+        """Add a timeout result to track timed out evaluations."""
+        timeout_result = GridSearchResult(
+            parameter_values={},
+            objective_value=0.0,
+            objective_components={},
+            simulation_stats={},
+            evaluation_time=0.0,
+            is_valid=False,
+            error_message="Evaluation timed out"
+        )
+        self.results.append(timeout_result)
+        self._update_statistics()
+    
     def get_best_parameters(self) -> Optional[Dict[str, float]]:
         """Get the best parameter configuration."""
         return self.best_result.parameter_values if self.best_result else None
@@ -221,7 +249,7 @@ class SerializationOptimizer:
     
     def __init__(self):
         self._serialization_cache = {}
-        self._lazy_objects = weakref.WeakValueDictionary()
+        self._lazy_objects = {}  # Changed from WeakValueDictionary to regular dict for pickle compatibility
         self._optimized_configs = {}
     
     def optimize_config_for_serialization(self, config: Dict[str, Any]) -> Dict[str, Any]:
