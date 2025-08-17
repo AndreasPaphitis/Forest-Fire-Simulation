@@ -410,9 +410,6 @@ class GridSearchCalibrator:
         # Calculate total combinations
         self.total_combinations = self._calculate_total_combinations()
         
-        # Calculate combinations
-        self.combinations = self._generate_parameter_combinations()
-        
         # Start HPC monitoring
         start_hpc_monitoring()
         logger.info("🚀 GridSearchCalibrator initialized with HPC and serialization optimizations")
@@ -731,7 +728,8 @@ class GridSearchCalibrator:
         self._pre_optimize_for_workers()
         
         # Convert generator to list for parallel processing
-        combinations_list = list(self.combinations)
+        # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
+        combinations_list = list(self._generate_parameter_combinations())
         
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit jobs in batches to prevent resource contention
@@ -778,7 +776,7 @@ class GridSearchCalibrator:
             common_configs = {}
             
             # Take first 10 combinations from generator
-            for i, combo in enumerate(self.combinations):
+            for i, combo in enumerate(self._generate_parameter_combinations()):
                 if i >= 10:  # Only cache first 10
                     break
                 config_key = f"config_{hash(str(combo))}"
