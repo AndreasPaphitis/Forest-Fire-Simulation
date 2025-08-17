@@ -810,7 +810,7 @@ class GridSearchCalibrator:
             # Stop HPC monitoring
             stop_hpc_monitoring()
             
-            logger.info("🧹 GridSearchCalibrator cleanup completed")
+            logger.debug("🧹 GridSearchCalibrator cleanup completed")
             
         except Exception as e:
             logger.warning(f"⚠️  Cleanup error: {e}")

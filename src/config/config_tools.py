@@ -86,7 +86,7 @@ class ModelConfig:
     # === MEMORY AND PERFORMANCE ===
     memory_optimization_level: int = 0
     use_disk_storage: bool = False
-    use_sparse_storage: bool = False
+    use_sparse_storage: bool = Truegit
     disk_storage_dir: str = "temp_simulation_states"
     bytes_per_cell: int = 10
     tile_size: int = 200
@@ -173,7 +173,7 @@ class ModelConfig:
         elif isinstance(self.grid_size, list):
             raise ValueError(f"grid_size was a list but not of length 2: {self.grid_size}")
         elif isinstance(self.grid_size, int):
-             logger.warning(f"grid_size was an int: {self.grid_size}. Converting to ({self.grid_size},{self.grid_size}).")
+             logger.debug(f"grid_size was an int: {self.grid_size}. Converting to ({self.grid_size},{self.grid_size}).")
              self.grid_size = (self.grid_size, self.grid_size)
         elif not isinstance(self.grid_size, tuple):
             raise ValueError(f"grid_size must be a tuple or a list of two integers, got {self.grid_size} of type {type(self.grid_size)}")

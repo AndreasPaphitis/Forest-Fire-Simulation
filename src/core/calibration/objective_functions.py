@@ -298,11 +298,15 @@ class SpatialSimilarityObjective(ObjectiveFunction):
             
             # Get predicted fire state (combine all layers)
             if hasattr(forest_model, 'state'):
-                # Debug: Check the shape and type of the state
+                # Debug: Check the shape and type of the state (only log once per evaluation)
                 state_shape = forest_model.state.shape if hasattr(forest_model.state, 'shape') else 'no shape'
                 state_type = type(forest_model.state)
-                state_repr = str(forest_model.state)[:200]  # First 200 chars
-                logger.info(f"Forest model state: shape={state_shape}, type={state_type}, repr={state_repr}")
+                # Only log detailed state info in debug mode to reduce verbosity
+                if logger.isEnabledFor(logging.DEBUG):
+                    state_repr = str(forest_model.state)[:200]  # First 200 chars
+                    logger.debug(f"Forest model state: shape={state_shape}, type={state_type}, repr={state_repr}")
+                else:
+                    logger.debug(f"Forest model state: shape={state_shape}, type={state_type}")
                 
                 # Handle different state formats
                 if hasattr(forest_model.state, 'shape') and len(forest_model.state.shape) == 3:
