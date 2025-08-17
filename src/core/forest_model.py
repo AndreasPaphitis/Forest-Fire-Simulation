@@ -6268,4 +6268,48 @@ class MemoryOptimizedForestModel(ForestModel):
         if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
             # Use the SparseLayerAccessor's tile method
             fuel_accessor = self.fuel_load
-            if hasattr(fuel_accessor, '
+            if hasattr(fuel_accessor, 'set_tile_data'):
+                fuel_accessor.set_tile_data(x_start, x_end, y_start, y_end, layer_idx, data)
+            else:
+                # Fallback to element-by-element setting
+                for local_x in range(data.shape[0]):
+                    for local_y in range(data.shape[1]):
+                        global_x = x_start + local_x
+                        global_y = y_start + local_y
+                        if (0 <= global_x < self.width and 0 <= global_y < self.height and
+                            layer_idx < self.num_layers):
+                            self.fuel_load[global_x, global_y, layer_idx] = float(data[local_x, local_y])
+        else:
+            # Dense storage - use regular array slicing
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+            else:
+                # Create dense array if needed
+                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
+
+
+def create_forest_model(model_type: str = "standard", config=None, **kwargs):
+    """
+    Factory function to create forest model instances.
+    
+    Args:
+        model_type: Type of forest model to create ("standard", "memory_optimized", "sparse")
+        config: ModelConfig object with simulation parameters
+        **kwargs: Additional arguments passed to the model constructor
+    
+    Returns:
+        ForestModel instance of the specified type
+    """
+    if model_type == "standard":
+        return ForestModel(config=config, **kwargs)
+    elif model_type == "memory_optimized" or model_type == "sparse":
+        return MemoryOptimizedForestModel(config=config, **kwargs)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}. Use 'standard' or 'memory_optimized'")
+
+ 
+ c l a s s   M i n i m a l F o r e s t M o d e l S t u b : 
+ 
+ 
