@@ -1,685 +1,574 @@
+#!/usr/bin/env python3
 """
-File Handling Utilities Module
+Enhanced File Handling Module with File System Coordination
 
-Provides standardized file operations for consistent file handling across the codebase.
+Provides robust file handling with:
+- File locking mechanisms for concurrent access
+- File system coordination to prevent corruption
+- Safe file operations with retry logic
+- Directory management and cleanup
 """
 
 import os
-import glob
+import gc
+import time
+import threading
+import tempfile
 import shutil
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple, Union, BinaryIO, TextIO
 import logging
 import json
 import pickle
-import numpy as np
-import csv
-from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Union, BinaryIO, TextIO, Tuple, Generator
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
+import hashlib
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-class FileManager:
-    """Centralized file management utilities."""
-    
-    @staticmethod
-    def ensure_directory(directory_path: Union[str, Path]) -> Path:
-        """
-        Ensure a directory exists, creating it if necessary.
-        
-        Args:
-            directory_path: Path to the directory
-            
-        Returns:
-            Path object for the directory
-        """
-        path = Path(directory_path)
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-    
-    @staticmethod
-    def find_files(base_dir: Union[str, Path], pattern: str, recursive: bool = True) -> List[Path]:
-        """
-        Find files matching a pattern.
-        
-        Args:
-            base_dir: Base directory to search
-            pattern: Glob pattern for matching files
-            recursive: Whether to search recursively
-            
-        Returns:
-            List of Path objects for matching files
-        """
-        base_path = Path(base_dir)
-        if not base_path.exists():
-            logger.warning(f"Directory does not exist: {base_dir}")
-            return []
-        
-        search_pattern = os.path.join(str(base_path), "**", pattern) if recursive else os.path.join(str(base_path), pattern)
-        return [Path(f) for f in glob.glob(search_pattern, recursive=recursive)]
-    
-    @staticmethod
-    def safe_save_json(data: Any, filepath: Union[str, Path], indent: int = 2) -> bool:
-        """
-        Safely save data to a JSON file.
-        
-        Args:
-            data: Data to save
-            filepath: Path to save to
-            indent: JSON indentation
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            filepath = Path(filepath)
-            FileManager.ensure_directory(filepath.parent)
-            
-            # Write to temporary file first
-            temp_path = filepath.with_suffix('.tmp')
-            with open(temp_path, 'w') as f:
-                json.dump(data, f, indent=indent)
-            
-            # Rename to target file (atomic operation)
-            temp_path.replace(filepath)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving JSON to {filepath}: {e}")
-            return False
-    
-    @staticmethod
-    def safe_save_pickle(data: Any, filepath: Union[str, Path], protocol: int = pickle.HIGHEST_PROTOCOL) -> bool:
-        """
-        Safely save data to a pickle file.
-        
-        Args:
-            data: Data to save
-            filepath: Path to save to
-            protocol: Pickle protocol version
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            filepath = Path(filepath)
-            FileManager.ensure_directory(filepath.parent)
-            
-            # Write to temporary file first
-            temp_path = filepath.with_suffix('.tmp')
-            with open(temp_path, 'wb') as f:
-                pickle.dump(data, f, protocol=protocol)
-            
-            # Rename to target file (atomic operation)
-            temp_path.replace(filepath)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving pickle to {filepath}: {e}")
-            return False
-    
-    @staticmethod
-    def safe_load_json(filepath: Union[str, Path], default: Any = None) -> Any:
-        """
-        Safely load data from a JSON file.
-        
-        Args:
-            filepath: Path to load from
-            default: Default value if loading fails
-            
-        Returns:
-            Loaded data or default
-        """
-        try:
-            with open(filepath, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading JSON from {filepath}: {e}")
-            return default
-    
-    @staticmethod
-    def safe_load_pickle(filepath: Union[str, Path], default: Any = None) -> Any:
-        """
-        Safely load data from a pickle file.
-        
-        Args:
-            filepath: Path to load from
-            default: Default value if loading fails
-            
-        Returns:
-            Loaded data or default
-        """
-        try:
-            with open(filepath, 'rb') as f:
-                return pickle.load(f)
-        except Exception as e:
-            logger.error(f"Error loading pickle from {filepath}: {e}")
-            return default
-            
-    @staticmethod
-    def get_checkpoint_path(base_dir: Union[str, Path], run_id: str, create_dir: bool = True) -> Path:
-        """
-        Get a standardized checkpoint path.
-        
-        Args:
-            base_dir: Base directory for checkpoints
-            run_id: Unique identifier for the run
-            create_dir: Whether to create the directory if it doesn't exist
-            
-        Returns:
-            Path to the checkpoint file
-        """
-        checkpoint_dir = Path(base_dir) / "checkpoints"
-        if create_dir:
-            checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        
-        return checkpoint_dir / f"checkpoint_{run_id}.pkl"
+# Cross-platform file locking
+try:
+    import fcntl
+    FCNTL_AVAILABLE = True
+except ImportError:
+    FCNTL_AVAILABLE = False
+    logger.warning("fcntl not available - using file-based locking fallback")
 
-    @staticmethod
-    def save_array_as_csv(array: np.ndarray, filepath: Union[str, Path], header: Optional[List[str]] = None) -> bool:
+# Global file lock registry
+_file_locks = {}
+_lock_registry_lock = threading.Lock()
+
+class FileLock:
+    """Thread-safe file lock for coordinating file access (cross-platform)."""
+    
+    def __init__(self, file_path: Union[str, Path]):
+        self.file_path = Path(file_path)
+        self.lock_path = self.file_path.with_suffix(self.file_path.suffix + '.lock')
+        self.lock_file = None
+        self.lock_acquired = False
+        self._lock_timeout = 30.0  # 30 seconds timeout
+        self._lock_retry_delay = 0.1  # 100ms retry delay
+    
+    def acquire(self, timeout: Optional[float] = None) -> bool:
+        """Acquire the file lock (cross-platform)."""
+        if timeout is None:
+            timeout = self._lock_timeout
+        
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Create lock file
+                self.lock_file = open(self.lock_path, 'w')
+                
+                # Try to acquire exclusive lock (cross-platform)
+                if FCNTL_AVAILABLE:
+                    # Use fcntl on Unix-like systems
+                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    # Use file-based locking on Windows
+                    # Try to write to the lock file - if it fails, another process has the lock
+                    try:
+                        self.lock_file.write(f"{os.getpid()}\n")
+                        self.lock_file.flush()
+                    except Exception:
+                        self.lock_file.close()
+                        self.lock_file = None
+                        time.sleep(self._lock_retry_delay)
+                        continue
+                
+                # Write process info to lock file
+                lock_info = {
+                    'pid': os.getpid(),
+                    'timestamp': time.time(),
+                    'thread_id': threading.get_ident()
+                }
+                json.dump(lock_info, self.lock_file)
+                self.lock_file.flush()
+                
+                self.lock_acquired = True
+                logger.debug(f"🔒 Acquired file lock: {self.file_path}")
+                return True
+                
+            except (IOError, OSError) as e:
+                # Lock is held by another process
+                if self.lock_file:
+                    try:
+                        self.lock_file.close()
+                    except:
+                        pass
+                    self.lock_file = None
+                
+                time.sleep(self._lock_retry_delay)
+                continue
+        
+        logger.warning(f"⚠️  Failed to acquire file lock: {self.file_path} (timeout: {timeout}s)")
+        return False
+    
+    def release(self):
+        """Release the file lock (cross-platform)."""
+        if self.lock_acquired and self.lock_file:
+            try:
+                if FCNTL_AVAILABLE:
+                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                self.lock_file.close()
+                
+                # Remove lock file
+                if self.lock_path.exists():
+                    self.lock_path.unlink()
+                
+                logger.debug(f"🔓 Released file lock: {self.file_path}")
+                
+            except Exception as e:
+                logger.warning(f"⚠️  Error releasing file lock: {e}")
+            finally:
+                self.lock_acquired = False
+                self.lock_file = None
+    
+    def __enter__(self):
+        if not self.acquire():
+            raise RuntimeError(f"Failed to acquire file lock: {self.file_path}")
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+class FileCoordinator:
+    """
+    Coordinates file system access to prevent corruption and contention.
+    
+    Features:
+    - File locking for concurrent access
+    - Directory coordination
+    - Safe file operations with retry logic
+    - File integrity checks
+    """
+    
+    def __init__(self):
+        self.active_locks = {}
+        self.coordination_lock = threading.Lock()
+        self._temp_files = set()
+    
+    def get_file_lock(self, file_path: Union[str, Path]) -> FileLock:
+        """Get or create a file lock for the specified path."""
+        file_path = Path(file_path).resolve()
+        
+        with self.coordination_lock:
+            if file_path not in self.active_locks:
+                self.active_locks[file_path] = FileLock(file_path)
+            
+            return self.active_locks[file_path]
+    
+    def safe_write_file(self, file_path: Union[str, Path], content: Union[str, bytes], 
+                       mode: str = 'w', encoding: str = 'utf-8', 
+                       backup: bool = True, retry_count: int = 3) -> bool:
         """
-        Save a numpy array as a CSV file.
+        Safely write a file with locking and backup.
         
         Args:
-            array: Numpy array to save
-            filepath: Path to save to
-            header: Optional header row
+            file_path: Path to the file
+            content: Content to write
+            mode: File mode ('w' for text, 'wb' for binary)
+            encoding: Text encoding (for text mode)
+            backup: Whether to create a backup
+            retry_count: Number of retry attempts
             
         Returns:
             True if successful, False otherwise
         """
-        try:
-            filepath = Path(filepath)
-            FileManager.ensure_directory(filepath.parent)
-            
-            with open(filepath, 'w', newline='') as f:
-                writer = csv.writer(f)
-                if header:
-                    writer.writerow(header)
+        file_path = Path(file_path)
+        
+        for attempt in range(retry_count):
+            try:
+                with self.get_file_lock(file_path) as lock:
+                    # Create backup if requested and file exists
+                    if backup and file_path.exists():
+                        backup_path = file_path.with_suffix(file_path.suffix + '.backup')
+                        shutil.copy2(file_path, backup_path)
+                        logger.debug(f"📋 Created backup: {backup_path}")
+                    
+                    # Write to temporary file first
+                    temp_path = file_path.with_suffix(file_path.suffix + '.tmp')
+                    
+                    if mode == 'wb' or 'b' in mode:
+                        with open(temp_path, 'wb') as f:
+                            f.write(content)
+                    else:
+                        with open(temp_path, mode, encoding=encoding) as f:
+                            f.write(content)
+                    
+                    # Atomic move to final location
+                    temp_path.replace(file_path)
+                    
+                    logger.debug(f"✅ Safely wrote file: {file_path}")
+                    return True
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  Write attempt {attempt + 1} failed for {file_path}: {e}")
                 
-                if array.ndim == 1:
-                    writer.writerows([[x] for x in array])
+                # Clean up temporary file
+                temp_path = file_path.with_suffix(file_path.suffix + '.tmp')
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except:
+                        pass
+                
+                if attempt < retry_count - 1:
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                 else:
-                    writer.writerows(array)
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error saving array as CSV to {filepath}: {e}")
-            return False
+                    logger.error(f"❌ Failed to write file after {retry_count} attempts: {file_path}")
+                    return False
+        
+        return False
     
-    @staticmethod
-    def load_csv_as_array(filepath: Union[str, Path], dtype=float, has_header: bool = False) -> Optional[np.ndarray]:
+    def safe_read_file(self, file_path: Union[str, Path], mode: str = 'r', 
+                      encoding: str = 'utf-8', retry_count: int = 3) -> Optional[Union[str, bytes]]:
         """
-        Load a CSV file as a numpy array.
+        Safely read a file with locking and retry logic.
         
         Args:
-            filepath: Path to load from
-            dtype: Data type for the array
-            has_header: Whether the CSV has a header row
+            file_path: Path to the file
+            mode: File mode ('r' for text, 'rb' for binary)
+            encoding: Text encoding (for text mode)
+            retry_count: Number of retry attempts
             
         Returns:
-            Numpy array or None if loading fails
+            File content or None if failed
         """
-        try:
-            with open(filepath, 'r', newline='') as f:
-                reader = csv.reader(f)
+        file_path = Path(file_path)
+        
+        if not file_path.exists():
+            logger.warning(f"⚠️  File does not exist: {file_path}")
+            return None
+        
+        for attempt in range(retry_count):
+            try:
+                with self.get_file_lock(file_path) as lock:
+                    if mode == 'rb' or 'b' in mode:
+                        with open(file_path, 'rb') as f:
+                            content = f.read()
+                    else:
+                        with open(file_path, mode, encoding=encoding) as f:
+                            content = f.read()
+                    
+                    logger.debug(f"✅ Safely read file: {file_path}")
+                    return content
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  Read attempt {attempt + 1} failed for {file_path}: {e}")
                 
-                # Skip header if present
-                if has_header:
-                    next(reader)
-                
-                # Read all rows
-                data = [row for row in reader]
-                
-                # Convert to numpy array
-                return np.array(data, dtype=dtype)
-        except Exception as e:
-            logger.error(f"Error loading CSV as array from {filepath}: {e}")
+                if attempt < retry_count - 1:
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                else:
+                    logger.error(f"❌ Failed to read file after {retry_count} attempts: {file_path}")
+                    return None
+        
             return None
 
-    @staticmethod
-    def save_simulation_results(results: Dict[str, Any], output_dir: Union[str, Path], prefix: str = "") -> Dict[str, Path]:
+    def safe_json_operations(self, file_path: Union[str, Path], 
+                           operation: str = 'read', 
+                           data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """
-        Save simulation results to various files.
+        Safely perform JSON file operations.
         
         Args:
-            results: Dictionary of simulation results
-            output_dir: Directory to save to
-            prefix: Prefix for filenames
+            file_path: Path to the JSON file
+            operation: 'read' or 'write'
+            data: Data to write (for write operation)
             
         Returns:
-            Dictionary of saved file paths
+            Data for read operation, True for successful write, None for failure
         """
-        output_dir = Path(output_dir)
-        FileManager.ensure_directory(output_dir)
+        file_path = Path(file_path)
         
-        saved_files = {}
+        if operation == 'read':
+            content = self.safe_read_file(file_path, mode='r')
+            if content is not None:
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Invalid JSON in {file_path}: {e}")
+                    return None
+            return None
         
-        # Extract components
-        stats = results.get('stats', {})
-        history = results.get('history', [])
-        forest_model = results.get('forest_model', None)
-        
-        # Save statistics
-        if stats:
-            stats_file = output_dir / f"{prefix}results.json"
-            if FileManager.safe_save_json(stats, stats_file):
-                saved_files['stats'] = stats_file
-        
-        # Save history if available
-        if history:
-            history_file = output_dir / f"{prefix}simulation_history.pkl"
-            if FileManager.safe_save_pickle(history, history_file):
-                saved_files['history'] = history_file
-        
-        # Save forest model if available
-        if forest_model:
-            model_file = output_dir / f"{prefix}final_forest_model_state.pkl"
+        elif operation == 'write':
+            if data is None:
+                logger.error("❌ No data provided for write operation")
+                return None
+            
             try:
-                if hasattr(forest_model, 'save_state_to_file'):
-                    forest_model.save_state_to_file(str(model_file))
-                    saved_files['model'] = model_file
-                else:
-                    # Fallback - try pickling the entire model
-                    if FileManager.safe_save_pickle(forest_model, model_file):
-                        saved_files['model'] = model_file
+                content = json.dumps(data, indent=2, ensure_ascii=False)
+                return self.safe_write_file(file_path, content, mode='w')
             except Exception as e:
-                logger.error(f"Error saving forest model: {e}")
+                logger.error(f"❌ Failed to serialize data for {file_path}: {e}")
+                return None
         
-        # Generate summary text file
-        try:
-            summary_file = output_dir / f"{prefix}simulation_summary.txt"
-            
-            with open(summary_file, 'w') as f:
-                f.write("===== SIMULATION SUMMARY =====\n")
-                
-                # Add timestamp
-                f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                
-                # Add statistics
-                if stats:
-                    f.write("STATISTICS:\n")
-                    for key, value in stats.items():
-                        f.write(f"  {key}: {value}\n")
-                    f.write("\n")
-                
-                # Add list of saved files
-                f.write("SAVED FILES:\n")
-                for key, path in saved_files.items():
-                    f.write(f"  {key}: {path.name}\n")
-            
-            saved_files['summary'] = summary_file
-        except Exception as e:
-            logger.error(f"Error generating summary file: {e}")
-        
-        return saved_files
-
-    @staticmethod
-    def save_numpy_arrays(arrays: Dict[str, np.ndarray], base_dir: Union[str, Path], 
-                           format: str = 'npy', compress: bool = False) -> Dict[str, Path]:
+        else:
+            logger.error(f"❌ Unknown operation: {operation}")
+            return None
+    
+    def safe_pickle_operations(self, file_path: Union[str, Path], 
+                             operation: str = 'read', 
+                             data: Optional[Any] = None) -> Optional[Any]:
         """
-        Save a dictionary of numpy arrays.
+        Safely perform pickle file operations.
         
         Args:
-            arrays: Dictionary of arrays to save
-            base_dir: Directory to save to
-            format: Format to save as ('npy', 'csv', 'txt')
-            compress: Whether to compress the data (only for 'npy')
+            file_path: Path to the pickle file
+            operation: 'read' or 'write'
+            data: Data to write (for write operation)
             
         Returns:
-            Dictionary of saved file paths
+            Data for read operation, True for successful write, None for failure
         """
-        base_dir = Path(base_dir)
-        FileManager.ensure_directory(base_dir)
+        file_path = Path(file_path)
         
-        saved_files = {}
+        if operation == 'read':
+            content = self.safe_read_file(file_path, mode='rb')
+            if content is not None:
+                try:
+                    return pickle.loads(content)
+                except pickle.PickleError as e:
+                    logger.error(f"❌ Invalid pickle data in {file_path}: {e}")
+                    return None
+            return None
         
-        for name, array in arrays.items():
+        elif operation == 'write':
+            if data is None:
+                logger.error("❌ No data provided for write operation")
+                return None
+            
             try:
-                if format == 'npy':
-                    filepath = base_dir / f"{name}.npy"
-                    if compress:
-                        np.savez_compressed(filepath, array=array)
-                        filepath = Path(f"{filepath}z")  # Add 'z' to extension
-                    else:
-                        np.save(filepath, array)
-                    
-                elif format == 'csv':
-                    filepath = base_dir / f"{name}.csv"
-                    FileManager.save_array_as_csv(array, filepath)
-                    
-                elif format == 'txt':
-                    filepath = base_dir / f"{name}.txt"
-                    np.savetxt(filepath, array)
-                    
-                else:
-                    logger.error(f"Unsupported format: {format}")
-                    continue
-                
-                saved_files[name] = filepath
-                
+                content = pickle.dumps(data)
+                return self.safe_write_file(file_path, content, mode='wb')
             except Exception as e:
-                logger.error(f"Error saving array '{name}': {e}")
-        
-        return saved_files
+                logger.error(f"❌ Failed to serialize data for {file_path}: {e}")
+                return None
+        else:
+            logger.error(f"❌ Unknown operation: {operation}")
+            return None
     
-    @staticmethod
-    def create_timestamped_dir(base_dir: Union[str, Path], prefix: str = "sim_") -> Path:
-        """
-        Create a timestamped directory for results.
+    def create_temp_file(self, prefix: str = 'temp', suffix: str = '', 
+                        directory: Optional[Union[str, Path]] = None) -> Path:
+        """Create a temporary file with tracking."""
+        temp_file = tempfile.NamedTemporaryFile(
+            prefix=prefix, suffix=suffix, dir=directory, delete=False
+        )
+        temp_path = Path(temp_file.name)
+        temp_file.close()
         
-        Args:
-            base_dir: Base directory
-            prefix: Prefix for directory name
-            
-        Returns:
-            Path to the created directory
-        """
-        base_dir = Path(base_dir)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        result_dir = base_dir / f"{prefix}{timestamp}"
-        result_dir.mkdir(parents=True, exist_ok=True)
-        return result_dir
+        with self.coordination_lock:
+            self._temp_files.add(temp_path)
+        
+        logger.debug(f"📄 Created temporary file: {temp_path}")
+        return temp_path
     
-    @staticmethod
-    def save_config_copy(config: Any, output_dir: Union[str, Path], filename: str = "simulation_config.json") -> Path:
-        """
-        Save a copy of the configuration to the output directory.
-        
-        Args:
-            config: Configuration object or dictionary
-            output_dir: Directory to save to
-            filename: Name of the config file
-            
-        Returns:
-            Path to the saved file
-        """
-        output_dir = Path(output_dir)
-        config_dir = output_dir / "config"
-        config_dir.mkdir(exist_ok=True, parents=True)
-        
-        config_file = config_dir / filename
-        
+    def cleanup_temp_files(self):
+        """Clean up all tracked temporary files."""
+        with self.coordination_lock:
+            for temp_path in list(self._temp_files):
+                try:
+                    if temp_path.exists():
+                        temp_path.unlink()
+                        logger.debug(f"🧹 Cleaned up temporary file: {temp_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to clean up temporary file {temp_path}: {e}")
+                finally:
+                    self._temp_files.discard(temp_path)
+    
+    def ensure_directory(self, directory: Union[str, Path], 
+                        create_parents: bool = True) -> bool:
+        """Ensure a directory exists with proper permissions."""
         try:
-            # Convert to dict if it's an object
-            if hasattr(config, 'to_dict') and callable(config.to_dict):
-                config_data = config.to_dict()
+            directory = Path(directory)
+            
+            if create_parents:
+                directory.mkdir(parents=True, exist_ok=True)
             else:
-                config_data = config
+                directory.mkdir(exist_ok=True)
             
-            with open(config_file, 'w') as f:
-                json.dump(config_data, f, indent=2, default=str)
+            # Ensure directory is writable
+            if not os.access(directory, os.W_OK):
+                logger.error(f"❌ Directory not writable: {directory}")
+                return False
             
-            logger.info(f"Saved configuration to {config_file}")
-            return config_file
+            logger.debug(f"📁 Ensured directory: {directory}")
+            return True
             
         except Exception as e:
-            logger.warning(f"Could not save configuration copy: {e}")
-            return config_file
+            logger.error(f"❌ Failed to ensure directory {directory}: {e}")
+            return False
+    
+    def get_file_info(self, file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a file."""
+        try:
+            file_path = Path(file_path)
+            
+            if not file_path.exists():
+                return None
+            
+            stat = file_path.stat()
+            
+            return {
+                'path': str(file_path),
+                'size': stat.st_size,
+                'modified': stat.st_mtime,
+                'created': stat.st_ctime,
+                'permissions': oct(stat.st_mode),
+                'is_file': file_path.is_file(),
+                'is_directory': file_path.is_dir(),
+                'readable': os.access(file_path, os.R_OK),
+                'writable': os.access(file_path, os.W_OK),
+                'executable': os.access(file_path, os.X_OK)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get file info for {file_path}: {e}")
+            return None
+    
+    def verify_file_integrity(self, file_path: Union[str, Path], 
+                            expected_hash: Optional[str] = None) -> bool:
+        """Verify file integrity using checksum."""
+        try:
+            file_path = Path(file_path)
+            
+            if not file_path.exists():
+                logger.error(f"❌ File does not exist: {file_path}")
+                return False
+            
+            # Calculate file hash
+            hash_md5 = hashlib.md5()
+            with open(file_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hash_md5.update(chunk)
+            
+            actual_hash = hash_md5.hexdigest()
+            
+            if expected_hash:
+                if actual_hash == expected_hash:
+                    logger.debug(f"✅ File integrity verified: {file_path}")
+                    return True
+                else:
+                    logger.error(f"❌ File integrity check failed: {file_path}")
+                    logger.error(f"   Expected: {expected_hash}")
+                    logger.error(f"   Actual: {actual_hash}")
+                    return False
+            else:
+                logger.debug(f"📋 File hash: {actual_hash} for {file_path}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to verify file integrity for {file_path}: {e}")
+            return False
+
+# Global file coordinator instance
+_file_coordinator = None
+
+def get_file_coordinator() -> FileCoordinator:
+    """Get the global file coordinator instance."""
+    global _file_coordinator
+    if _file_coordinator is None:
+        _file_coordinator = FileCoordinator()
+    return _file_coordinator
+
+# Convenience functions
+def safe_write_json(file_path: Union[str, Path], data: Dict[str, Any]) -> bool:
+    """Safely write JSON data to a file."""
+    coordinator = get_file_coordinator()
+    return coordinator.safe_json_operations(file_path, 'write', data)
+
+def safe_read_json(file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    """Safely read JSON data from a file."""
+    coordinator = get_file_coordinator()
+    return coordinator.safe_json_operations(file_path, 'read')
+
+def safe_write_pickle(file_path: Union[str, Path], data: Any) -> bool:
+    """Safely write pickle data to a file."""
+    coordinator = get_file_coordinator()
+    return coordinator.safe_pickle_operations(file_path, 'write', data)
+
+def safe_read_pickle(file_path: Union[str, Path]) -> Optional[Any]:
+    """Safely read pickle data from a file."""
+    coordinator = get_file_coordinator()
+    return coordinator.safe_pickle_operations(file_path, 'read')
+
+@contextmanager
+def file_lock_context(file_path: Union[str, Path], timeout: Optional[float] = None):
+    """Context manager for file locking."""
+    coordinator = get_file_coordinator()
+    lock = coordinator.get_file_lock(file_path)
+    
+    if lock.acquire(timeout):
+        try:
+            yield lock
+        finally:
+            lock.release()
+    else:
+        raise RuntimeError(f"Failed to acquire file lock: {file_path}")
+
+def cleanup_all_temp_files():
+    """Clean up all temporary files."""
+    coordinator = get_file_coordinator()
+    coordinator.cleanup_temp_files()
+
+# Auto-initialize on module import
+import atexit
+atexit.register(cleanup_all_temp_files)
+
+# Legacy FileManager class for compatibility
+class FileManager:
+    """
+    Legacy FileManager class for backward compatibility.
+    
+    This class provides basic file management functionality
+    and is maintained for compatibility with existing code.
+    """
+    
+    def __init__(self, config=None):
+        self.config = config
+        self.coordinator = get_file_coordinator()
     
     @staticmethod
-    def save_visualization(fig, output_dir: Union[str, Path], filename: str, 
-                            dpi: int = 300, formats: List[str] = ['png']) -> List[Path]:
-        """
-        Save a matplotlib figure to multiple formats.
-        
-        Args:
-            fig: Matplotlib figure
-            output_dir: Directory to save to
-            filename: Base filename (without extension)
-            dpi: DPI for raster formats
-            formats: List of formats to save as
-            
-        Returns:
-            List of saved file paths
-        """
+    def find_files(base_dir: Union[str, Path], pattern: str) -> List[Path]:
+        """Find files matching a pattern in a directory."""
         try:
-            import matplotlib.pyplot as plt
+            base_path = Path(base_dir)
+            if not base_path.exists():
+                return []
             
-            output_dir = Path(output_dir)
-            FileManager.ensure_directory(output_dir)
+            return list(base_path.glob(pattern))
+        except Exception as e:
+            logger.warning(f"Error finding files {pattern} in {base_dir}: {e}")
+            return []
+    
+    @staticmethod
+    def save_simulation_results(results: Dict[str, Any], output_dir: Union[str, Path]) -> List[str]:
+        """Save simulation results to files."""
+        try:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
             
             saved_files = []
             
-            for fmt in formats:
-                filepath = output_dir / f"{filename}.{fmt}"
-                fig.savefig(filepath, dpi=dpi, bbox_inches='tight')
-                saved_files.append(filepath)
+            # Save results as JSON
+            results_file = output_path / "simulation_results.json"
+            if safe_write_json(results_file, results):
+                saved_files.append(str(results_file))
             
             return saved_files
             
-        except ImportError:
-            logger.warning("matplotlib not available, skipping visualization save")
-            return []
         except Exception as e:
-            logger.error(f"Error saving visualization: {e}")
+            logger.error(f"Error saving simulation results: {e}")
             return []
-
-    @staticmethod
-    def chunk_reader(file_path: Union[str, Path], chunk_size: int = 1024*1024) -> Generator[bytes, None, None]:
-        """
-        Read a file in chunks to reduce memory usage.
-        
-        Args:
-            file_path: Path to the file
-            chunk_size: Size of each chunk in bytes
-            
-        Yields:
-            Chunks of the file
-        """
-        with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                yield chunk
     
-    @staticmethod
-    def md5_hash_file(file_path: Union[str, Path]) -> str:
-        """
-        Calculate MD5 hash of a file.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            MD5 hash as a hex string
-        """
-        try:
-            import hashlib
-            md5 = hashlib.md5()
-            
-            for chunk in FileManager.chunk_reader(file_path):
-                md5.update(chunk)
-            
-            return md5.hexdigest()
-        except Exception as e:
-            logger.error(f"Error calculating MD5 hash: {e}")
-            return ""
-
-# Add HPC storage path handling
-def resolve_hpc_storage_path(storage_path: str, 
-                           job_id: Optional[str] = None, 
-                           user: Optional[str] = None,
-                           fallback_base: str = "/tmp") -> Path:
-    """
-    Resolve storage paths for HPC environments with proper absolute paths.
+    def ensure_directory(self, directory: Union[str, Path]) -> bool:
+        """Ensure a directory exists."""
+        return self.coordinator.ensure_directory(directory)
     
-    This function addresses disk storage path issues by:
-    - Converting relative paths to absolute paths
-    - Using HPC-appropriate storage locations (scratch, shared storage)
-    - Creating job-specific directories for isolation
-    - Handling permission and quota issues
+    def safe_write_file(self, file_path: Union[str, Path], content: Union[str, bytes], **kwargs) -> bool:
+        """Safely write a file."""
+        return self.coordinator.safe_write_file(file_path, content, **kwargs)
     
-    Args:
-        storage_path: Original storage path (may be relative)
-        job_id: SLURM job ID for unique directory naming
-        user: Username for storage location
-        fallback_base: Fallback directory if HPC storage unavailable
-        
-    Returns:
-        Resolved absolute path for HPC storage
-    """
-    logger.info(f"Resolving HPC storage path: {storage_path}")
-    
-    # Get environment variables commonly available on HPC systems
-    if job_id is None:
-        job_id = os.environ.get('SLURM_JOB_ID', f'local_{int(time.time())}')
-    
-    if user is None:
-        user = os.environ.get('USER', os.environ.get('USERNAME', 'unknown'))
-    
-    # Try to resolve to absolute path if relative
-    if not os.path.isabs(storage_path):
-        logger.info(f"Converting relative path '{storage_path}' to absolute")
-        
-        # Common HPC storage locations (in order of preference)
-        hpc_storage_candidates = [
-            # Scratch storage (fastest, temporary)
-            f"/scratch-shared/{user}",
-            f"/scratch/{user}",
-            f"/tmp/{user}",
-            
-            # Home directory (persistent but may have quotas)
-            f"/home/{user}/simulation_storage",
-            f"/gpfs/home1/{user}/simulation_storage",
-            
-            # Current working directory (fallback)
-            os.getcwd(),
-            
-            # System temp (last resort)
-            fallback_base
-        ]
-        
-        # Find the first accessible storage location
-        resolved_base = None
-        for candidate in hpc_storage_candidates:
-            try:
-                candidate_path = Path(candidate)
-                
-                # Check if base directory exists or can be created
-                if candidate_path.exists() or candidate_path.parent.exists():
-                    # Test write permissions
-                    test_dir = candidate_path / f"test_write_{job_id}"
-                    test_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # Test file creation
-                    test_file = test_dir / "write_test.tmp"
-                    test_file.write_text("test")
-                    test_file.unlink()
-                    test_dir.rmdir()
-                    
-                    resolved_base = candidate_path
-                    logger.info(f"Selected HPC storage base: {resolved_base}")
-                    break
-                    
-            except (PermissionError, OSError, IOError) as e:
-                logger.debug(f"Storage candidate {candidate} not accessible: {e}")
-                continue
-        
-        if resolved_base is None:
-            logger.warning("No accessible HPC storage found, using fallback")
-            resolved_base = Path(fallback_base)
-        
-        # Create job-specific directory
-        job_storage_dir = resolved_base / f"fire_sim_{job_id}" / storage_path
-        
-    else:
-        # Already absolute path, but make it job-specific for isolation
-        base_path = Path(storage_path)
-        job_storage_dir = base_path.parent / f"{base_path.name}_{job_id}"
-    
-    # Ensure the directory structure exists
-    try:
-        job_storage_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created HPC storage directory: {job_storage_dir}")
-        
-        # Test write access
-        test_file = job_storage_dir / ".write_test"
-        test_file.write_text(f"Storage test for job {job_id}")
-        test_file.unlink()
-        
-    except (PermissionError, OSError) as e:
-        logger.error(f"Cannot create storage directory {job_storage_dir}: {e}")
-        
-        # Fallback to a safer location
-        safer_path = Path(fallback_base) / f"fire_sim_fallback_{job_id}"
-        safer_path.mkdir(parents=True, exist_ok=True)
-        logger.warning(f"Using fallback storage: {safer_path}")
-        return safer_path
-    
-    return job_storage_dir
-
-def setup_hpc_output_directories(config: Dict[str, Any], 
-                                job_id: Optional[str] = None) -> Dict[str, Path]:
-    """
-    Set up all output directories for HPC simulation with proper paths.
-    
-    Args:
-        config: Configuration dictionary
-        job_id: SLURM job ID
-        
-    Returns:
-        Dictionary mapping directory types to resolved paths
-    """
-    logger.info("Setting up HPC output directories")
-    
-    if job_id is None:
-        job_id = os.environ.get('SLURM_JOB_ID', f'local_{int(time.time())}')
-    
-    # Main output directory
-    output_config = config.get('output', {})
-    base_output_dir = output_config.get('output_dir', '~/results/production')
-    
-    # Expand user directory
-    if base_output_dir.startswith('~'):
-        base_output_dir = os.path.expanduser(base_output_dir)
-    
-    # Resolve main output directory
-    main_output = resolve_hpc_storage_path(base_output_dir, job_id)
-    
-    # Create subdirectories
-    directories = {
-        'main_output': main_output,
-        'results': main_output / "results",
-        'logs': main_output / "logs", 
-        'checkpoints': main_output / "checkpoints",
-        'monitoring': main_output / "monitoring",
-        'config_backup': main_output / "config"
-    }
-    
-    # Disk storage directory (if enabled)
-    if config.get('use_disk_storage', False):
-        disk_storage_dir = config.get('disk_storage_dir', 'temp_simulation_states')
-        
-        # Use high-performance storage for disk cache if available
-        disk_storage_path = resolve_hpc_storage_path(disk_storage_dir, job_id)
-        directories['disk_storage'] = disk_storage_path
-        
-        # Update config with resolved path
-        config['disk_storage_dir'] = str(disk_storage_path)
-    
-    # Create all directories
-    created_dirs = {}
-    for dir_type, dir_path in directories.items():
-        try:
-            dir_path.mkdir(parents=True, exist_ok=True)
-            
-            # Set appropriate permissions for shared HPC environments
-            try:
-                os.chmod(dir_path, 0o755)
-            except OSError:
-                pass  # Permissions might not be changeable
-            
-            created_dirs[dir_type] = dir_path
-            logger.info(f"Created {dir_type} directory: {dir_path}")
-            
-        except (PermissionError, OSError) as e:
-            logger.error(f"Failed to create {dir_type} directory {dir_path}: {e}")
-            
-            # Create in fallback location
-            fallback_path = Path("/tmp") / f"fire_sim_fallback_{job_id}" / dir_type
-            fallback_path.mkdir(parents=True, exist_ok=True)
-            created_dirs[dir_type] = fallback_path
-            logger.warning(f"Using fallback for {dir_type}: {fallback_path}")
-    
-    return created_dirs 
+    def safe_read_file(self, file_path: Union[str, Path], **kwargs) -> Optional[Union[str, bytes]]:
+        """Safely read a file."""
+        return self.coordinator.safe_read_file(file_path, **kwargs) 

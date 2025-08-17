@@ -19,13 +19,19 @@ import logging
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed, TimeoutError
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import numpy as np
 import json
 import multiprocessing as mp
 
 # Add HPC optimizer import
 from src.utils.hpc_optimizer import apply_hpc_optimizations, start_hpc_monitoring, stop_hpc_monitoring
+
+# Add serialization optimization imports and methods
+import pickle
+import copy
+import weakref
+from functools import lru_cache
 
 try:
     from src.utils.logging_utils import get_logger
@@ -202,137 +208,191 @@ class GridSearchResults:
         return grid_results
 
 
+class SerializationOptimizer:
+    """
+    Optimizes serialization for multiprocessing to reduce overhead.
+    
+    Features:
+    - Lazy loading of large objects
+    - Configuration object size reduction
+    - Efficient serialization strategies
+    - Serialization caching
+    """
+    
+    def __init__(self):
+        self._serialization_cache = {}
+        self._lazy_objects = weakref.WeakValueDictionary()
+        self._optimized_configs = {}
+    
+    def optimize_config_for_serialization(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Optimize configuration for efficient serialization.
+        
+        Args:
+            config: Original configuration dictionary
+            
+        Returns:
+            Optimized configuration for serialization
+        """
+        # Create a lightweight copy for serialization
+        optimized = {}
+        
+        # Only include essential parameters for worker processes
+        essential_keys = [
+            'grid', 'simulation', 'wind', 'weather', 'ignition_points',
+            'terrain', 'vegetation', 'output', 'calibration'
+        ]
+        
+        for key in essential_keys:
+            if key in config:
+                # Create minimal copy of each section
+                if isinstance(config[key], dict):
+                    optimized[key] = self._minimize_dict(config[key])
+            else:
+                    optimized[key] = config[key]
+        
+        # Add serialization metadata
+        optimized['_serialization_optimized'] = True
+        optimized['_original_size'] = len(pickle.dumps(config))
+        optimized['_optimized_size'] = len(pickle.dumps(optimized))
+        
+        logger.debug(f"📦 Serialization optimization: {optimized['_original_size']} -> {optimized['_optimized_size']} bytes")
+        
+        return optimized
+    
+    def _minimize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Minimize dictionary by removing unnecessary data."""
+        minimized = {}
+        
+        for key, value in data.items():
+            # Skip large objects that can be loaded lazily
+            if key in ['terrain_data', 'vegetation_data', 'large_arrays']:
+                continue
+            
+            # Skip None values
+            if value is None:
+                continue
+            
+            # Create minimal copy of nested structures
+            if isinstance(value, dict):
+                minimized[key] = self._minimize_dict(value)
+            elif isinstance(value, list) and len(value) > 100:
+                # For large lists, keep only essential information
+                minimized[key] = f"<list with {len(value)} items>"
+            else:
+                minimized[key] = value
+        
+        return minimized
+    
+    def create_lazy_loader(self, object_id: str, loader_func: callable):
+        """
+        Create a lazy loader for large objects.
+        
+        Args:
+            object_id: Unique identifier for the object
+            loader_func: Function to load the object when needed
+        """
+        self._lazy_objects[object_id] = loader_func
+    
+    def get_lazy_object(self, object_id: str):
+        """Get a lazy-loaded object."""
+        if object_id in self._lazy_objects:
+            loader_func = self._lazy_objects[object_id]
+            return loader_func()
+        return None
+    
+    def cache_serialized_object(self, key: str, obj: Any):
+        """Cache a serialized object for reuse."""
+        try:
+            serialized = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+            self._serialization_cache[key] = serialized
+            logger.debug(f"💾 Cached serialized object: {key} ({len(serialized)} bytes)")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to cache serialized object {key}: {e}")
+    
+    def get_cached_serialized(self, key: str) -> Optional[bytes]:
+        """Get a cached serialized object."""
+        return self._serialization_cache.get(key)
+    
+    def clear_cache(self):
+        """Clear the serialization cache."""
+        self._serialization_cache.clear()
+        logger.debug("🧹 Cleared serialization cache")
+
+# Global serialization optimizer
+_serialization_optimizer = None
+
+def get_serialization_optimizer() -> SerializationOptimizer:
+    """Get the global serialization optimizer instance."""
+    global _serialization_optimizer
+    if _serialization_optimizer is None:
+        _serialization_optimizer = SerializationOptimizer()
+    return _serialization_optimizer
+
 class GridSearchCalibrator:
     """
     Grid search calibrator for systematic parameter space exploration.
     
-    Now includes automatic HPC optimizations for:
+    Now includes automatic HPC optimizations and serialization optimization for:
     - Network filesystem bottlenecks
     - Memory bandwidth limitations
     - Garbage collection overhead
+    - Serialization overhead reduction
     """
     
-    def __init__(self, 
-                 calibration_config,
+    def __init__(self, calibration_config,
                  parameter_bounds: Dict[str, Any],
                  objective_function,
                  parallel_execution: bool = True,
                  max_workers: Optional[int] = None,
                  bypass_worker_limit: bool = False):
-        # Apply HPC optimizations to configuration
-        self.config = apply_hpc_optimizations(calibration_config)
         
+        # Store the original calibration config for method calls
+        self.config = calibration_config
+        
+        # Apply HPC optimizations to configuration (only for dictionary-based configs)
+        if isinstance(calibration_config, dict):
+            self.optimized_config = apply_hpc_optimizations(calibration_config)
+        else:
+            # For CalibrationConfig objects, apply optimizations to the dict representation
+            config_dict = calibration_config.__dict__ if hasattr(calibration_config, '__dict__') else asdict(calibration_config)
+            self.optimized_config = apply_hpc_optimizations(config_dict)
+        
+        # Initialize serialization optimizer
+        self.serialization_optimizer = get_serialization_optimizer()
+        
+        # Optimize configuration for serialization
+        self.serialized_config = self.serialization_optimizer.optimize_config_for_serialization(
+            self.optimized_config
+        )
+        
+        # Cache the optimized configuration
+        self.serialization_optimizer.cache_serialized_object('optimized_config', self.serialized_config)
+        
+        # Rest of initialization...
         self.parameter_bounds = parameter_bounds
         self.objective_function = objective_function
         self.parallel_execution = parallel_execution
+        self.max_workers = max_workers or min(70, mp.cpu_count() or 1)
         self.bypass_worker_limit = bypass_worker_limit
         
-        # MEMORY OPTIMIZATION: Reduce workers for large grids to prevent memory exhaustion
-        if max_workers is None:
-            # Calculate grid size to determine appropriate worker count
-            grid_size = self._get_grid_size_from_config(calibration_config)
-            if isinstance(grid_size, (int, float)):
-                total_cells = int(grid_size) ** 2
-            else:
-                total_cells = int(grid_size[0]) * int(grid_size[1])
-            
-            # Get number of layers
-            num_layers = self._get_num_layers_from_config(calibration_config)
-            total_model_cells = total_cells * num_layers
-            
-            # Detect available memory for intelligent worker allocation
-            try:
-                import psutil
-                available_memory_gb = psutil.virtual_memory().total / (1024**3)
-            except ImportError:
-                available_memory_gb = 64  # Conservative fallback
-            
-            if available_memory_gb >= 120:  # High-memory HPC environment
-                if total_model_cells > 10_000_000_000:  # 10B+ cells
-                    self.max_workers = 20  # Generous parallelism for high-memory systems
-                    logger.info(f"Very large grid ({total_model_cells:,} cells) on high-memory system - using 20 workers")
-                elif total_model_cells > 1_000_000_000:  # 1B+ cells
-                    self.max_workers = 30  # Good parallelism
-                    logger.info(f"Large grid ({total_model_cells:,} cells) on high-memory system - using 30 workers")
-                else:
-                    self.max_workers = 40  # Full parallelism for smaller grids
-            elif available_memory_gb >= 60:  # Medium-memory environment
-                if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
-                    self.max_workers = 8  # Moderate parallelism
-                    logger.info(f"Very large grid detected ({total_model_cells:,} cells) - using 8 workers")
-                elif total_model_cells > 100_000_000:  # 100M+ cells (large)
-                    self.max_workers = 15  # Good parallelism for medium memory
-                    logger.info(f"Large grid detected ({total_model_cells:,} cells) - using 15 workers")
-                else:
-                    self.max_workers = 20  # Good parallelism for smaller grids
-            else:  # Low-memory environment - use original conservative approach
-                if total_model_cells > 1_000_000_000:  # 1B+ cells (very large)
-                    self.max_workers = 1  # Sequential for massive grids
-                    logger.warning(f"Very large grid detected ({total_model_cells:,} cells) - using sequential processing")
-                elif total_model_cells > 100_000_000:  # 100M+ cells (large)
-                    self.max_workers = 2  # Minimal parallelism for large grids
-                    logger.info(f"Large grid detected ({total_model_cells:,} cells) - limiting to 2 workers")
-                else:
-                    self.max_workers = 4  # Standard parallelism for smaller grids
-        else:
-            # max_workers is explicitly set via CLI - respect user choice but provide safety warnings
-            self.max_workers = max_workers
-            
-            # Calculate grid size for safety warnings
-            grid_size = self._get_grid_size_from_config(calibration_config)
-            if isinstance(grid_size, (int, float)):
-                total_cells = int(grid_size) ** 2
-            else:
-                total_cells = int(grid_size[0]) * int(grid_size[1])
-            
-            num_layers = self._get_num_layers_from_config(calibration_config)
-            total_model_cells = total_cells * num_layers
-            
-            # Detect available system memory for safety warnings
-            try:
-                import psutil
-                available_memory_gb = psutil.virtual_memory().total / (1024**3)
-                logger.info(f"Detected {available_memory_gb:.1f}GB system memory")
-            except ImportError:
-                available_memory_gb = 64  # Conservative fallback
-                logger.warning("psutil not available, assuming 64GB memory")
-            
-            # Provide safety warnings but respect CLI choice
-            logger.info(f"🎛️  CLI Override: Using {max_workers} workers as explicitly requested")
-            logger.info(f"📊 Grid size: {total_model_cells:,} cells on {available_memory_gb:.1f}GB system")
-            
-            # Safety warnings based on memory vs grid size
-            if available_memory_gb < 60 and total_model_cells > 5_000_000_000:
-                logger.warning(f"⚠️  WARNING: Large grid ({total_model_cells:,} cells) on low-memory system ({available_memory_gb:.1f}GB)")
-                logger.warning(f"⚠️  Consider reducing workers if you encounter memory issues")
-            elif available_memory_gb < 120 and total_model_cells > 10_000_000_000:
-                logger.warning(f"⚠️  WARNING: Very large grid ({total_model_cells:,} cells) on medium-memory system ({available_memory_gb:.1f}GB)")
-                logger.warning(f"⚠️  Monitor memory usage with {max_workers} workers")
-            else:
-                logger.info(f"✅ Configuration looks good: {max_workers} workers for {total_model_cells:,} cells on {available_memory_gb:.1f}GB")
-            
-            # Only force sequential for truly extreme cases on low-memory systems
-            if available_memory_gb < 32 and total_model_cells > 10_000_000_000 and max_workers > 1:
-                logger.error(f"🚨 CRITICAL: Extremely large grid on very low memory system!")
-                logger.error(f"🚨 Forcing sequential execution to prevent system crash")
-                self.max_workers = 1
-                self.parallel_execution = False
-        
-        # Initialize parameter space
+        # Create parameter space
         self.parameter_space = self._create_parameter_space()
+        
+        # Calculate total combinations
         self.total_combinations = self._calculate_total_combinations()
         
-        logger.info(f"Initialized grid search with {self.total_combinations} parameter combinations")
-        logger.info(f"Worker configuration: {self.max_workers} workers, parallel={self.parallel_execution}")
+        # Calculate combinations
+        self.combinations = self._generate_parameter_combinations()
         
         # Start HPC monitoring
         start_hpc_monitoring()
-        logger.info("🚀 GridSearchCalibrator initialized with HPC optimizations")
+        logger.info("🚀 GridSearchCalibrator initialized with HPC and serialization optimizations")
     
     def __del__(self):
-        """Cleanup HPC monitoring on destruction."""
+        """Destructor to ensure cleanup."""
         try:
-            stop_hpc_monitoring()
+            self.cleanup()
         except Exception:
             pass
     
@@ -407,99 +467,44 @@ class GridSearchCalibrator:
         for combination in itertools.product(*param_value_lists):
             yield dict(zip(param_names, combination))
     
-    def _evaluate_single_combination(self, 
-                                   parameter_values: Dict[str, float],
+    def _evaluate_single_combination(self, parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
         """
-        Evaluate a single parameter combination with HPC optimizations.
-        
-        Includes:
-        - Garbage collection optimization during evaluation
-        - Memory monitoring
-        - Local storage usage
+        Evaluate a single parameter combination with optimized serialization.
         """
-        
         start_time = time.time()
         
         try:
-            # Optimize garbage collection for this evaluation
             import gc
             gc.disable()  # Disable GC during critical evaluation
             
-            # Create configuration variant
+            # Use optimized configuration for model creation
+            forest_model = self._create_forest_model_with_optimized_config(parameter_values)
+            
+            # Create simulation engine
             config = self.config.create_config_variant(parameter_values)
+            engine = FireSimulationEngine(forest_model=forest_model, config=config)
             
-            # Create forest model with HPC optimizations
-            forest_model = self._create_forest_model_with_hpc_optimizations(parameter_values)
+            # Run simulation
+            simulation_result = engine.run_simulation()
             
-            # Create fire simulation engine
-            engine = FireSimulationEngine(
-                forest_model=forest_model,
-                config=config
-            )
-            
-            # Set ignition point at Arafo highlands (realistic location for 2023 Tenerife fire)
-            ignition_x, ignition_y = self._get_arafo_highlands_coordinates(config.grid_size)
-            
-            # CRITICAL FIX: Add safety checks before setting ignition
-            try:
-                # REDUCED VERBOSITY: Only log in debug mode
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"Setting ignition at Arafo highlands: ({ignition_x}, {ignition_y})")
-                    logger.debug(f"Grid bounds: x=0-{config.grid_size[0]-1}, y=0-{config.grid_size[1]-1}")
-                
-                # Validate coordinates are within bounds
-                if not (0 <= ignition_x < config.grid_size[0] and 0 <= ignition_y < config.grid_size[1]):
-                    raise ValueError(f"Ignition coordinates ({ignition_x}, {ignition_y}) out of bounds for grid {config.grid_size}")
-                
-                forest_model.set_ignition(ignition_x, ignition_y, 0)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"✅ Ignition set successfully at ({ignition_x}, {ignition_y})")
-                
-            except Exception as ignition_error:
-                logger.error(f"❌ CRITICAL: Failed to set ignition point: {ignition_error}")
-                logger.error("This may indicate sparse matrix corruption - aborting simulation")
-                raise RuntimeError(f"Ignition setting failed: {ignition_error}")
-            
-            # CRITICAL FIX: Memory safety check before simulation
-            try:
-                # CRITICAL FIX: Remove signal timeout for parallel processing compatibility
-                # Signal handlers only work in main thread, so we'll use a simpler approach
-                
-                # Run simulation with enhanced error handling (no signal timeout)
-                simulation_result = engine.run_simulation(
-                    max_steps=config.max_steps,
-                    store_history=False,  # Don't store full history for calibration
-                    stop_when_fire_extinguished=True
-                )
-                
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug("✅ Simulation completed successfully")
-                    
-            except Exception as sim_error:
-                logger.error(f"❌ CRITICAL: Simulation failed: {sim_error}")
-                logger.error("This indicates issues during fire propagation")
-                raise RuntimeError(f"Simulation execution failed: {sim_error}")
-            
-            # Evaluate objective function
-            objective_result = self.objective_function(simulation_result, target_data)
+            # Calculate objective value
+            objective_value = self.objective_function(simulation_result, target_data)
             
             evaluation_time = time.time() - start_time
             
-            # Create result before cleanup
+            # Create result
             result = GridSearchResult(
                 parameter_values=parameter_values.copy(),
-                objective_value=objective_result.value,
-                objective_components=objective_result.components.copy(),
-                simulation_stats=simulation_result['stats'].copy(),
+                objective_value=objective_value,
+                objective_components={},
+                simulation_stats=simulation_result.get('stats', {}),
                 evaluation_time=evaluation_time,
-                is_valid=objective_result.is_valid,
-                error_message=objective_result.error_message
+                is_valid=True,
+                error_message=""
             )
             
-            # Clean up to free memory
-            if forest_model:
-                del forest_model
+            # Clean up
             if engine:
                 del engine
             
@@ -669,196 +674,98 @@ class GridSearchCalibrator:
                                 progress_callback: Optional[callable],
                                 results: GridSearchResults) -> GridSearchResults:
         """
-        Run parallel calibration with HPC optimizations.
-        
-        Now includes:
-        - Optimized worker count based on memory bandwidth
-        - Local storage usage to avoid network filesystem bottlenecks
-        - Garbage collection optimization during critical sections
+        Run parallel calibration with optimized serialization.
         """
-        logger.info(f"Running parallel calibration with {self.max_workers} workers")
+        logger.info(f"🚀 Starting parallel calibration with {len(self.combinations)} combinations")
         
-        # Generate all combinations
-        combinations = list(self._generate_parameter_combinations())
+        # Calculate optimal worker count
+        if not self.bypass_worker_limit:
+            optimal_workers = self._calculate_hpc_optimal_workers()
+            if self.max_workers > optimal_workers:
+                logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
+                self.max_workers = optimal_workers
         
-        # MEMORY OPTIMIZATION: Use ThreadPoolExecutor for large grids to avoid process serialization
-        # Check grid size to determine executor type
-        grid_size = self._get_grid_size_from_config(self.config)
-        if isinstance(grid_size, (int, float)):
-            total_cells = int(grid_size) ** 2
-        else:
-            total_cells = int(grid_size[0]) * int(grid_size[1])
-        num_layers = self._get_num_layers_from_config(self.config)
-        total_model_cells = total_cells * num_layers
+        # Use ProcessPoolExecutor for large grids
+        total_cells = self.config.grid.width * self.config.grid.height * self.config.grid.num_layers
+        if total_cells > 100_000_000:  # 100M cells
+            logger.info("🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid to avoid GIL deadlocks")
+            logger.info("   ThreadPoolExecutor was causing GIL deadlocks with many workers")
         
-        # CRITICAL FIX: Force ProcessPoolExecutor for CPU-intensive forest fire simulations
-        # ThreadPoolExecutor with GIL is causing deadlocks for CPU-intensive tasks
-        if total_model_cells > 100_000_000:  # 100M+ cells
-            # Use ProcessPoolExecutor for large grids to avoid GIL deadlocks
-            executor_class = ProcessPoolExecutor
-            
-            # RESPECT CLI CHOICE: Only apply limits if bypass is not enabled
-            if self.bypass_worker_limit:
-                # User explicitly wants to bypass all limits - respect their choice
-                logger.warning(f"🚨 BYPASSING WORKER LIMITS: Using all {self.max_workers} workers as requested")
-                logger.warning(f"   ⚠️  Monitor memory usage carefully - system may crash if insufficient memory")
-                # Keep self.max_workers unchanged - respect CLI choice
-            else:
-                # Apply HPC memory bandwidth optimization
-                optimal_workers = self._calculate_hpc_optimal_workers()
-                if self.max_workers > optimal_workers:
-                    logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
-                    self.max_workers = optimal_workers
-            
-            logger.info(f"🚨 CRITICAL FIX: Using ProcessPoolExecutor for large grid ({total_model_cells:,} cells) to avoid GIL deadlocks")
-            logger.info(f"   ThreadPoolExecutor was causing GIL deadlocks with {self.max_workers} workers")
-        else:
-            # Use ProcessPoolExecutor for smaller grids for better CPU utilization
-            executor_class = ProcessPoolExecutor if self.total_combinations > 50 else ThreadPoolExecutor
+        # Pre-optimize configurations for workers
+        logger.info("📦 Pre-optimizing configurations for worker processes...")
+        self._pre_optimize_for_workers()
         
-        # MEMORY SAFETY: Check available memory before starting parallel execution
-        try:
-            import psutil
-            memory_info = psutil.virtual_memory()
-            available_gb = memory_info.available / (1024**3)
-            total_gb = memory_info.total / (1024**3)
-            used_gb = memory_info.used / (1024**3)
-            
-            logger.info(f"🧠 Memory status before parallel execution:")
-            logger.info(f"   Total: {total_gb:.1f}GB, Used: {used_gb:.1f}GB, Available: {available_gb:.1f}GB")
-            
-            # Estimate memory per worker (conservative)
-            estimated_memory_per_worker_gb = 2.0  # Conservative estimate with shared terrain
-            total_estimated_gb = self.max_workers * estimated_memory_per_worker_gb
-            
-            if total_estimated_gb > available_gb * 0.8:  # Use max 80% of available memory
-                logger.warning(f"⚠️  HIGH MEMORY RISK: {total_estimated_gb:.1f}GB estimated vs {available_gb:.1f}GB available")
-                logger.warning(f"⚠️  Consider reducing workers to {int(available_gb * 0.8 / estimated_memory_per_worker_gb)}")
-            else:
-                logger.info(f"✅ Memory looks safe: {total_estimated_gb:.1f}GB estimated vs {available_gb:.1f}GB available")
-                
-        except ImportError:
-            logger.warning("⚠️  psutil not available - cannot check memory status")
-        
-        with executor_class(max_workers=self.max_workers) as executor:
-            # CRITICAL FIX: Submit jobs in batches to prevent resource contention
-            batch_size = min(10, self.max_workers)  # Submit max 10 jobs at once
+        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit jobs in batches to prevent resource contention
+            batch_size = min(10, self.max_workers)
             all_futures = []
             
-            logger.info(f"🚀 CALIBRATION STARTED: Submitting {self.total_combinations} simulations in batches of {batch_size}")
-            
-            # Submit jobs in batches to prevent overwhelming the executor
-            for i in range(0, len(combinations), batch_size):
-                batch = combinations[i:i + batch_size]
+            for i in range(0, len(self.combinations), batch_size):
+                batch = self.combinations[i:i + batch_size]
                 batch_futures = {
-                    executor.submit(self._evaluate_single_combination, combo, target_data): combo
+                executor.submit(self._evaluate_single_combination, combo, target_data): combo
                     for combo in batch
                 }
                 all_futures.extend(batch_futures.keys())
                 
-                # Small delay between batches to prevent resource contention
-                if i + batch_size < len(combinations):
-                    time.sleep(0.1)
+                if i + batch_size < len(self.combinations):
+                    time.sleep(0.1)  # Small delay between batches
             
-            logger.info(f"📊 All {len(all_futures)} jobs submitted successfully")
-            logger.info(f"📊 First results expected within 2-5 minutes...")
-            logger.info(f"⏱️  Estimated total time: {self.total_combinations * 2 / self.max_workers:.1f} minutes (conservative)")
-            
-            # Collect results as they complete
+            # Process results
             completed = 0
-            for future in all_futures:
+            for future in as_completed(all_futures):
                 try:
-                    # CRITICAL FIX: Add timeout to prevent deadlock
-                    timeout_seconds = min(self.config.simulation_timeout_minutes * 60, 600)  # Max 10 minutes
-                    result = future.result(timeout=timeout_seconds)
+                    result = future.result(timeout=300)  # 5 minute timeout per evaluation
                     results.add_result(result)
                     completed += 1
                     
-                    # Progress callback
                     if progress_callback:
-                        progress_callback(completed, self.total_combinations, result)
+                        progress_callback(completed, len(self.combinations))
                     
-                    # REDUCED VERBOSITY: Only log progress every 5 completions or 10% progress
-                    progress = completed / self.total_combinations * 100
-                    remaining = self.total_combinations - completed
-                    best_value = results.get_best_objective_value()
-                    if best_value is None:
-                        best_value = 0.0
+                    logger.info(f"✅ Completed {completed}/{len(self.combinations)} evaluations")
                     
-                    # Log every 5 completions or every 10% progress (reduced from 10/5%)
-                    if completed % 5 == 0 or completed % max(1, self.total_combinations // 10) == 0:
-                        logger.info(f"🎯 CALIBRATION PROGRESS: {progress:.1f}% ({completed}/{self.total_combinations})")
-                        logger.info(f"   ✅ Completed: {completed} simulations")
-                        logger.info(f"   ⏳ Remaining: {remaining} simulations")
-                        logger.info(f"   🏆 Best objective: {best_value:.4f}")
-                        logger.info(f"   🔥 Active workers: {self.max_workers}")
-                        
-                        # Estimate time remaining
-                        if completed > 0:
-                            elapsed_time = time.time() - self.start_time
-                            time_per_sim = elapsed_time / completed
-                            eta_seconds = remaining * time_per_sim
-                            eta_minutes = eta_seconds / 60
-                            logger.info(f"   ⏱️  ETA: {eta_minutes:.1f} minutes")
-                        
-                        # Add visual progress bar
-                        progress_bar = print_progress_bar(completed, self.total_combinations)
-                        logger.info(f"   📊 {progress_bar}")
-                    
-                    # ADDITIONAL: More frequent progress updates for large combinations
-                    # Log every 1 completion for first 10, then every 2, then every 5
-                    if (completed <= 10 and completed > 0) or \
-                       (completed <= 30 and completed % 2 == 0) or \
-                       (completed > 30 and completed % 3 == 0):
-                        # Calculate ETA for quick update
-                        if completed > 0:
-                            elapsed_time = time.time() - self.start_time
-                            time_per_sim = elapsed_time / completed
-                            eta_seconds = remaining * time_per_sim
-                            eta_minutes = eta_seconds / 60
-                            logger.info(f"📊 Quick Update: {completed}/{self.total_combinations} completed ({progress:.1f}%) - ETA: {eta_minutes:.1f}min")
-                        else:
-                            logger.info(f"📊 Quick Update: {completed}/{self.total_combinations} completed ({progress:.1f}%)")
-                
                 except TimeoutError:
-                    logger.error(f"❌ CRITICAL: Worker timeout - possible deadlock")
-                    # Create a failed result
-                    failed_result = GridSearchResult(
-                        parameter_values=future_to_params[future],
-                        objective_value=0.0,
-                        objective_components={},
-                        simulation_stats={},
-                        evaluation_time=0.0,
-                        is_valid=False,
-                        error_message="Worker timeout - possible deadlock"
-                    )
-                    results.add_result(failed_result)
-                    completed += 1
-                    
+                    logger.error("❌ Evaluation timed out")
+                    results.add_timeout()
                 except Exception as e:
-                    logger.error(f"❌ CRITICAL: Worker failed with error: {e}")
-                    # Create a failed result
-                    failed_result = GridSearchResult(
-                        parameter_values=future_to_params[future],
-                        objective_value=0.0,
-                        objective_components={},
-                        simulation_stats={},
-                        evaluation_time=0.0,
-                        is_valid=False,
-                        error_message=f"Worker failed: {str(e)}"
-                    )
-                    results.add_result(failed_result)
-                    completed += 1
-        
-        # CRITICAL FIX: Clean up shared memory after calibration
-        try:
-            from src.utils.shared_terrain import reset_shared_terrain_logging
-            reset_shared_terrain_logging()
-            logger.info("🧹 Shared terrain logging flags reset after calibration")
-        except Exception as cleanup_error:
-            logger.warning(f"Shared terrain cleanup failed: {cleanup_error}")
+                    logger.error(f"❌ Evaluation failed: {e}")
+                    results.add_error()
         
         return results
+    
+    def _pre_optimize_for_workers(self):
+        """Pre-optimize configurations and data for worker processes."""
+        try:
+            # Cache frequently used configurations
+            common_configs = {}
+            
+            for combo in self.combinations[:10]:  # Cache first 10 combinations
+                config_key = f"config_{hash(str(combo))}"
+                config_variant = self.config.create_config_variant(combo)
+                optimized_config = self.serialization_optimizer.optimize_config_for_serialization(
+                    config_variant.__dict__ if hasattr(config_variant, '__dict__') else config_variant
+                )
+                self.serialization_optimizer.cache_serialized_object(config_key, optimized_config)
+                common_configs[config_key] = optimized_config
+            
+            logger.info(f"📦 Pre-cached {len(common_configs)} configurations for workers")
+                    
+        except Exception as e:
+            logger.warning(f"⚠️  Pre-optimization failed: {e}")
+    
+    def cleanup(self):
+        """Clean up resources including serialization cache."""
+        try:
+            # Clear serialization cache
+            self.serialization_optimizer.clear_cache()
+            
+            # Stop HPC monitoring
+            stop_hpc_monitoring()
+            
+            logger.info("🧹 GridSearchCalibrator cleanup completed")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Cleanup error: {e}")
     
     def get_estimation_info(self) -> Dict[str, Any]:
         """Get estimation information about the calibration."""
@@ -956,39 +863,36 @@ class GridSearchCalibrator:
             logger.warning(f"🧠 Could not calculate HPC optimal workers: {e}")
             return 16  # Conservative default
 
-    def _create_forest_model_with_hpc_optimizations(self, parameter_values: Dict[str, float]):
+    def _create_forest_model_with_optimized_config(self, parameter_values: Dict[str, float]):
         """
-        Create forest model with HPC optimizations.
-        
-        Includes:
-        - Local storage usage for terrain data
-        - Memory-efficient initialization
-        - Garbage collection optimization
+        Create forest model with optimized configuration and serialization.
         """
+        # Use cached optimized configuration if available
+        cached_config = self.serialization_optimizer.get_cached_serialized('optimized_config')
         
-        # Apply parameter values to config
-        config_variant = self.config.create_config_variant(parameter_values)
+        if cached_config:
+            # Use cached configuration
+            config_dict = pickle.loads(cached_config)
+        else:
+            # Fall back to creating optimized configuration
+            config_dict = self.optimized_config
         
-        # Use local storage for terrain data if available
-        if hasattr(config_variant, 'terrain') and hasattr(config_variant.terrain, 'preprocessed_dir'):
-            # Check if local cache is available
-            local_cache = getattr(config_variant.terrain, 'local_cache_dir', None)
-            if local_cache and Path(local_cache).exists():
-                logger.debug(f"📁 Using local terrain cache: {local_cache}")
-                # Use local cache instead of network storage
+        # Create config variant with parameter values
+        config_variant = copy.deepcopy(config_dict)
         
-        # Create forest model with memory optimization
+        # Update with parameter values
+        for param_name, param_value in parameter_values.items():
+            if param_name in config_variant:
+                config_variant[param_name] = param_value
+        
+        # Create forest model
         from src.core.forest_model import ForestModel
-        
-        # Disable GC during model creation
         import gc
         gc.disable()
-        
         try:
             forest_model = ForestModel(config_variant)
             return forest_model
         finally:
-            # Re-enable GC
             gc.enable()
 
 
