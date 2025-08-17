@@ -941,7 +941,13 @@ class GridSearchCalibrator:
         try:
             # Convert config_variant to ModelConfig if it's a dict
             if isinstance(config_variant, dict):
-                forest_model = ForestModel(config=ModelConfig(**config_variant))
+                # Filter out serialization metadata before creating ModelConfig
+                clean_config = {}
+                for key, value in config_variant.items():
+                    if not key.startswith('_'):
+                        clean_config[key] = value
+                
+                forest_model = ForestModel(config=ModelConfig(**clean_config))
             else:
                 forest_model = ForestModel(config=config_variant)
             return forest_model
