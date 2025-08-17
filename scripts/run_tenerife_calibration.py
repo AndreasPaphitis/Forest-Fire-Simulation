@@ -29,6 +29,9 @@ Usage:
     
     # Dry run (setup only, no calibration)
     python run_tenerife_calibration.py --dry-run
+    
+    # Quiet mode (minimal output)
+    python run_tenerife_calibration.py --quiet
 
 Author: Forest Fire Simulation Team
 Date: 2025
@@ -40,6 +43,7 @@ import sys
 import argparse
 import json
 import time
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -68,6 +72,27 @@ except ImportError as e:
     print(f"❌ Error importing modules: {e}")
     print("Make sure you're running this from the project root directory")
     sys.exit(1)
+
+# Configure logging to be quiet by default
+def setup_quiet_logging():
+    """Set up quiet logging configuration to reduce verbosity."""
+    # Set root logger to WARNING level
+    logging.getLogger().setLevel(logging.WARNING)
+    
+    # Set specific loggers to WARNING or ERROR
+    logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.WARNING)
+    logging.getLogger('src.core.forest_model').setLevel(logging.WARNING)
+    logging.getLogger('src.core.calibration').setLevel(logging.WARNING)
+    logging.getLogger('src.utils').setLevel(logging.WARNING)
+    logging.getLogger('shared_utilities').setLevel(logging.WARNING)
+    
+    # Disable duplicate logging
+    logging.getLogger('src.core.core_simulation_framework').setLevel(logging.ERROR)
+    logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.ERROR)
+    logging.getLogger('src.core.calibration.fire_perimeter_calibration').setLevel(logging.WARNING)
+
+# Set up quiet logging by default
+setup_quiet_logging()
 
 logger = get_logger(__name__)
 
@@ -319,7 +344,33 @@ Examples:
         help='Enable emergency mode to prevent segfaults on massive grids'
     )
     
+    parser.add_argument(
+        '--quiet',
+        action='store_true',
+        help='Run in quiet mode (minimal output)'
+    )
+    
     args = parser.parse_args()
+    
+    # Configure logging based on verbosity settings
+    if args.quiet:
+        # Set all loggers to ERROR level for minimal output
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.ERROR)
+        logging.getLogger('src.core.forest_model').setLevel(logging.ERROR)
+        logging.getLogger('src.core.calibration').setLevel(logging.ERROR)
+        logging.getLogger('src.utils').setLevel(logging.ERROR)
+        logging.getLogger('shared_utilities').setLevel(logging.ERROR)
+        print("🔇 Running in quiet mode - minimal output")
+    elif args.verbose:
+        # Set all loggers to INFO level for verbose output
+        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.INFO)
+        logging.getLogger('src.core.forest_model').setLevel(logging.INFO)
+        logging.getLogger('src.core.calibration').setLevel(logging.INFO)
+        logging.getLogger('src.utils').setLevel(logging.INFO)
+        logging.getLogger('shared_utilities').setLevel(logging.INFO)
+        print("🔊 Running in verbose mode - detailed output")
     
     # Set default workers based on memory for massive scale (conservative for 9.3B cells)
     if args.workers is None:
@@ -341,13 +392,15 @@ Examples:
             'slope_influence',         # 0.023 - Fourth
             'ember_height_factor'      # 0.019 - Fifth
         ]
-        print(f"🔧 Using TOP 5 parameters from sensitivity analysis results")
-        print(f"   ✅ Based on Method 2 Range-Based sensitivity analysis")
+        if not args.quiet:
+            print(f"🔧 Using TOP 5 parameters from sensitivity analysis results")
+            print(f"   ✅ Based on Method 2 Range-Based sensitivity analysis")
     
-    print(f"🔥 TENERIFE FIRE CALIBRATION")
-    print(f"=" * 50)
-    print(f"Experiment: {args.experiment_name}")
-    print(f"Config: {args.memory}GB / {args.workers} workers / {args.grid_points} points")
+    if not args.quiet:
+        print(f"🔥 TENERIFE FIRE CALIBRATION")
+        print(f"=" * 50)
+        print(f"Experiment: {args.experiment_name}")
+        print(f"Config: {args.memory}GB / {args.workers} workers / {args.grid_points} points")
     
     try:
         # Step 0: Handle emergency small-scale mode

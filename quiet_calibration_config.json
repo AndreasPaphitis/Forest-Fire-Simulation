@@ -4,5 +4,12 @@
   "save_intermediate_results": false,
   "generate_plots": false,
   "console_output": false,
-  "log_level": "WARNING"
+  "log_level": "WARNING",
+  "debug": false,
+  "store_full_states": false,
+  "use_disk_storage": false,
+  "show_progress": false,
+  "detailed_logging": false,
+  "memory_tracking": false,
+  "performance_tracking": false
 }
