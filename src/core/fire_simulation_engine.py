@@ -431,11 +431,11 @@ class FireSimulationEngine:
             self._process_step()
             step_time = time.time() - step_start
             
-                    # Log step processing statistics occasionally (reduced frequency)
-        if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
-            avg_step_time = step_time
-            cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
-            logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
+            # Log step processing statistics occasionally (reduced frequency)
+            if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
+                avg_step_time = step_time
+                cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
+                logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
             
             # Update statistics for this step
             current_step_stats = {
