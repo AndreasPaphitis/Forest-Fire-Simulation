@@ -2332,8 +2332,15 @@ class SparseLayerAccessor:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    # Handle both lil_matrix and dok_matrix formats
-                    sparse_matrix = self.sparse_layers[z]
+                    # CRITICAL FIX: Add debug logging for KeyError 7
+                    try:
+                        # Handle both lil_matrix and dok_matrix formats
+                        sparse_matrix = self.sparse_layers[z]
+                    except KeyError as e:
+                        if e.args[0] == 7:
+                            print(f"🔍 KeyError 7 in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
+                            print(f"🔍 sparse_layers keys/indices: {list(range(len(self.sparse_layers))) if hasattr(self.sparse_layers, '__len__') else 'no length'}")
+                        raise
                     
                     # Check if it's a DOK matrix (Dictionary of Keys)
                     if hasattr(sparse_matrix, 'keys'):
@@ -2903,8 +2910,9 @@ class MemoryOptimizedForestModel(ForestModel):
         self.config = config if config is not None else get_global_config()
         
         # Initialize sparse storage directly - NO DENSE ARRAYS CREATED
-        self.fuel_load_layers = {}
-        self.state_layers = {}
+        # CRITICAL FIX: Use lists instead of dictionaries for SparseLayerAccessor compatibility
+        self.fuel_load_layers = []
+        self.state_layers = []
         
         # CRITICAL FIX: Initialize ignition points tracking (missing from direct sparse initialization)
         self._ignition_points = []
@@ -2928,8 +2936,9 @@ class MemoryOptimizedForestModel(ForestModel):
                 
                 # Convert to lil_matrix only when needed (lil is better for modifications)
                 # But keep dok for now to avoid segfault during initialization
-                self.fuel_load_layers[z] = fuel_layer
-                self.state_layers[z] = state_layer
+                # CRITICAL FIX: Use append for list-based storage
+                self.fuel_load_layers.append(fuel_layer)
+                self.state_layers.append(state_layer)
                 
                 if (z + 1) % 5 == 0:  # Progress logging every 5 layers
                     logger.info(f"   ✅ Initialized sparse layer {z+1}/{num_layers}")

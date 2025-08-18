@@ -439,9 +439,23 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     import time
     import logging
     import gc
+    import sys
     from src.core.forest_model import ForestModel, create_forest_model
     from src.config.config_tools import ModelConfig
     from src.core.fire_simulation_engine import FireSimulationEngine
+    
+    # CRITICAL FIX: Add global KeyError 7 handler to catch ALL instances
+    original_excepthook = sys.excepthook
+    
+    def keyerror_7_handler(exctype, value, traceback):
+        if exctype == KeyError and hasattr(value, 'args') and len(value.args) > 0 and value.args[0] == 7:
+            print(f"🔍 GLOBAL KeyError 7 caught: {value}")
+            print(f"🔍 This KeyError 7 is happening outside the simulation engine")
+            import traceback as tb
+            tb.print_exception(exctype, value, traceback)
+        original_excepthook(exctype, value, traceback)
+    
+    sys.excepthook = keyerror_7_handler
     
     forest_model = None
     engine = None
