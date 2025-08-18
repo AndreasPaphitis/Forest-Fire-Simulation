@@ -1,0 +1,162 @@
+{
+  "config_name": "Local Calibration Test",
+  "config_version": "1.0",
+  "description": "Minimal local test to reproduce calibration list.items() error",
+  
+  "simulation": {
+    "max_steps": 3,
+    "random_seed": 42,
+    "debug": true,
+    "store_full_states": false,
+    "stop_when_fire_extinguished": true,
+    "grid_size": [100, 100],
+    "num_layers": 3,
+    "layer_height": 2.0,
+    "model_resolution": 10.0,
+    
+    "spread_probability": 0.3,
+    "fuel_consumption_rate": 0.05,
+    "ignition_threshold": 0.1,
+    "min_fuel_value": 0.0,
+    "max_fuel_value": 1.0,
+    "initial_fuel_load": 0.8,
+    "fuel_moisture_baseline": 0.2,
+    
+    "wind_speed": 5.0,
+    "wind_direction": 45.0,
+    "temperature": 25.0,
+    "humidity": 0.4,
+    "reference_wind_speed": 10.0,
+    "wind_influence_on_spread": 0.1,
+    
+    "slope_influence": 0.05,
+    "terrain_effect_strength": 0.1,
+    "barranco_threshold": 0.3,
+    "barranco_amplification": 1.5,
+    "barranco_direction_weight": 0.7,
+    "min_depression_depth": 5.0,
+    "min_depression_area": 100.0,
+    
+    "ember_probability": 0.1,
+    "ember_distance": 50.0,
+    "ember_ignition": 0.3,
+    "ember_height_factor": 0.5,
+    "ember_rise": 0.2,
+    "ember_wind_factor": 0.3,
+    
+    "memory_optimization_level": 1,
+    "use_disk_storage": false,
+    "use_sparse_storage": true,
+    "disk_storage_dir": null,
+    "bytes_per_cell": 8,
+    "tile_size": 50,
+    "chunk_size": 1000,
+    
+    "simulation_type": "calibration_test",
+    "output_dir": "test_output/local_calibration",
+    "results_output_dir": "test_output/local_calibration/results",
+    "logs_output_dir": "test_output/local_calibration/logs",
+    "checkpoints_output_dir": "test_output/local_calibration/checkpoints",
+    "monitoring_output_dir": "test_output/local_calibration/monitoring",
+    "temp_storage_dir": "test_output/local_calibration/temp",
+    
+    "history_keyframe_interval": 1,
+    "engine_logging_interval": 1,
+    
+    "geo_bounds": {
+      "min_lat": 28.0,
+      "max_lat": 28.5,
+      "min_lon": -16.5,
+      "max_lon": -16.0
+    },
+    "crs": "EPSG:4326",
+    
+    "ignition_points": [
+      {"x": 50, "y": 50, "layer": 1}
+    ],
+    
+    "extinction_coefficient": 0.1,
+    "pad_bin_size": 1.0,
+    "exclude_ground_layer": true,
+    
+    "use_lidar": false,
+    "auto_size_from_lidar": false,
+    "lidar_data_dir": null,
+    "max_grid_size": [200, 200],
+    "max_vegetation_height_m": 20.0,
+    
+    "use_tiling": false,
+    "use_parallel": false,
+    "tile_overlap_ratio": 0.1,
+    
+    "fuel_load_method": "uniform",
+    "save_visualizations": false,
+    "viz_frame_interval_ms": 100,
+    "use_differential_history": false,
+    "save_interval": 1,
+    
+    "lidar_load_max_retries": 3,
+    "lidar_load_retry_delay_seconds": 1.0,
+    
+    "use_terrain": false,
+    "dem_file": null,
+    "use_preprocessed_terrain": false,
+    "preprocessed_terrain_dir": null,
+    "terrain_preprocessing_config": null,
+    
+    "hpc_io_block_size": 1024,
+    "hpc_memory_limit_per_node": 8192,
+    "hpc_mode_gdal": false,
+    "gdal_cache_mb": 512,
+    "gdal_thread_count": 1,
+    "max_parallel_tiles": 1,
+    "reserve_cpus": 1
+  },
+  
+  "calibration": {
+    "parameter_space": {
+      "spread_probability": [0.2, 0.3, 0.4],
+      "fuel_consumption_rate": [0.03, 0.05, 0.07],
+      "ember_probability": [0.1, 0.2, 0.3],
+      "ember_ignition": [0.25, 0.35, 0.45],
+      "fuel_moisture_baseline": [0.1, 0.2, 0.3]
+    },
+    
+    "target_data": {
+      "fire_perimeters": {
+        "day_1": {
+          "area_ha": 150.0,
+          "perimeter_km": 5.2,
+          "max_spread_distance_km": 2.1
+        },
+        "day_2": {
+          "area_ha": 320.0,
+          "perimeter_km": 8.7,
+          "max_spread_distance_km": 3.8
+        },
+        "day_3": {
+          "area_ha": 580.0,
+          "perimeter_km": 12.3,
+          "max_spread_distance_km": 5.2
+        }
+      }
+    },
+    
+    "objective_weights": {
+      "area_error": 0.4,
+      "perimeter_error": 0.3,
+      "spread_distance_error": 0.3
+    },
+    
+    "validation_split": 0.2,
+    "max_workers": 2,
+    "timeout_seconds": 300,
+    "memory_limit_gb": 4.0,
+    
+    "output_dir": "test_output/local_calibration_results",
+    "save_intermediate_results": true,
+    "save_best_models": true,
+    "save_parameter_importance": true,
+    "save_sensitivity_analysis": true
+  }
+}
