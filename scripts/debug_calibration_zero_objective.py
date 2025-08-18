@@ -45,8 +45,7 @@ def test_minimum_parameters():
     
     # Create configuration with these minimum parameters
     config = ModelConfig(
-        width=100,
-        height=100,
+        grid_size=(100, 100),  # Fixed: use grid_size instead of width/height
         num_layers=5,
         max_steps=20,
         **min_params,
@@ -56,25 +55,26 @@ def test_minimum_parameters():
     )
     
     print(f"\nConfiguration created with:")
-    print(f"   Grid size: {config.width}x{config.height}")
+    print(f"   Grid size: {config.grid_size}")
     print(f"   Max steps: {config.max_steps}")
     print(f"   Use terrain: {config.use_terrain}")
     print(f"   Use preprocessed terrain: {config.use_preprocessed_terrain}")
     
     try:
         # Create forest model
-        forest_model = create_forest_model(config)
+        forest_model = create_forest_model(model_type="standard", config=config)
         print("✅ Forest model created successfully")
         
         # Set ignition points
+        grid_width, grid_height = config.grid_size if isinstance(config.grid_size, tuple) else (config.grid_size, config.grid_size)
         ignition_points = [
-            (config.width // 2, config.height // 2, 0),
-            (config.width // 2 + 2, config.height // 2, 0),
-            (config.width // 2, config.height // 2 + 2, 0)
+            (grid_width // 2, grid_height // 2, 0),
+            (grid_width // 2 + 2, grid_height // 2, 0),
+            (grid_width // 2, grid_height // 2 + 2, 0)
         ]
         
         for x, y, z in ignition_points:
-            if 0 <= x < config.width and 0 <= y < config.height and 0 <= z < config.num_layers:
+            if 0 <= x < grid_width and 0 <= y < grid_height and 0 <= z < config.num_layers:
                 forest_model.state[x, y, z] = 1  # BURNING
                 print(f"   Set ignition point at ({x}, {y}, {z})")
         
@@ -132,8 +132,7 @@ def test_maximum_parameters():
         print(f"   {param}: {value}")
     
     config = ModelConfig(
-        width=100,
-        height=100,
+        grid_size=(100, 100),  # Fixed: use grid_size instead of width/height
         num_layers=5,
         max_steps=20,
         **max_params,
@@ -144,17 +143,18 @@ def test_maximum_parameters():
     
     try:
         # Create forest model
-        forest_model = create_forest_model(config)
+        forest_model = create_forest_model(model_type="standard", config=config)
         
         # Set ignition points
+        grid_width, grid_height = config.grid_size if isinstance(config.grid_size, tuple) else (config.grid_size, config.grid_size)
         ignition_points = [
-            (config.width // 2, config.height // 2, 0),
-            (config.width // 2 + 2, config.height // 2, 0),
-            (config.width // 2, config.height // 2 + 2, 0)
+            (grid_width // 2, grid_height // 2, 0),
+            (grid_width // 2 + 2, grid_height // 2, 0),
+            (grid_width // 2, grid_height // 2 + 2, 0)
         ]
         
         for x, y, z in ignition_points:
-            if 0 <= x < config.width and 0 <= y < config.height and 0 <= z < config.num_layers:
+            if 0 <= x < grid_width and 0 <= y < grid_height and 0 <= z < config.num_layers:
                 forest_model.state[x, y, z] = 1  # BURNING
         
         # Create simulation engine
@@ -235,8 +235,7 @@ def test_terrain_loading():
     
     try:
         config = ModelConfig(
-            width=50,
-            height=50,
+            grid_size=(50, 50),  # Fixed: use grid_size instead of width/height
             num_layers=3,
             use_terrain=True,
             use_preprocessed_terrain=True,
@@ -244,7 +243,7 @@ def test_terrain_loading():
         )
         
         # Create forest model
-        forest_model = create_forest_model(config)
+        forest_model = create_forest_model(model_type="standard", config=config)
         
         # Check if terrain data is loaded
         terrain_loaded = (
