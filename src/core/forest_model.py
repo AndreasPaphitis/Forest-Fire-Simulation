@@ -378,6 +378,15 @@ class BaseForestModel(ABC):
                 from src.utils.shared_terrain import load_shared_terrain_data
                 shared_info = self.config.shared_terrain_info
                 
+                # CRITICAL DEBUG: Check if shared_info is a list instead of dict
+                if isinstance(shared_info, (list, tuple)):
+                    logger.error(f"CRITICAL ERROR: shared_terrain_info is a list/tuple instead of dict: {type(shared_info)} = {shared_info}")
+                    logger.error("This indicates a parameter passing issue in calibration")
+                    return None
+                elif not isinstance(shared_info, dict):
+                    logger.error(f"CRITICAL ERROR: shared_terrain_info is not a dict: {type(shared_info)} = {shared_info}")
+                    return None
+                
                 # CRITICAL FIX: Use threading-based timeout instead of broken signal-based timeout
                 import threading
                 import time
@@ -601,6 +610,16 @@ class BaseForestModel(ABC):
             
             # Store shared memory references to prevent cleanup
             self._shared_terrain_refs = {}
+            
+            # CRITICAL DEBUG: Check if shared_terrain_data is a list instead of dict
+            if isinstance(shared_terrain_data, (list, tuple)):
+                logger.error(f"CRITICAL ERROR: shared_terrain_data is a list/tuple instead of dict: {type(shared_terrain_data)} = {shared_terrain_data}")
+                logger.error("This indicates a parameter passing issue in shared terrain loading")
+                return
+            elif not isinstance(shared_terrain_data, dict):
+                logger.error(f"CRITICAL ERROR: shared_terrain_data is not a dict: {type(shared_terrain_data)} = {shared_terrain_data}")
+                return
+            
             for key, value in shared_terrain_data.items():
                 if key.startswith('_shm_ref_'):
                     self._shared_terrain_refs[key] = value

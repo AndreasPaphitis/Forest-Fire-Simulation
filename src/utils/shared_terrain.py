@@ -284,6 +284,15 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
     Returns:
         Dictionary of terrain arrays
     """
+    # CRITICAL DEBUG: Check if shared_info is a list instead of dict
+    if isinstance(shared_info, (list, tuple)):
+        logger.error(f"CRITICAL ERROR: shared_info is a list/tuple instead of dict: {type(shared_info)} = {shared_info}")
+        logger.error("This indicates a parameter passing issue in shared terrain loading")
+        return {}
+    elif not isinstance(shared_info, dict):
+        logger.error(f"CRITICAL ERROR: shared_info is not a dict: {type(shared_info)} = {shared_info}")
+        return {}
+    
     # CRITICAL FIX: Use process ID for proper process-level caching
     import os
     process_id = os.getpid()
@@ -303,6 +312,15 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
         shared_names = shared_info['shared_names']
         shapes = shared_info['shapes']
         dtypes = shared_info['dtypes']
+        
+        # CRITICAL DEBUG: Check if shared_names is a list instead of dict
+        if isinstance(shared_names, (list, tuple)):
+            logger.error(f"CRITICAL ERROR: shared_names is a list/tuple instead of dict: {type(shared_names)} = {shared_names}")
+            logger.error("This indicates a parameter passing issue in shared terrain loading")
+            return terrain_data
+        elif not isinstance(shared_names, dict):
+            logger.error(f"CRITICAL ERROR: shared_names is not a dict: {type(shared_names)} = {shared_names}")
+            return terrain_data
         
         # CRITICAL FIX: Add timeout and retry logic to prevent deadlocks
         import time
