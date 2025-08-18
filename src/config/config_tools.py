@@ -590,7 +590,7 @@ if __name__ == "__main__":
     print()
     
     # Create the configuration with ALL parameters
-    config = create_config(
+    config = ModelConfig(
         max_steps=max_steps,
         random_seed=random_seed,
         debug=debug,

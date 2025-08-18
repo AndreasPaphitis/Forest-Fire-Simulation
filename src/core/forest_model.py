@@ -1803,11 +1803,12 @@ class ForestModel(BaseForestModel):
             **kwargs: Additional parameters
         """
         # Pass config explicitly to parent if provided, else parent will try to get global
-        # Ensure kwargs are passed for other potential base initializations
-        all_params = {**kwargs, 'config': config, 'grid_size': grid_size, 'num_layers': num_layers, 
+        # Remove config from kwargs to avoid duplication
+        kwargs_without_config = {k: v for k, v in kwargs.items() if k != 'config'}
+        all_params = {**kwargs_without_config, 'grid_size': grid_size, 'num_layers': num_layers, 
                       'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
                       'initial_fuel_load': initial_fuel_load}
-        super().__init__(**all_params)
+        super().__init__(config=config, **all_params)
         
         # Initialize additional attributes specific to ForestModel
         self._initialize_attributes(**kwargs)
@@ -2659,10 +2660,12 @@ class MemoryOptimizedForestModel(ForestModel):
                                               model_resolution, initial_fuel_load, config, **kwargs)
         else:
             # Normal initialization for smaller domains
-            all_params = {**kwargs, 'config': config, 'grid_size': grid_size, 'num_layers': num_layers, 
+            # Remove config from kwargs to avoid duplication
+            kwargs_without_config = {k: v for k, v in kwargs.items() if k != 'config'}
+            all_params = {**kwargs_without_config, 'grid_size': grid_size, 'num_layers': num_layers, 
                           'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
                           'initial_fuel_load': initial_fuel_load}
-            super().__init__(**all_params)
+            super().__init__(config=config, **all_params)
             
             # Initialize sparse storage if needed
             if self.use_sparse_storage:
@@ -3018,6 +3021,22 @@ def create_forest_model(model_type: str = "standard", config=None, **kwargs):
     if model_type == "standard":
         return ForestModel(config=config, **kwargs)
     elif model_type == "memory_optimized" or model_type == "sparse":
-        return MemoryOptimizedForestModel(config=config, **kwargs)
+        # Extract grid parameters from config or kwargs
+        grid_size = kwargs.get('grid_size', (100, 100))
+        num_layers = kwargs.get('num_layers', 10)
+        layer_height_meters = kwargs.get('layer_height_meters', 2.0)
+        model_resolution = kwargs.get('model_resolution', 5.0)
+        initial_fuel_load = kwargs.get('initial_fuel_load', 5.0)
+        
+        # Create MemoryOptimizedForestModel with proper parameter order
+        return MemoryOptimizedForestModel(
+            grid_size=grid_size,
+            num_layers=num_layers,
+            layer_height_meters=layer_height_meters,
+            model_resolution=model_resolution,
+            initial_fuel_load=initial_fuel_load,
+            config=config,
+            **kwargs
+        )
     else:
         raise ValueError(f"Unknown model type: {model_type}. Use 'standard' or 'memory_optimized'")
