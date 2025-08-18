@@ -84,8 +84,8 @@ python scripts/run_tenerife_calibration.py --emergency-small-scale --workers 4 -
 --grid-points 4   # Higher accuracy - 1,024 combinations
 --grid-points 5   # Maximum accuracy - 3,125 combinations
 
-# Custom parameter selection
---parameters ember_probability fuel_consumption_rate ember_ignition
+# Custom parameter selection (Top 5 from sensitivity analysis)
+--parameters spread_probability fuel_consumption_rate ember_probability ember_ignition fuel_moisture_baseline
 
 # Training/test data split
 --training-days 1 2

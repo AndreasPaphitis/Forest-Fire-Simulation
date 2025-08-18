@@ -776,15 +776,16 @@ class TenerifeFirePerimeterCalibrator:
         
         # Use top 5 parameters from sensitivity analysis or defaults
         if top_5_parameters is None:
-            # TOP 5 PARAMETERS FROM ACTUAL SENSITIVITY ANALYSIS (Method 2 Range-Based)
+            # TOP 5 PARAMETERS FROM SENSITIVITY ANALYSIS RESULTS (Method 2 Range-Based)
+            # Updated based on actual sensitivity analysis completed on 2025-08-18
             calibration_parameters = [
-                'ember_probability',        # 0.382 - Highest sensitivity
-                'fuel_consumption_rate',    # 0.165 - Second highest  
-                'ember_ignition',          # 0.138 - Third highest
-                'slope_influence',         # 0.023 - Fourth
-                'ember_height_factor'      # 0.019 - Fifth
+                'spread_probability',        # 1.4063 - CRITICAL (13x more sensitive than #2)
+                'fuel_consumption_rate',     # 0.1609 - CRITICAL
+                'ember_probability',         # 0.1159 - CRITICAL
+                'ember_ignition',           # 0.0564 - CRITICAL
+                'fuel_moisture_baseline'    # 0.0382 - MODERATE
             ]
-            print("🔧 Using top 5 parameters from sensitivity analysis")
+            print("🔧 Using top 5 parameters from sensitivity analysis (2025-08-18 results)")
         else:
             calibration_parameters = top_5_parameters
             print("✅ Using provided parameters")
