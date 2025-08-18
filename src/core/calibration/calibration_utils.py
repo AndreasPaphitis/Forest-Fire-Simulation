@@ -538,8 +538,8 @@ def validate_calibration_config(config: Any) -> Tuple[bool, List[str]]:
         if not config.calibration_parameters:
             errors.append("At least one calibration parameter must be specified")
         
-        if len(config.calibration_parameters) > 15:
-            errors.append("Too many calibration parameters (max 15 recommended)")
+        if len(config.calibration_parameters) > 20:
+            errors.append("Too many calibration parameters (max 20 recommended)")
     
     # Check max_iterations
     if hasattr(config, 'max_iterations'):
