@@ -1403,6 +1403,9 @@ class TenerifeFirePerimeterCalibrator:
                     dtype=np.float32
                 )
                 
+                # Transpose to match simulation grid orientation (width, height)
+                fire_perimeter_grid = fire_perimeter_grid.T
+                
             else:
                 # Use dynamic grid size calculation for Day 4 fire area
                 grid_width, grid_height = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
@@ -1448,6 +1451,9 @@ class TenerifeFirePerimeterCalibrator:
                     default_value=1,  # Fire area value
                     dtype=np.float32
                 )
+                
+                # Transpose to match simulation grid orientation (width, height)
+                fire_perimeter_grid = fire_perimeter_grid.T
             
             # Calculate rasterized statistics
             fire_cells = np.sum(fire_perimeter_grid > 0)
@@ -1490,6 +1496,9 @@ class TenerifeFirePerimeterCalibrator:
                             default_value=1,
                             dtype=np.float32
                         )
+                        
+                        # Transpose to match simulation grid orientation (width, height)
+                        add_grid = add_grid.T
                         
                         additional_targets.append({
                             'fire_perimeter': add_grid,
