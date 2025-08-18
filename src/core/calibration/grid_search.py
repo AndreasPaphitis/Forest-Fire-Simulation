@@ -550,39 +550,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
         
-        # CRITICAL DEBUG: Log before running simulation
-        worker_logger.info(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
-        worker_logger.info(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
-        
-        # Run simulation with detailed error tracking
-        try:
-            worker_logger.info(f"🔍 DEBUG: Starting simulation run...")
-            simulation_result = engine.run_simulation()
-            worker_logger.info(f"🔍 DEBUG: Simulation completed successfully")
-        except AttributeError as attr_error:
-            if "'list' object has no attribute 'items'" in str(attr_error):
-                worker_logger.error(f"🔍 DEBUG: List object error in simulation: {attr_error}")
-                worker_logger.error(f"🔍 DEBUG: This indicates a parameter passing issue in the simulation engine")
-                # Return error result for this evaluation
-                return {
-                    'parameter_values': parameter_values.copy(),
-                    'objective_value': 0.0,
-                    'objective_components': {},
-                    'simulation_stats': {},
-                    'evaluation_time': time.time() - start_time,
-                    'is_valid': False,
-                    'error_message': f"List object error in simulation: {attr_error}"
-                }
-            else:
-                worker_logger.error(f"🔍 DEBUG: AttributeError in simulation: {attr_error}")
-                raise attr_error
-        except Exception as sim_error:
-            worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(sim_error)} = {sim_error}")
-            worker_logger.error(f"🔍 DEBUG: Error occurred in simulation run")
-            import traceback
-            worker_logger.error(f"🔍 DEBUG: Simulation traceback: {traceback.format_exc()}")
-            raise sim_error
-        
         # Ensure ignition points are set; many early terminations are caused by zero active cells
         try:
             # Prefer explicit ignition points from config if provided
@@ -611,8 +578,54 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             # Non-fatal: proceed; engine will stop if no active cells
             pass
         
-        # Run simulation
-        simulation_result = engine.run_simulation()
+        # CRITICAL DEBUG: Log before running simulation
+        worker_logger.info(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
+        worker_logger.info(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+        
+        # Run simulation with detailed error tracking
+        try:
+            worker_logger.info(f"🔍 DEBUG: Starting simulation run...")
+            simulation_result = engine.run_simulation()
+            worker_logger.info(f"🔍 DEBUG: Simulation completed successfully")
+        except AttributeError as attr_error:
+            if "'list' object has no attribute 'items'" in str(attr_error):
+                worker_logger.error(f"🔍 DEBUG: List object error in simulation: {attr_error}")
+                worker_logger.error(f"🔍 DEBUG: This indicates a parameter passing issue in the simulation engine")
+                worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
+                worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+                worker_logger.error(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+                
+                # Log full traceback for precise origin
+                import traceback
+                worker_logger.error(f"🔍 DEBUG: Traceback for list.items error:\n{traceback.format_exc()}")
+                
+                # CRITICAL FIX: Try to identify which parameter is causing the issue
+                worker_logger.error(f"🔍 DEBUG: Checking parameter_values for list/tuple values:")
+                for key, value in parameter_values.items():
+                    if isinstance(value, (list, tuple)):
+                        worker_logger.error(f"🔍 DEBUG: Parameter {key} is a {type(value)}: {value}")
+                
+                # Return error result for this evaluation
+                return {
+                    'parameter_values': parameter_values.copy(),
+                    'objective_value': 0.0,
+                    'objective_components': {},
+                    'simulation_stats': {},
+                    'evaluation_time': time.time() - start_time,
+                    'is_valid': False,
+                    'error_message': f"List object error in simulation: {attr_error}. Check parameter_values for list/tuple values."
+                }
+            else:
+                worker_logger.error(f"🔍 DEBUG: AttributeError in simulation: {attr_error}")
+                raise attr_error
+        except Exception as sim_error:
+            worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(sim_error)} = {sim_error}")
+            worker_logger.error(f"🔍 DEBUG: Error occurred in simulation run")
+            worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
+            worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+            import traceback
+            worker_logger.error(f"🔍 DEBUG: Simulation traceback: {traceback.format_exc()}")
+            raise sim_error
         
         # Import and create objective function
         if objective_function_name == "SpatialSimilarityObjective":
@@ -1121,15 +1134,72 @@ class GridSearchCalibrator:
         # CRITICAL FIX: Ensure config_dict is properly created
         try:
             base_config_variant = self.config.create_config_variant({})
-            if hasattr(base_config_variant, '__dict__'):
-                config_dict = base_config_variant.__dict__
-            else:
+            
+            # CRITICAL FIX: Handle different return types from create_config_variant
+            if isinstance(base_config_variant, dict):
                 config_dict = base_config_variant
+            elif hasattr(base_config_variant, '__dict__'):
+                # If it's a ModelConfig object, use asdict() to convert to dictionary
+                try:
+                    from dataclasses import asdict
+                    config_dict = asdict(base_config_variant)
+                    logger.debug(f"Converted ModelConfig to dictionary using asdict()")
+                except Exception as asdict_error:
+                    logger.warning(f"asdict() failed, using __dict__: {asdict_error}")
+                    config_dict = base_config_variant.__dict__
+            elif isinstance(base_config_variant, (list, tuple)) and len(base_config_variant) > 0:
+                # If it's a list/tuple, take the first item if it's a dict
+                if isinstance(base_config_variant[0], dict):
+                    config_dict = base_config_variant[0]
+                    logger.warning(f"Using first item from config_variant list/tuple")
+                else:
+                    logger.error(f"config_variant is list/tuple but first item is not a dict: {type(base_config_variant[0])}")
+                    config_dict = {}
+            else:
+                logger.error(f"Unexpected config_variant type: {type(base_config_variant)} = {base_config_variant}")
+                config_dict = {}
+            
+            # CRITICAL FIX: Ensure config_dict is actually a dictionary
+            if not isinstance(config_dict, dict):
+                logger.error(f"config_dict is still not a dictionary after processing: {type(config_dict)} = {config_dict}")
+                config_dict = {}
+            
             logger.info(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
             logger.info(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+            
+            # CRITICAL FIX: Ensure essential keys are present
+            essential_keys = ['grid_size', 'num_layers', 'max_steps', 'simulation_type']
+            missing_keys = [key for key in essential_keys if key not in config_dict]
+            if missing_keys:
+                logger.warning(f"Missing essential keys in config_dict: {missing_keys}")
+                # Add default values for missing keys
+                defaults = {
+                    'grid_size': (100, 100),
+                    'num_layers': 10,
+                    'max_steps': 100,
+                    'simulation_type': 'memory_optimized'
+                }
+                for key in missing_keys:
+                    if key in defaults:
+                        config_dict[key] = defaults[key]
+                        logger.info(f"Added default value for {key}: {defaults[key]}")
+            
         except Exception as e:
             logger.error(f"🔍 DEBUG: Error creating config_dict: {e}")
-            config_dict = {}
+            import traceback
+            logger.error(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
+            # Create a minimal fallback config_dict
+            config_dict = {
+                'grid_size': (100, 100),
+                'num_layers': 10,
+                'max_steps': 100,
+                'simulation_type': 'memory_optimized',
+                'spread_probability': 0.8,
+                'fuel_consumption_rate': 0.01,
+                'ignition_threshold': 0.1,
+                'stop_when_fire_extinguished': False
+            }
+            logger.info(f"Using fallback config_dict with {len(config_dict)} keys")
         
         objective_function_name = self.objective_function.__class__.__name__
         
