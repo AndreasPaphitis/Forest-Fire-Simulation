@@ -419,8 +419,8 @@ Examples:
     parser.add_argument(
         '--grid-size',
         type=int,
-        default=100,
-        help='Grid size for EMSR target data (default: 100)'
+        default=None,
+        help='Grid size for EMSR target data (default: auto-calculate from fire area)'
     )
     
     args = parser.parse_args()
@@ -609,38 +609,58 @@ Examples:
         print(f"📁 Day 1 EMSR: {day1_path}")
         print(f"📁 Day 2 EMSR: {day2_path}")
         
-        # Create EMSR target data
-        from src.core.calibration.calibration_utils import create_emsr_target_data
-        
         # CRITICAL: Use the same grid size for both target data creation and calibration
         # The target data grid size must match the simulation grid size exactly
-        if hasattr(args, 'grid_size') and args.grid_size:
+        if args.grid_size is not None:
             grid_size = (args.grid_size, args.grid_size)
             print(f"🎯 Using specified grid size: {grid_size[0]} × {grid_size[1]}")
         else:
-            # Use dynamic grid size calculation based on actual fire area
-            from src.core.calibration.calibration_utils import calculate_optimal_grid_size_from_emsr
-            grid_size = calculate_optimal_grid_size_from_emsr(day1_path, day2_path, buffer_percent=10.0)
-            print(f"🎯 Using dynamic grid size: {grid_size[0]} × {grid_size[1]} (based on fire area)")
+            # Use Day 4 grid size calculation to match the calibrator's default method
+            from src.core.calibration.fire_perimeter_calibration import TenerifeFirePerimeterCalibrator
+            temp_calibrator = TenerifeFirePerimeterCalibrator(
+                memory_gb=args.memory,
+                workers=args.workers,
+                grid_search_points=args.grid_points,
+                experiment_name="temp_grid_calc"
+            )
+            grid_size = temp_calibrator._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+            print(f"🎯 Using Day 4 grid size: {grid_size[0]} × {grid_size[1]} (matches calibrator default)")
         
-        target_data = create_emsr_target_data(
-            day1_path=day1_path,
-            day2_path=day2_path,
-            grid_size=grid_size,
-            model_resolution=5.0
+        # Step 4: Set up proper training/validation split
+        print(f"\n📊 SETTING UP TRAINING/VALIDATION SPLIT")
+        print(f"=" * 50)
+        
+        # Discover all fire perimeters
+        from src.core.calibration.fire_perimeter_calibration import FirePerimeterDiscovery
+        discovery = FirePerimeterDiscovery(args.emsr_dir)
+        fire_dataset = discovery.discover_fire_perimeters()
+        
+        if not fire_dataset.fire_perimeters:
+            raise ValueError(f"No fire perimeters found in {args.emsr_dir}")
+        
+        print(f"📁 Found {len(fire_dataset.fire_perimeters)} fire perimeters:")
+        for fp in fire_dataset.fire_perimeters:
+            print(f"   Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
+        
+        # Set up training/validation split
+        training_data, validation_data = calibrator.setup_training_test_split(
+            fire_dataset,
+            training_days=args.training_days,  # Days 1-2 for training (calibration)
+            test_days=args.test_days          # Days 3-4 for testing (validation)
         )
         
-        print(f"✅ EMSR target data created successfully")
-        print(f"   Day 1 target: {target_data[0].area_hectares:.1f} ha" if target_data[0].area_hectares else "   Day 1 target: Unknown area")
-        print(f"   Day 2 target: {target_data[1].area_hectares:.1f} ha" if target_data[1].area_hectares else "   Day 2 target: Unknown area")
-        
-        # Use target_data as test_data for calibration
-        test_data = target_data
+        print(f"\n✅ Training/Validation split complete:")
+        print(f"   🎯 Training (calibration): {len(training_data)} fire perimeters")
+        for fp in training_data:
+            print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
+        print(f"   🧪 Validation: {len(validation_data)} fire perimeters")
+        for fp in validation_data:
+            print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         
         # Step 6: Create calibration configuration
         # CRITICAL: Pass the grid size to ensure simulation matches target data
         calib_config = calibrator.create_calibration_config(
-            training_data=test_data,  # Use EMSR target data as training data
+            training_data=training_data,  # Use training data (Days 1-2) for calibration
             top_5_parameters=args.parameters,
             grid_size=grid_size  # Pass the calculated grid size
         )
@@ -684,9 +704,9 @@ Examples:
                 # Calculate total combinations for progress tracking
                 total_combinations = args.grid_points ** len(args.parameters)
                 progress_callback = create_quiet_progress_callback(total_combinations, quiet_mode=True)
-                results = calibrator.run_calibration(calib_config, test_data, progress_callback=progress_callback)
+                results = calibrator.run_calibration(calib_config, validation_data, progress_callback=progress_callback)
             else:
-                results = calibrator.run_calibration(calib_config, test_data)
+                results = calibrator.run_calibration(calib_config, validation_data)
         except Exception as e:
             if memory_manager:
                 logger.critical("🚨 CALIBRATION FAILED - CHECKING MEMORY STATE")

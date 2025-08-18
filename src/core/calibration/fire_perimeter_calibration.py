@@ -1229,7 +1229,12 @@ class TenerifeFirePerimeterCalibrator:
         
         try:
             # Convert training data to target format
-            target_data = self._prepare_target_data(calibration_config.calibration_targets)
+            # Get grid size from calibration configuration
+            grid_size = None
+            if hasattr(calibration_config, 'base_config') and calibration_config.base_config:
+                grid_size = getattr(calibration_config.base_config, 'grid_size', None)
+            
+            target_data = self._prepare_target_data(calibration_config.calibration_targets, grid_size=grid_size)
             
             # Debug: Check what target_data contains
             logger.info(f"🔍 Target data keys: {list(target_data.keys()) if target_data else 'None'}")
@@ -1303,12 +1308,13 @@ class TenerifeFirePerimeterCalibrator:
             logger.error(f"Calibration failed: {e}")
             raise
     
-    def _prepare_target_data(self, calibration_targets) -> Dict[str, Any]:
+    def _prepare_target_data(self, calibration_targets, grid_size: Optional[Tuple[int, int]] = None) -> Dict[str, Any]:
         """
         Convert shapefile fire perimeters to grid format for spatial comparison.
         
         Args:
             calibration_targets: List of CalibrationTarget objects with shapefile paths
+            grid_size: Optional grid size (width, height) - if None, uses dynamic calculation
             
         Returns:
             Dictionary containing rasterized fire perimeter data
@@ -1348,49 +1354,100 @@ class TenerifeFirePerimeterCalibrator:
             bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
             logger.info(f"📐 Fire bounds: {bounds}")
             
-            # Use dynamic grid size calculation for Day 4 fire area
-            grid_width, grid_height = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
-            
-            # Calculate cell size (5m resolution for high detail)
-            cell_size = 5.0
-            
-            # Calculate bounds for the fire area with buffer
-            buffer_factor = 1.0 + (10.0 / 100.0)  # 10% buffer
-            fire_width_m = (bounds[2] - bounds[0]) * buffer_factor
-            fire_height_m = (bounds[3] - bounds[1]) * buffer_factor
-            
-            # Add 10% northern expansion
-            fire_height_m *= 1.1
-            
-            # Calculate grid bounds
-            grid_sw_x = bounds[0] - (fire_width_m * 0.05)  # 5% buffer on each side
-            grid_sw_y = bounds[1] - (fire_height_m * 0.05)
-            grid_ne_x = grid_sw_x + fire_width_m
-            grid_ne_y = grid_sw_y + fire_height_m
-            
-            # Create transform for the Day 4 fire area grid
-            transform = rasterio.transform.from_bounds(
-                grid_sw_x, 
-                grid_sw_y,
-                grid_ne_x,
-                grid_ne_y,
-                grid_width, 
-                grid_height
-            )
-            
-            logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (5m resolution)")
-            logger.info(f"   Fire area bounds: {bounds}")
-            logger.info(f"   Grid bounds: SW({grid_sw_x:.0f}, {grid_sw_y:.0f}) NE({grid_ne_x:.0f}, {grid_ne_y:.0f})")
-            
-            # Rasterize the fire perimeter to the Day 4 fire area grid
-            fire_perimeter_grid = rasterize(
-                gdf.geometry,
-                out_shape=(grid_height, grid_width),
-                transform=transform,
-                fill=0,           # Background value (no fire)
-                default_value=1,  # Fire area value
-                dtype=np.float32
-            )
+            # Use the provided grid size or fall back to dynamic calculation
+            if grid_size is not None:
+                grid_width, grid_height = grid_size
+                logger.info(f"🎯 Using provided grid size: {grid_width} × {grid_height}")
+                
+                # For calibration with specific grid size, we need to resize the target data
+                # to match the simulation grid size exactly
+                logger.info(f"🎯 Resizing target data to match simulation grid size")
+                
+                # Rasterize the fire perimeter to the simulation grid size
+                # Calculate bounds for the simulation grid
+                cell_size = 5.0  # Standard resolution
+                grid_width_m = grid_width * cell_size
+                grid_height_m = grid_height * cell_size
+                
+                # Center the fire area in the simulation grid
+                fire_center_x = (bounds[0] + bounds[2]) / 2
+                fire_center_y = (bounds[1] + bounds[3]) / 2
+                
+                # Calculate grid bounds centered on fire
+                grid_sw_x = fire_center_x - (grid_width_m / 2)
+                grid_sw_y = fire_center_y - (grid_height_m / 2)
+                grid_ne_x = fire_center_x + (grid_width_m / 2)
+                grid_ne_y = fire_center_y + (grid_height_m / 2)
+                
+                # Create transform for the simulation grid
+                transform = rasterio.transform.from_bounds(
+                    grid_sw_x, 
+                    grid_sw_y,
+                    grid_ne_x,
+                    grid_ne_y,
+                    grid_width, 
+                    grid_height
+                )
+                
+                logger.info(f"🗺️  Rasterizing to simulation grid: {grid_width}×{grid_height}")
+                logger.info(f"   Fire center: ({fire_center_x:.0f}, {fire_center_y:.0f})")
+                logger.info(f"   Grid bounds: SW({grid_sw_x:.0f}, {grid_sw_y:.0f}) NE({grid_ne_x:.0f}, {grid_ne_y:.0f})")
+                
+                # Rasterize the fire perimeter to the simulation grid
+                fire_perimeter_grid = rasterize(
+                    gdf.geometry,
+                    out_shape=(grid_height, grid_width),
+                    transform=transform,
+                    fill=0,           # Background value (no fire)
+                    default_value=1,  # Fire area value
+                    dtype=np.float32
+                )
+                
+            else:
+                # Use dynamic grid size calculation for Day 4 fire area
+                grid_width, grid_height = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+                logger.info(f"🎯 Using dynamic grid size: {grid_width} × {grid_height}")
+                
+                # Calculate cell size (5m resolution for high detail)
+                cell_size = 5.0
+                
+                # Calculate bounds for the fire area with buffer
+                buffer_factor = 1.0 + (10.0 / 100.0)  # 10% buffer
+                fire_width_m = (bounds[2] - bounds[0]) * buffer_factor
+                fire_height_m = (bounds[3] - bounds[1]) * buffer_factor
+                
+                # Add 10% northern expansion
+                fire_height_m *= 1.1
+                
+                # Calculate grid bounds
+                grid_sw_x = bounds[0] - (fire_width_m * 0.05)  # 5% buffer on each side
+                grid_sw_y = bounds[1] - (fire_height_m * 0.05)
+                grid_ne_x = grid_sw_x + fire_width_m
+                grid_ne_y = grid_sw_y + fire_height_m
+                
+                # Create transform for the Day 4 fire area grid
+                transform = rasterio.transform.from_bounds(
+                    grid_sw_x, 
+                    grid_sw_y,
+                    grid_ne_x,
+                    grid_ne_y,
+                    grid_width, 
+                    grid_height
+                )
+                
+                logger.info(f"🗺️  Rasterizing to {grid_width}×{grid_height} grid (5m resolution)")
+                logger.info(f"   Fire area bounds: {bounds}")
+                logger.info(f"   Grid bounds: SW({grid_sw_x:.0f}, {grid_sw_y:.0f}) NE({grid_ne_x:.0f}, {grid_ne_y:.0f})")
+                
+                # Rasterize the fire perimeter to the Day 4 fire area grid
+                fire_perimeter_grid = rasterize(
+                    gdf.geometry,
+                    out_shape=(grid_height, grid_width),
+                    transform=transform,
+                    fill=0,           # Background value (no fire)
+                    default_value=1,  # Fire area value
+                    dtype=np.float32
+                )
             
             # Calculate rasterized statistics
             fire_cells = np.sum(fire_perimeter_grid > 0)

@@ -871,6 +871,7 @@ def calculate_optimal_grid_size_from_emsr(day1_path: str, day2_path: str, buffer
     """
     try:
         import geopandas as gpd
+        import pandas as pd
         
         # Load both Day 1 and Day 2 data to get the full fire extent
         gdf1 = gpd.read_file(day1_path)
