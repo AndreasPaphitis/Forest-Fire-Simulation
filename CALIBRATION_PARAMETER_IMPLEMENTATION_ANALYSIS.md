@@ -18,6 +18,8 @@ These parameters are correctly implemented and being used in the simulation:
 ### Environmental Interactions
 - ✅ `slope_influence` - Used in slope factor calculation (line 1114)
 - ✅ `wind_influence_on_spread` - Used in wind factor calculation (line 990)
+- ✅ `wind_speed` - Used in main fire spread calculation (lines 920-994)
+- ✅ `wind_direction` - Used in main fire spread calculation (lines 926-994)
 
 ### Ember Mechanics
 - ✅ `ember_probability` - Used in ember generation (line 1250)
@@ -36,10 +38,6 @@ These parameters are defined in the calibration framework but **NOT implemented*
 - ❌ `barranco_amplification` - **NOT IMPLEMENTED** - Should amplify fire spread in barrancos
 - ❌ `barranco_direction_weight` - **NOT IMPLEMENTED** - Should weight barranco direction effects
 
-### Other Missing Parameters
-- ❌ `wind_speed` - Only used in ember calculations, not main fire spread
-- ❌ `wind_direction` - Only used in ember calculations, not main fire spread
-
 ## 🔍 DETAILED ANALYSIS
 
 ### 1. Terrain Effect Strength
@@ -57,10 +55,10 @@ These parameters are defined in the calibration framework but **NOT implemented*
 **Impact**: High - These are Tenerife-specific parameters that should be critical
 
 ### 3. Wind Parameters
-**Status**: ⚠️ PARTIALLY IMPLEMENTED
-**Current Usage**: Only in ember calculations
-**Missing**: Direct effect on main fire spread probability
-**Impact**: Medium - Wind should affect main fire spread, not just embers
+**Status**: ✅ FULLY IMPLEMENTED
+**Current Usage**: Used in main fire spread calculation via `get_wind_speed_at_cell()` and `get_wind_direction_at_cell()`
+**Implementation**: Wind speed and direction affect the wind factor in the main fire spread probability calculation
+**Impact**: High - Wind is properly implemented for main fire spread
 
 ## 🚨 IMPLICATIONS FOR CALIBRATION
 
@@ -90,8 +88,8 @@ The simulation is missing critical terrain effects that should be important for 
 
 ### Parameter Implementation Priority
 1. **High Priority**: `terrain_effect_strength`, `barranco_amplification`, `barranco_direction_weight`
-2. **Medium Priority**: Enhanced wind effects on main fire spread
-3. **Low Priority**: Additional terrain interaction parameters
+2. **Medium Priority**: Additional terrain interaction parameters
+3. **Low Priority**: Enhanced wind effects (already well implemented)
 
 ### Code Locations to Fix
 - `src/core/fire_simulation_engine.py` - Main fire spread calculation
@@ -112,6 +110,8 @@ calibration_parameters = [
     # Environmental Interactions  
     'wind_influence_on_spread', # ✅ Used in wind factor calculation (line 990)
     'slope_influence',         # ✅ Used in slope factor calculation (line 1114)
+    'wind_speed',              # ✅ Used in main fire spread calculation (lines 920-994)
+    'wind_direction',          # ✅ Used in main fire spread calculation (lines 926-994)
     
     # Ember Mechanics
     'ember_probability',       # ✅ Used in ember generation (line 1250)
@@ -127,8 +127,6 @@ calibration_parameters = [
 - `terrain_effect_strength` ❌
 - `barranco_amplification` ❌  
 - `barranco_direction_weight` ❌
-- `wind_speed` (for main spread) ❌
-- `wind_direction` (for main spread) ❌
 
 ## 🎯 CONCLUSION
 
@@ -142,3 +140,5 @@ Your concern is **absolutely valid**. Several calibration parameters are not imp
 ## 🔄 UPDATED RECOMMENDATION
 
 **YES, you should definitely re-run sensitivity analysis** with the corrected parameter list above. The previous analysis included unimplemented parameters, making the results unreliable.
+
+**CORRECTION**: Wind_speed and wind_direction ARE implemented and should be included in sensitivity analysis.

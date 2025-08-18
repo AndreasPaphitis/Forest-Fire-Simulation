@@ -75,6 +75,8 @@ class CalibrationConfig:
         # Environmental Interactions  
         'wind_influence_on_spread', # ✅ Used in wind factor calculation (line 990)
         'slope_influence',         # ✅ Used in slope factor calculation (line 1114)
+        'wind_speed',              # ✅ Used in main fire spread calculation (lines 920-994)
+        'wind_direction',          # ✅ Used in main fire spread calculation (lines 926-994)
         
         # Ember Mechanics
         'ember_probability',       # ✅ Used in ember generation (line 1250)
@@ -88,8 +90,6 @@ class CalibrationConfig:
         # 'terrain_effect_strength' - NOT IMPLEMENTED in simulation engine
         # 'barranco_amplification' - NOT IMPLEMENTED in simulation engine  
         # 'barranco_direction_weight' - NOT IMPLEMENTED in simulation engine
-        # 'wind_speed' - Only used in ember calculations, not main fire spread
-        # 'wind_direction' - Only used in ember calculations, not main fire spread
     ])
     
     # === CALIBRATION TARGETS ===
