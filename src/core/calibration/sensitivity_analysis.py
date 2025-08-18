@@ -935,7 +935,11 @@ class SensitivityAnalyzer:
         logger.info("=== SENSITIVITY ANALYSIS SUMMARY ===")
         logger.info(f"Total parameters analyzed: {summary['total_parameters']}")
         logger.info(f"Valid analyses: {summary['valid_parameters']}")
-        logger.info(f"Baseline objective: {summary['baseline_objective']:.4f}")
+        baseline_obj = summary.get('baseline_objective')
+        if baseline_obj is not None:
+            logger.info(f"Baseline objective: {baseline_obj:.4f}")
+        else:
+            logger.warning("Baseline objective is None - simulation may have failed")
         
         if summary.get('most_sensitive'):
             most_sensitive = summary['most_sensitive']

@@ -386,8 +386,6 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
             units="cells",
             suggested_points=5
         ),
-        
-
     }
     
     logger.info(f"Created default bounds for {len(bounds)} calibration parameters")

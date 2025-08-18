@@ -1877,6 +1877,14 @@ class ForestModel(BaseForestModel):
         # Reference to simulation engine for access to detailed history
         self.simulation_engine = None
         
+        # Calculate vertical connectivity for proper 3D fire spread
+        try:
+            self.calculate_vertical_connectivity()
+            logger.info("✅ Vertical connectivity calculated for 3D fire spread")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to calculate vertical connectivity: {e}")
+            logger.warning("Using default vertical connectivity values")
+        
         logger.debug("Visualization attributes initialized for ForestModel")
     
     def set_simulation_engine(self, engine):
@@ -3104,12 +3112,20 @@ def create_forest_model(model_type: str = "standard", config=None, **kwargs):
     if model_type == "standard":
         return ForestModel(config=config, **kwargs)
     elif model_type == "memory_optimized" or model_type == "sparse":
-        # Extract grid parameters from config or kwargs
-        grid_size = kwargs.get('grid_size', (100, 100))
-        num_layers = kwargs.get('num_layers', 10)
+        # Extract grid parameters from config or kwargs, prioritizing config
+        if config:
+            grid_size = getattr(config, 'grid_size', kwargs.get('grid_size', (100, 100)))
+            num_layers = getattr(config, 'num_layers', kwargs.get('num_layers', 10))
+        else:
+            grid_size = kwargs.get('grid_size', (100, 100))
+            num_layers = kwargs.get('num_layers', 10)
+            
         layer_height_meters = kwargs.get('layer_height_meters', 2.0)
         model_resolution = kwargs.get('model_resolution', 5.0)
         initial_fuel_load = kwargs.get('initial_fuel_load', 5.0)
+        
+        # Remove grid_size and num_layers from kwargs to avoid duplicate arguments
+        kwargs_clean = {k: v for k, v in kwargs.items() if k not in ['grid_size', 'num_layers']}
         
         # Create MemoryOptimizedForestModel with proper parameter order
         return MemoryOptimizedForestModel(
@@ -3119,7 +3135,7 @@ def create_forest_model(model_type: str = "standard", config=None, **kwargs):
             model_resolution=model_resolution,
             initial_fuel_load=initial_fuel_load,
             config=config,
-            **kwargs
+            **kwargs_clean
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}. Use 'standard' or 'memory_optimized'")

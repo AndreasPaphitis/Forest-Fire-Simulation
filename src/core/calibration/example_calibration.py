@@ -202,7 +202,11 @@ def example_sensitivity_analysis():
     print(f"\nSensitivity analysis completed in {runtime:.2f} seconds")
     
     summary = sensitivity_results.get_sensitivity_summary()
-    print(f"Baseline objective: {summary['baseline_objective']:.4f}")
+    baseline_obj = summary.get('baseline_objective')
+    if baseline_obj is not None:
+        print(f"Baseline objective: {baseline_obj:.4f}")
+    else:
+        print("Baseline objective is None - simulation may have failed")
     
     print("\nParameter sensitivity ranking:")
     for i, (param_name, sensitivity) in enumerate(sensitivity_results.get_most_sensitive_parameters()):

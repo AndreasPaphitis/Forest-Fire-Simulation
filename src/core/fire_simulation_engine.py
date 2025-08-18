@@ -787,7 +787,7 @@ class FireSimulationEngine:
             logger.warning(f"⚠️  Failed to set state at ({x}, {y}, {z}): {e}")
             return False
     
-    def _safe_get_vertical_connectivity(self, x, y, layer_interface_index, fallback_value=0.0):
+    def _safe_get_vertical_connectivity(self, x, y, layer_interface_index, fallback_value=0.3):
         """
         Safely get vertical connectivity with bounds checking.
         
