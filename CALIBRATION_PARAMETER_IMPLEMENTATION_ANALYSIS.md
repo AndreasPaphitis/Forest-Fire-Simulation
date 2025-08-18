@@ -1,144 +1,154 @@
-# Calibration Parameter Implementation Analysis
+# DEFINITIVE Calibration Parameter Implementation Analysis
 
-## CRITICAL FINDING: Some Calibration Parameters Are NOT Implemented
+## COMPLETE LINE-BY-LINE ANALYSIS
 
-After thorough investigation, I found that **several calibration parameters are NOT actually being used in the fire simulation engine**, which could invalidate your calibration results.
+After thorough line-by-line examination of the fire simulation engine, here is the **definitive** list of all parameters actually used in the simulation.
 
-## ✅ COMPLETE LIST OF IMPLEMENTED PARAMETERS
+## ✅ **ALL IMPLEMENTED PARAMETERS** (Found in Code)
 
-These parameters are correctly implemented and being used in the simulation:
+### **Core Fire Mechanics**
+- ✅ `spread_probability` - **Line 906**: `base_prob = getattr(self.config, 'spread_probability', 0.8)`
+- ✅ `fuel_consumption_rate` - **Line 824**: `consumption_rate = getattr(self.config, 'fuel_consumption_rate', 1.0)`
+- ✅ `ignition_threshold` - **Line 1050**: `ignition_threshold = getattr(self.config, 'ignition_threshold', 0.1)`
+- ✅ `min_fuel_value` - **Lines 825, 883, 1369**: Used in burnout and ignition checks
+- ✅ `max_fuel_value` - **Lines 1014, 1377**: Used in fuel normalization
 
-### Core Fire Mechanics
-- ✅ `spread_probability` - Used in base probability calculation (line 906)
-- ✅ `fuel_consumption_rate` - Used in fuel consumption (line 824)
-- ✅ `ignition_threshold` - Used in ignition check (line 1050)
-- ✅ `min_fuel_value` - Used in ember ignition (line 1369)
-- ✅ `max_fuel_value` - Used in fuel normalization (line 1014, 1377)
+### **Environmental Interactions**
+- ✅ `slope_influence` - **Line 1114**: `slope_influence = self.config.slope_influence`
+- ✅ `wind_influence_on_spread` - **Line 990**: `wind_influence_factor_config = getattr(self.config, 'wind_influence_on_spread', 0.5)`
+- ✅ `reference_wind_speed` - **Line 989**: `reference_speed_for_scaling = getattr(self.config, 'reference_wind_speed', 10.0)`
+- ✅ `fuel_moisture_baseline` - **Line 1387**: `baseline_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3)`
 
-### Environmental Interactions
-- ✅ `slope_influence` - Used in slope factor calculation (line 1114)
-- ✅ `wind_influence_on_spread` - Used in wind factor calculation (line 990)
-- ✅ `wind_speed` - Used in main fire spread calculation (lines 920-994)
-- ✅ `wind_direction` - Used in main fire spread calculation (lines 926-994)
+### **Wind Parameters (Used in Main Fire Spread)**
+- ✅ `wind_speed` - **Lines 920-994**: Used via `get_wind_speed_at_cell()` in main fire spread calculation
+- ✅ `wind_direction` - **Lines 926-994**: Used via `get_wind_direction_at_cell()` in main fire spread calculation
 
-### Ember Mechanics
-- ✅ `ember_probability` - Used in ember generation (line 1250)
-- ✅ `ember_distance` - Used in ember landing (line 1284, 1401)
-- ✅ `ember_ignition` - Used in ember ignition (line 1374)
-- ✅ `ember_height_factor` - Used in ember height calculation (line 1254)
-- ✅ `ember_wind_factor` - Used in ember wind strength (line 1301)
-- ✅ `ember_rise` - Used in ember height change (line 1314)
+### **Ember Mechanics**
+- ✅ `ember_probability` - **Line 1250**: `ember_prob = self.config.ember_probability`
+- ✅ `ember_distance` - **Lines 1284, 1401**: Used in ember travel and ignition distance factor
+- ✅ `ember_ignition` - **Line 1374**: `ignition_prob = self.config.ember_ignition`
+- ✅ `ember_height_factor` - **Line 1254**: Used in ember generation height factor
+- ✅ `ember_wind_factor` - **Line 1301**: `wind_strength = self.config.ember_wind_factor`
+- ✅ `ember_rise` - **Line 1314**: Used in ember height change calculation
 
-## ❌ MISSING IMPLEMENTATIONS
+### **Simulation Control Parameters**
+- ✅ `max_steps` - **Line 323**: Used in simulation loop control
+- ✅ `stop_when_fire_extinguished` - **Line 326**: Used in simulation termination logic
+- ✅ `random_seed` - **Line 267**: Used for RNG initialization
 
-These parameters are defined in the calibration framework but **NOT implemented** in the fire simulation engine:
+## ❌ **PARAMETERS NOT IMPLEMENTED** (Missing from Code)
 
-### Critical Missing Parameters
-- ❌ `terrain_effect_strength` - **NOT IMPLEMENTED** - This should modify overall terrain effects
-- ❌ `barranco_amplification` - **NOT IMPLEMENTED** - Should amplify fire spread in barrancos
-- ❌ `barranco_direction_weight` - **NOT IMPLEMENTED** - Should weight barranco direction effects
+### **Critical Missing Parameters**
+- ❌ `terrain_effect_strength` - **NOT FOUND** in any fire spread calculation
+- ❌ `barranco_amplification` - **NOT FOUND** in any fire spread calculation  
+- ❌ `barranco_direction_weight` - **NOT FOUND** in any fire spread calculation
 
-## 🔍 DETAILED ANALYSIS
+## 🔍 **DETAILED CODE ANALYSIS**
 
-### 1. Terrain Effect Strength
-**Status**: ❌ NOT IMPLEMENTED
-**Expected Behavior**: Should modify the overall strength of terrain effects (slope, barrancos, etc.)
-**Current State**: No code exists to use this parameter
-**Impact**: High - This is a major calibration parameter that's completely ignored
+### **Main Fire Spread Calculation (`_check_ignition` method)**
+```python
+# Line 906: Base probability
+base_prob = getattr(self.config, 'spread_probability', 0.8)
 
-### 2. Barranco Parameters
-**Status**: ❌ NOT IMPLEMENTED
-**Expected Behavior**: 
-- `barranco_amplification`: Should increase fire spread probability in barranco cells
-- `barranco_direction_weight`: Should weight directional effects in barrancos
-**Current State**: Barranco tracking exists but no actual effect on fire spread
-**Impact**: High - These are Tenerife-specific parameters that should be critical
+# Lines 989-990: Wind parameters
+reference_speed_for_scaling = getattr(self.config, 'reference_wind_speed', 10.0)
+wind_influence_factor_config = getattr(self.config, 'wind_influence_on_spread', 0.5)
 
-### 3. Wind Parameters
-**Status**: ✅ FULLY IMPLEMENTED
-**Current Usage**: Used in main fire spread calculation via `get_wind_speed_at_cell()` and `get_wind_direction_at_cell()`
-**Implementation**: Wind speed and direction affect the wind factor in the main fire spread probability calculation
-**Impact**: High - Wind is properly implemented for main fire spread
+# Line 1114: Slope influence
+slope_influence = self.config.slope_influence
 
-## 🚨 IMPLICATIONS FOR CALIBRATION
+# Lines 1014, 1377: Fuel parameters
+max_fuel = self.config.max_fuel_value
 
-### 1. Invalid Sensitivity Analysis
-Your sensitivity analysis included parameters that don't actually affect the simulation:
-- `terrain_effect_strength` 
-- `barranco_amplification`
-- `barranco_direction_weight`
+# Line 1050: Ignition threshold
+ignition_threshold = getattr(self.config, 'ignition_threshold', 0.1)
+```
 
-This means your "top 5 most sensitive parameters" may be misleading.
+### **Fuel Consumption (`_check_burnout` method)**
+```python
+# Line 824: Fuel consumption rate
+consumption_rate = getattr(self.config, 'fuel_consumption_rate', 1.0)
 
-### 2. Incomplete Calibration
-Your calibration is optimizing parameters that have no effect, potentially leading to:
-- Suboptimal parameter combinations
-- Misleading calibration results
-- Wasted computational resources
+# Line 825: Minimum fuel threshold
+min_fuel = getattr(self.config, 'min_fuel_value', 0.1)
+```
 
-### 3. Model Accuracy Issues
-The simulation is missing critical terrain effects that should be important for Tenerife fire modeling.
+### **Ember Processing (`_process_embers` method)**
+```python
+# Line 1250: Ember generation probability
+ember_prob = self.config.ember_probability
 
-## 🔧 RECOMMENDED FIXES
+# Line 1254: Height factor
+height_factor = 1.0 + (z / self.forest_model.num_layers) * self.config.ember_height_factor
 
-### Immediate Actions
-1. **Implement missing parameters** in the fire simulation engine
-2. **Re-run sensitivity analysis** with only implemented parameters
-3. **Update calibration framework** to exclude unimplemented parameters
+# Line 1284: Ember travel distance
+base_distance = self.config.ember_distance
 
-### Parameter Implementation Priority
-1. **High Priority**: `terrain_effect_strength`, `barranco_amplification`, `barranco_direction_weight`
-2. **Medium Priority**: Additional terrain interaction parameters
-3. **Low Priority**: Enhanced wind effects (already well implemented)
+# Line 1301: Wind influence on embers
+wind_strength = self.config.ember_wind_factor
 
-### Code Locations to Fix
-- `src/core/fire_simulation_engine.py` - Main fire spread calculation
-- `src/core/calibration/calibration_config.py` - Parameter list
-- `src/core/calibration/sensitivity_analysis.py` - Parameter selection
+# Line 1314: Ember height change
+height_change = np.random.randint(-2, self.config.ember_rise + 1)
+```
 
-## 📊 CORRECTED PARAMETER LIST
+### **Ember Ignition (`_check_ember_ignition` method)**
+```python
+# Line 1369: Minimum fuel for ignition
+min_fuel = self.config.min_fuel_value
 
-For accurate calibration, use only these **implemented** parameters:
+# Line 1374: Ember ignition probability
+ignition_prob = self.config.ember_ignition
+
+# Line 1377: Fuel normalization
+fuel_factor = min(1.0, self.forest_model.fuel_load[x, y, z] / self.config.max_fuel_value)
+
+# Line 1387: Baseline moisture
+baseline_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3)
+
+# Line 1401: Distance factor
+distance_factor = max(0.3, 1.0 - (distance / (self.config.ember_distance * 2)))
+```
+
+## 📊 **CORRECTED PARAMETER LIST FOR SENSITIVITY ANALYSIS**
 
 ```python
 calibration_parameters = [
     # Core Fire Mechanics
-    'spread_probability',      # ✅ Used in base probability calculation (line 906)
-    'fuel_consumption_rate',   # ✅ Used in fuel consumption (line 824)
-    'ignition_threshold',      # ✅ Used in ignition check (line 1050)
+    'spread_probability',      # ✅ Line 906 - Base fire spread probability
+    'fuel_consumption_rate',   # ✅ Line 824 - Fuel consumption rate
+    'ignition_threshold',      # ✅ Line 1050 - Ignition probability threshold
+    'min_fuel_value',          # ✅ Lines 825, 883, 1369 - Minimum fuel for burning
+    'max_fuel_value',          # ✅ Lines 1014, 1377 - Maximum fuel normalization
     
-    # Environmental Interactions  
-    'wind_influence_on_spread', # ✅ Used in wind factor calculation (line 990)
-    'slope_influence',         # ✅ Used in slope factor calculation (line 1114)
-    'wind_speed',              # ✅ Used in main fire spread calculation (lines 920-994)
-    'wind_direction',          # ✅ Used in main fire spread calculation (lines 926-994)
+    # Environmental Interactions
+    'wind_influence_on_spread', # ✅ Line 990 - Wind effect on fire spread
+    'slope_influence',         # ✅ Line 1114 - Terrain slope effect
+    'reference_wind_speed',    # ✅ Line 989 - Reference wind speed for scaling
+    'fuel_moisture_baseline',  # ✅ Line 1387 - Baseline fuel moisture
+    
+    # Wind Parameters (Main Fire Spread)
+    'wind_speed',              # ✅ Lines 920-994 - Wind speed via get_wind_speed_at_cell()
+    'wind_direction',          # ✅ Lines 926-994 - Wind direction via get_wind_direction_at_cell()
     
     # Ember Mechanics
-    'ember_probability',       # ✅ Used in ember generation (line 1250)
-    'ember_distance',          # ✅ Used in ember landing (line 1284, 1401)
-    'ember_ignition',          # ✅ Used in ember ignition (line 1374)
-    'ember_height_factor',     # ✅ Used in ember height calculation (line 1254)
-    'ember_wind_factor',       # ✅ Used in ember wind strength (line 1301)
-    'ember_rise'               # ✅ Used in ember height change (line 1314)
+    'ember_probability',       # ✅ Line 1250 - Ember generation probability
+    'ember_distance',          # ✅ Lines 1284, 1401 - Ember travel distance
+    'ember_ignition',          # ✅ Line 1374 - Ember ignition probability
+    'ember_height_factor',     # ✅ Line 1254 - Height factor for ember generation
+    'ember_wind_factor',       # ✅ Line 1301 - Wind influence on ember direction
+    'ember_rise'               # ✅ Line 1314 - Ember height change range
 ]
 ```
 
-**Remove these unimplemented parameters**:
-- `terrain_effect_strength` ❌
-- `barranco_amplification` ❌  
-- `barranco_direction_weight` ❌
+## ❌ **REMOVE FROM CALIBRATION** (Not Implemented)
+- `terrain_effect_strength` - **NOT IMPLEMENTED**
+- `barranco_amplification` - **NOT IMPLEMENTED**  
+- `barranco_direction_weight` - **NOT IMPLEMENTED**
 
-## 🎯 CONCLUSION
+## 🎯 **CONCLUSION**
 
-Your concern is **absolutely valid**. Several calibration parameters are not implemented, which means:
-1. Your sensitivity analysis results are misleading
-2. Your calibration is optimizing meaningless parameters
-3. The model is missing critical terrain effects
+**This is the definitive list** based on line-by-line code analysis. All parameters listed above are **actually used** in the fire simulation engine and should be included in sensitivity analysis.
 
-**Immediate action required**: Implement the missing parameters or remove them from calibration to ensure accurate results.
+**Total: 16 implemented parameters** that actually affect the simulation.
 
-## 🔄 UPDATED RECOMMENDATION
-
-**YES, you should definitely re-run sensitivity analysis** with the corrected parameter list above. The previous analysis included unimplemented parameters, making the results unreliable.
-
-**CORRECTION**: Wind_speed and wind_direction ARE implemented and should be included in sensitivity analysis.
+**Immediate action**: Update your calibration framework to use only these 16 parameters for accurate sensitivity analysis and calibration.
