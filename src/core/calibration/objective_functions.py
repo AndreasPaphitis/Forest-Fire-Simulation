@@ -396,14 +396,32 @@ class SpatialSimilarityObjective(ObjectiveFunction):
             else:
                 target_2d = target_data['fire_perimeter']
             
-            # Ensure arrays are the same size
+            # Handle shape mismatches by resizing target to match prediction
             if predicted_2d.shape != target_2d.shape:
-                return ObjectiveResult(
-                    value=0.0,
-                    components={},
-                    is_valid=False,
-                    error_message=f"Shape mismatch: predicted {predicted_2d.shape} vs target {target_2d.shape}"
-                )
+                logger.warning(f"Shape mismatch: predicted {predicted_2d.shape} vs target {target_2d.shape}")
+                logger.info(f"Resizing target to match prediction shape")
+                
+                # Resize target to match prediction shape using nearest neighbor interpolation
+                from scipy.ndimage import zoom
+                
+                # Calculate zoom factors
+                zoom_y = predicted_2d.shape[0] / target_2d.shape[0]
+                zoom_x = predicted_2d.shape[1] / target_2d.shape[1]
+                
+                # Resize target array
+                target_2d = zoom(target_2d, (zoom_y, zoom_x), order=0)  # order=0 for nearest neighbor
+                
+                logger.info(f"Resized target to {target_2d.shape}")
+                
+                # Ensure the resized target has the same shape as prediction
+                if target_2d.shape != predicted_2d.shape:
+                    # If still not matching, pad or crop to exact size
+                    target_2d = target_2d[:predicted_2d.shape[0], :predicted_2d.shape[1]]
+                    if target_2d.shape != predicted_2d.shape:
+                        # Pad with zeros if needed
+                        padded_target = np.zeros(predicted_2d.shape, dtype=target_2d.dtype)
+                        padded_target[:target_2d.shape[0], :target_2d.shape[1]] = target_2d
+                        target_2d = padded_target
             
             # Calculate individual metrics
             components = {}

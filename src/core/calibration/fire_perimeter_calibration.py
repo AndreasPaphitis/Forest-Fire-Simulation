@@ -872,10 +872,19 @@ class TenerifeFirePerimeterCalibrator:
         from src.core.calibration.calibration_config import CalibrationTarget
         calibration_targets = []
         for fp in training_data:
-            target = CalibrationTarget(
-                fire_perimeter_path=fp.shapefile_path,
-                weight=1.0 / len(training_data)  # Equal weights
-            )
+            # Handle both FirePerimeterData and CalibrationTarget objects
+            if hasattr(fp, 'shapefile_path'):
+                # FirePerimeterData object
+                target = CalibrationTarget(
+                    fire_perimeter_path=fp.shapefile_path,
+                    weight=1.0 / len(training_data)  # Equal weights
+                )
+            elif hasattr(fp, 'fire_perimeter_path'):
+                # Already a CalibrationTarget object
+                target = fp
+            else:
+                logger.warning(f"Unknown target data type: {type(fp)}")
+                continue
             calibration_targets.append(target)
         
         # Create calibration configuration
@@ -1217,6 +1226,15 @@ class TenerifeFirePerimeterCalibrator:
             # Convert training data to target format
             target_data = self._prepare_target_data(calibration_config.calibration_targets)
             
+            # Debug: Check what target_data contains
+            logger.info(f"🔍 Target data keys: {list(target_data.keys()) if target_data else 'None'}")
+            if target_data and 'fire_perimeter' in target_data:
+                fire_perim = target_data['fire_perimeter']
+                logger.info(f"🔍 Fire perimeter shape: {fire_perim.shape if hasattr(fire_perim, 'shape') else 'no shape'}")
+                logger.info(f"🔍 Fire perimeter sum: {np.sum(fire_perim) if hasattr(fire_perim, 'sum') else 'no sum'}")
+            else:
+                logger.warning(f"⚠️  No fire_perimeter in target_data: {target_data}")
+            
             results = calibrator.run_calibration(
                 target_data=target_data,
                 progress_callback=progress_callback
@@ -1290,6 +1308,8 @@ class TenerifeFirePerimeterCalibrator:
         Returns:
             Dictionary containing rasterized fire perimeter data
         """
+        logger.info(f"🔍 _prepare_target_data called with {len(calibration_targets)} targets")
+        
         if not SPATIAL_LIBS_AVAILABLE:
             logger.warning("Spatial libraries not available - using synthetic target data")
             return {}
