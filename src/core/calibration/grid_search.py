@@ -440,16 +440,32 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     if not isinstance(parameter_values, dict):
         worker_logger = logging.getLogger(f"worker_{time.time()}")
         worker_logger.error(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
-        # Return error result
-        return {
-            'parameter_values': {},
-            'objective_value': 0.0,
-            'objective_components': {},
-            'simulation_stats': {},
-            'evaluation_time': 0.0,
-            'is_valid': False,
-            'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
-        }
+        
+        # Try to convert list to dictionary if possible
+        if isinstance(parameter_values, (list, tuple)):
+            # This is a fallback - we need to know the parameter names
+            # For now, return an error result
+            worker_logger.error("Cannot convert list to dictionary without parameter names")
+            return {
+                'parameter_values': {},
+                'objective_value': 0.0,
+                'objective_components': {},
+                'simulation_stats': {},
+                'evaluation_time': 0.0,
+                'is_valid': False,
+                'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
+            }
+        else:
+            # Return error result
+            return {
+                'parameter_values': {},
+                'objective_value': 0.0,
+                'objective_components': {},
+                'simulation_stats': {},
+                'evaluation_time': 0.0,
+                'is_valid': False,
+                'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
+            }
     
     try:
         import time
@@ -764,7 +780,14 @@ class GridSearchCalibrator:
         param_value_lists = [self.parameter_space[name] for name in param_names]
         
         for combination in itertools.product(*param_value_lists):
-            yield dict(zip(param_names, combination))
+            # CRITICAL FIX: Ensure we always yield a dictionary
+            param_dict = dict(zip(param_names, combination))
+            # Validate that we have a proper dictionary
+            if not isinstance(param_dict, dict):
+                logger.error(f"Generated parameter combination is not a dictionary: {type(param_dict)} = {param_dict}")
+                # Fallback to empty dictionary
+                param_dict = {}
+            yield param_dict
     
     def _evaluate_single_combination(self, parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
