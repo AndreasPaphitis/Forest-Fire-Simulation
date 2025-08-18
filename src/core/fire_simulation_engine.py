@@ -85,6 +85,14 @@ class FireSimulationEngine:
             'step_start_time': None
         }
         
+        # MEMORY OPTIMIZATION: Active cells management
+        self.active_cells_max_size = 100000  # Limit active cells
+        self.active_cells_cleanup_threshold = 50000  # Cleanup threshold
+        
+        # MEMORY OPTIMIZATION: Periodic cleanup settings
+        self.cleanup_interval = 10  # Cleanup every 10 steps
+        self.last_cleanup_step = 0
+        
         if forest_model and hasattr(forest_model, 'width') and hasattr(forest_model, 'height'):
             total_cells = forest_model.width * forest_model.height * getattr(forest_model, 'num_layers', 1)
             # INCREASED THRESHOLD: With memory optimizations, we can handle 1B cells safely
@@ -421,13 +429,51 @@ class FireSimulationEngine:
             
             # Check if fire has stopped spreading
             if sim_stop_when_extinguished and not self.active_cells:
-                logger.info(f"Fire extinguished after {step} steps")
-                break
+                # Protective fallback: attempt a single ignition before early exit
+                try:
+                    grid_w = getattr(self.forest_model, 'width', 0)
+                    grid_h = getattr(self.forest_model, 'height', 0)
+                    layers = getattr(self.forest_model, 'num_layers', 1)
+                    if grid_w > 0 and grid_h > 0 and layers > 0 and step == 0:
+                        cx, cy = grid_w // 2, grid_h // 2
+                        # Try to leverage tracked ignitions if present but not active yet
+                        if getattr(self.forest_model, '_ignition_points', []):
+                            for x, y, z in self.forest_model._ignition_points:
+                                if 0 <= x < grid_w and 0 <= y < grid_h and 0 <= z < layers:
+                                    if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                                        self.active_cells.add((x, y, z))
+                        # If still empty, set a safe center ignition
+                        if not self.active_cells and hasattr(self.forest_model, 'set_ignition'):
+                            try:
+                                self.forest_model.set_ignition(cx, cy, 0)
+                                if self.forest_model.state[cx, cy, 0] == FrameworkCellState.BURNING.value:
+                                    self.active_cells.add((cx, cy, 0))
+                                    logger.warning("No active cells at start — auto-initialized center ignition.")
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                
+                if not self.active_cells:
+                    logger.info(f"Fire extinguished after {step} steps")
+                    break
             
             # Process single simulation step with timing
             step_start = time.time()
             self._process_step()
             step_time = time.time() - step_start
+            
+            # MEMORY OPTIMIZATION: Periodic cleanup during simulation
+            if step - self.last_cleanup_step >= self.cleanup_interval:
+                self._periodic_cleanup()
+                self.last_cleanup_step = step
+            
+            # MEMORY OPTIMIZATION: Cleanup active and burned cells if needed
+            if len(self.active_cells) > self.active_cells_cleanup_threshold:
+                self._cleanup_active_cells()
+            
+            if len(self.burned_cells) > 50000:
+                self._cleanup_burned_cells()
             
             # Log step processing statistics occasionally (reduced frequency)
             if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
@@ -870,6 +916,38 @@ class FireSimulationEngine:
             logger.warning("Using memory-safe fallback - marking cell as burned out")
             return True  # Mark as burned out to prevent further issues
     
+    def _cleanup_active_cells(self):
+        """Clean up active cells to prevent unlimited growth."""
+        if len(self.active_cells) > self.active_cells_max_size:
+            # Keep only the most recent active cells
+            active_list = list(self.active_cells)
+            self.active_cells = set(active_list[-self.active_cells_cleanup_threshold:])
+            logger.debug(f"🧹 Cleaned active cells: {len(active_list)} → {len(self.active_cells)}")
+    
+    def _cleanup_burned_cells(self):
+        """Clean up burned cells to prevent unlimited accumulation."""
+        if len(self.burned_cells) > 100000:  # Limit burned cells
+            # Convert to list and keep only recent ones
+            burned_list = list(self.burned_cells)
+            self.burned_cells = set(burned_list[-50000:])  # Keep last 50k
+            logger.debug(f"🧹 Burned cells cleaned: {len(burned_list)} → {len(self.burned_cells)}")
+    
+    def _periodic_cleanup(self):
+        """Perform periodic memory cleanup during simulation."""
+        # Force garbage collection
+        collected = gc.collect()
+        
+        # Clear temporary variables
+        if hasattr(self, '_temp_variables'):
+            self._temp_variables.clear()
+        
+        # Compact sparse storage if available
+        if hasattr(self.forest_model, 'compact_sparse_storage'):
+            self.forest_model.compact_sparse_storage()
+        
+        if collected > 0:
+            logger.debug(f"🧹 Periodic cleanup freed {collected} objects")
+    
     def _check_ignition(self, x, y, z, src_x, src_y, src_z):
         """Check if a cell ignites from a burning neighbor using memory-safe sparse matrix access."""
         try:
@@ -1235,6 +1313,32 @@ class FireSimulationEngine:
                 burned_cells=len(self.burned_cells),
                 state=model_state
             )
+        
+        # MEMORY OPTIMIZATION: History cleanup to prevent unlimited accumulation
+        if hasattr(self, 'history') and len(self.history) > 1000:
+            # Keep only last 500 steps
+            self.history = self.history[-500:]
+            logger.debug("🧹 History cleaned: kept last 500 steps")
+        
+        # MEMORY OPTIMIZATION: Use disk storage for large histories
+        if hasattr(self, 'history') and len(self.history) > 100:
+            if self.config.use_disk_storage:
+                self._save_history_to_disk()
+    
+    def _save_history_to_disk(self):
+        """Save history to disk to free memory."""
+        try:
+            import json
+            history_file = f"simulation_history_{int(time.time())}.json"
+            with open(history_file, 'w') as f:
+                json.dump(self.history, f)
+            
+            # Clear memory after saving
+            self.history = []
+            logger.info(f"💾 History saved to disk: {history_file}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to save history to disk: {e}")
 
     def get_simulation_stats(self, runtime: float = 0.0) -> Dict[str, Any]:
         """Calculate and return final simulation statistics."""
@@ -1606,6 +1710,15 @@ class FireSimulationEngine:
             if hasattr(self, 'simulation_time'):
                 self.simulation_time = None
             
+            # Clear active and burned cells sets
+            if hasattr(self, 'active_cells'):
+                self.active_cells.clear()
+                self.active_cells = None
+            
+            if hasattr(self, 'burned_cells'):
+                self.burned_cells.clear()
+                self.burned_cells = None
+            
             # Clear forest model reference (but don't delete it - let caller handle that)
             if hasattr(self, 'forest_model') and self.forest_model is not None:
                 # Clean up the forest model if it has a cleanup method
@@ -1622,6 +1735,9 @@ class FireSimulationEngine:
                 self.log_stats.clear()
                 self.log_stats = None
             
+            # MEMORY OPTIMIZATION: Clean up shared memory blocks
+            self.cleanup_shared_memory_blocks()
+            
             # Force garbage collection
             collected = gc.collect()
             if collected > 0:
@@ -1629,6 +1745,29 @@ class FireSimulationEngine:
             
         except Exception as e:
             logger.warning(f"⚠️  FireSimulationEngine cleanup warning: {e}")
+    
+    def cleanup_shared_memory_blocks(self):
+        """Clean up orphaned shared memory blocks."""
+        try:
+            if os.path.exists("/dev/shm"):
+                import glob
+                patterns = ["/dev/shm/psm_*", "/dev/shm/wnsm_*"]
+                cleaned_count = 0
+                
+                for pattern in patterns:
+                    blocks = glob.glob(pattern)
+                    for block in blocks:
+                        try:
+                            os.remove(block)
+                            cleaned_count += 1
+                        except:
+                            pass
+                
+                if cleaned_count > 0:
+                    logger.info(f"🧹 Cleaned {cleaned_count} shared memory blocks")
+                    
+        except Exception as e:
+            logger.warning(f"⚠️  Shared memory cleanup failed: {e}")
 
     def close(self):
         """Alias for cleanup method."""

@@ -1,0 +1,280 @@
+{
+  "timestamp": 1755518498.180016,
+  "total_issues": 16,
+  "total_memory_impact_mb": 36550.0,
+  "critical_memory_impact_mb": 26000.0,
+  "issues_by_severity": {
+    "critical": 5,
+    "high": 4,
+    "medium": 6,
+    "low": 1
+  },
+  "prioritized_fixes": [
+    {
+      "priority": 1,
+      "issue": "MemoryPropagationIssue(issue_type='active_cells_growth', severity='critical', location='FireSimulationEngine._process_step()', description='Active cells set can grow indefinitely during fire spread', memory_impact_mb=1000.0, fix_suggestion='Implement active cells cleanup and bounds checking', code_location='src/core/fire_simulation_engine.py:500-600')",
+      "estimated_impact_mb": 1000.0,
+      "fix_effort": "high",
+      "description": "CRITICAL: Active cells set can grow indefinitely during fire spread"
+    },
+    {
+      "priority": 1,
+      "issue": "MemoryPropagationIssue(issue_type='terrain_duplication', severity='critical', location='ForestModel terrain loading', description='Terrain data may be duplicated across multiple instances', memory_impact_mb=5000.0, fix_suggestion='Use shared terrain system consistently', code_location='src/core/forest_model.py')",
+      "estimated_impact_mb": 5000.0,
+      "fix_effort": "high",
+      "description": "CRITICAL: Terrain data may be duplicated across multiple instances"
+    },
+    {
+      "priority": 1,
+      "issue": "MemoryPropagationIssue(issue_type='shared_memory_leaks', severity='critical', location='Shared terrain system', description='Shared memory blocks may not be properly cleaned up', memory_impact_mb=5000.0, fix_suggestion='Implement proper shared memory cleanup', code_location='src/utils/shared_terrain.py')",
+      "estimated_impact_mb": 5000.0,
+      "fix_effort": "high",
+      "description": "CRITICAL: Shared memory blocks may not be properly cleaned up"
+    },
+    {
+      "priority": 1,
+      "issue": "MemoryPropagationIssue(issue_type='worker_process_leaks', severity='critical', location='Grid search calibration', description='Worker processes may leak memory between evaluations', memory_impact_mb=10000.0, fix_suggestion='Implement proper cleanup in worker functions', code_location='src/core/calibration/grid_search.py')",
+      "estimated_impact_mb": 10000.0,
+      "fix_effort": "high",
+      "description": "CRITICAL: Worker processes may leak memory between evaluations"
+    },
+    {
+      "priority": 1,
+      "issue": "MemoryPropagationIssue(issue_type='step_memory_growth', severity='critical', location='Simulation loop', description='Memory grows progressively with each simulation step', memory_impact_mb=5000.0, fix_suggestion='Implement periodic cleanup in simulation loop', code_location='src/core/fire_simulation_engine.py:400-500')",
+      "estimated_impact_mb": 5000.0,
+      "fix_effort": "high",
+      "description": "CRITICAL: Memory grows progressively with each simulation step"
+    },
+    {
+      "priority": 2,
+      "issue": "MemoryPropagationIssue(issue_type='history_accumulation', severity='high', location='FireSimulationEngine._store_history_step()', description='History data accumulates in memory without periodic cleanup', memory_impact_mb=500.0, fix_suggestion='Implement periodic history cleanup or use disk storage', code_location='src/core/fire_simulation_engine.py:1200-1250')",
+      "estimated_impact_mb": 500.0,
+      "fix_effort": "medium",
+      "description": "HIGH: History data accumulates in memory without periodic cleanup"
+    },
+    {
+      "priority": 2,
+      "issue": "MemoryPropagationIssue(issue_type='burned_cells_accumulation', severity='high', location='FireSimulationEngine._process_step()', description='Burned cells set accumulates all burned cells without cleanup', memory_impact_mb=2000.0, fix_suggestion='Implement burned cells cleanup or use sparse tracking', code_location='src/core/fire_simulation_engine.py:500-600')",
+      "estimated_impact_mb": 2000.0,
+      "fix_effort": "medium",
+      "description": "HIGH: Burned cells set accumulates all burned cells without cleanup"
+    },
+    {
+      "priority": 2,
+      "issue": "MemoryPropagationIssue(issue_type='sparse_storage_inefficiency', severity='high', location='ForestModel sparse storage', description='Sparse storage may not be properly optimized for large grids', memory_impact_mb=3000.0, fix_suggestion='Implement more efficient sparse storage', code_location='src/core/forest_model.py')",
+      "estimated_impact_mb": 3000.0,
+      "fix_effort": "medium",
+      "description": "HIGH: Sparse storage may not be properly optimized for large grids"
+    },
+    {
+      "priority": 2,
+      "issue": "MemoryPropagationIssue(issue_type='terrain_reference_accumulation', severity='high', location='Shared terrain references', description='Terrain references may accumulate across processes', memory_impact_mb=2000.0, fix_suggestion='Implement reference counting and cleanup', code_location='src/utils/shared_terrain.py')",
+      "estimated_impact_mb": 2000.0,
+      "fix_effort": "medium",
+      "description": "HIGH: Terrain references may accumulate across processes"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='ember_events_accumulation', severity='medium', location='FireSimulationEngine._process_embers()', description='Ember events accumulate in memory during simulation', memory_impact_mb=200.0, fix_suggestion='Limit ember event storage or implement cleanup', code_location='src/core/fire_simulation_engine.py:1250-1350')",
+      "estimated_impact_mb": 200.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Ember events accumulate in memory during simulation"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='step_callback_leaks', severity='medium', location='FireSimulationEngine.run_simulation()', description='Step callbacks may create circular references', memory_impact_mb=100.0, fix_suggestion=\"Ensure callbacks don't create circular references\", code_location='src/core/fire_simulation_engine.py:450-470')",
+      "estimated_impact_mb": 100.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Step callbacks may create circular references"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='wind_field_memory', severity='medium', location='ForestModel wind fields', description='Wind fields may consume excessive memory for large grids', memory_impact_mb=1000.0, fix_suggestion='Use on-demand wind calculation or sparse storage', code_location='src/core/forest_model.py')",
+      "estimated_impact_mb": 1000.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Wind fields may consume excessive memory for large grids"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='parameter_accumulation', severity='medium', location='Sensitivity analysis', description='Parameter combinations may accumulate in memory', memory_impact_mb=500.0, fix_suggestion='Process results incrementally', code_location='src/core/calibration/sensitivity_analysis.py')",
+      "estimated_impact_mb": 500.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Parameter combinations may accumulate in memory"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='gc_timing_issues', severity='medium', location='Garbage collection', description='Garbage collection may not be called at optimal times', memory_impact_mb=1000.0, fix_suggestion='Implement strategic garbage collection', code_location='src/utils/memory_manager.py')",
+      "estimated_impact_mb": 1000.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Garbage collection may not be called at optimal times"
+    },
+    {
+      "priority": 3,
+      "issue": "MemoryPropagationIssue(issue_type='neighbor_calculation_memory', severity='medium', location='Neighbor calculation', description='Neighbor calculations may create temporary arrays', memory_impact_mb=200.0, fix_suggestion='Optimize neighbor calculation to avoid temporary arrays', code_location='src/core/fire_simulation_engine.py:1100-1200')",
+      "estimated_impact_mb": 200.0,
+      "fix_effort": "low",
+      "description": "MEDIUM: Neighbor calculations may create temporary arrays"
+    },
+    {
+      "priority": 4,
+      "issue": "MemoryPropagationIssue(issue_type='memory_guardian_overhead', severity='low', location='Memory guardian monitoring', description='Memory guardian may add overhead during simulation', memory_impact_mb=50.0, fix_suggestion='Optimize monitoring frequency', code_location='src/utils/memory_guardian.py')",
+      "estimated_impact_mb": 50.0,
+      "fix_effort": "low",
+      "description": "LOW: Memory guardian may add overhead during simulation"
+    }
+  ],
+  "detailed_issues": [
+    {
+      "type": "history_accumulation",
+      "severity": "high",
+      "location": "FireSimulationEngine._store_history_step()",
+      "description": "History data accumulates in memory without periodic cleanup",
+      "memory_impact_mb": 500.0,
+      "fix_suggestion": "Implement periodic history cleanup or use disk storage",
+      "code_location": "src/core/fire_simulation_engine.py:1200-1250"
+    },
+    {
+      "type": "ember_events_accumulation",
+      "severity": "medium",
+      "location": "FireSimulationEngine._process_embers()",
+      "description": "Ember events accumulate in memory during simulation",
+      "memory_impact_mb": 200.0,
+      "fix_suggestion": "Limit ember event storage or implement cleanup",
+      "code_location": "src/core/fire_simulation_engine.py:1250-1350"
+    },
+    {
+      "type": "active_cells_growth",
+      "severity": "critical",
+      "location": "FireSimulationEngine._process_step()",
+      "description": "Active cells set can grow indefinitely during fire spread",
+      "memory_impact_mb": 1000.0,
+      "fix_suggestion": "Implement active cells cleanup and bounds checking",
+      "code_location": "src/core/fire_simulation_engine.py:500-600"
+    },
+    {
+      "type": "burned_cells_accumulation",
+      "severity": "high",
+      "location": "FireSimulationEngine._process_step()",
+      "description": "Burned cells set accumulates all burned cells without cleanup",
+      "memory_impact_mb": 2000.0,
+      "fix_suggestion": "Implement burned cells cleanup or use sparse tracking",
+      "code_location": "src/core/fire_simulation_engine.py:500-600"
+    },
+    {
+      "type": "step_callback_leaks",
+      "severity": "medium",
+      "location": "FireSimulationEngine.run_simulation()",
+      "description": "Step callbacks may create circular references",
+      "memory_impact_mb": 100.0,
+      "fix_suggestion": "Ensure callbacks don't create circular references",
+      "code_location": "src/core/fire_simulation_engine.py:450-470"
+    },
+    {
+      "type": "terrain_duplication",
+      "severity": "critical",
+      "location": "ForestModel terrain loading",
+      "description": "Terrain data may be duplicated across multiple instances",
+      "memory_impact_mb": 5000.0,
+      "fix_suggestion": "Use shared terrain system consistently",
+      "code_location": "src/core/forest_model.py"
+    },
+    {
+      "type": "sparse_storage_inefficiency",
+      "severity": "high",
+      "location": "ForestModel sparse storage",
+      "description": "Sparse storage may not be properly optimized for large grids",
+      "memory_impact_mb": 3000.0,
+      "fix_suggestion": "Implement more efficient sparse storage",
+      "code_location": "src/core/forest_model.py"
+    },
+    {
+      "type": "wind_field_memory",
+      "severity": "medium",
+      "location": "ForestModel wind fields",
+      "description": "Wind fields may consume excessive memory for large grids",
+      "memory_impact_mb": 1000.0,
+      "fix_suggestion": "Use on-demand wind calculation or sparse storage",
+      "code_location": "src/core/forest_model.py"
+    },
+    {
+      "type": "shared_memory_leaks",
+      "severity": "critical",
+      "location": "Shared terrain system",
+      "description": "Shared memory blocks may not be properly cleaned up",
+      "memory_impact_mb": 5000.0,
+      "fix_suggestion": "Implement proper shared memory cleanup",
+      "code_location": "src/utils/shared_terrain.py"
+    },
+    {
+      "type": "terrain_reference_accumulation",
+      "severity": "high",
+      "location": "Shared terrain references",
+      "description": "Terrain references may accumulate across processes",
+      "memory_impact_mb": 2000.0,
+      "fix_suggestion": "Implement reference counting and cleanup",
+      "code_location": "src/utils/shared_terrain.py"
+    },
+    {
+      "type": "worker_process_leaks",
+      "severity": "critical",
+      "location": "Grid search calibration",
+      "description": "Worker processes may leak memory between evaluations",
+      "memory_impact_mb": 10000.0,
+      "fix_suggestion": "Implement proper cleanup in worker functions",
+      "code_location": "src/core/calibration/grid_search.py"
+    },
+    {
+      "type": "parameter_accumulation",
+      "severity": "medium",
+      "location": "Sensitivity analysis",
+      "description": "Parameter combinations may accumulate in memory",
+      "memory_impact_mb": 500.0,
+      "fix_suggestion": "Process results incrementally",
+      "code_location": "src/core/calibration/sensitivity_analysis.py"
+    },
+    {
+      "type": "memory_guardian_overhead",
+      "severity": "low",
+      "location": "Memory guardian monitoring",
+      "description": "Memory guardian may add overhead during simulation",
+      "memory_impact_mb": 50.0,
+      "fix_suggestion": "Optimize monitoring frequency",
+      "code_location": "src/utils/memory_guardian.py"
+    },
+    {
+      "type": "gc_timing_issues",
+      "severity": "medium",
+      "location": "Garbage collection",
+      "description": "Garbage collection may not be called at optimal times",
+      "memory_impact_mb": 1000.0,
+      "fix_suggestion": "Implement strategic garbage collection",
+      "code_location": "src/utils/memory_manager.py"
+    },
+    {
+      "type": "step_memory_growth",
+      "severity": "critical",
+      "location": "Simulation loop",
+      "description": "Memory grows progressively with each simulation step",
+      "memory_impact_mb": 5000.0,
+      "fix_suggestion": "Implement periodic cleanup in simulation loop",
+      "code_location": "src/core/fire_simulation_engine.py:400-500"
+    },
+    {
+      "type": "neighbor_calculation_memory",
+      "severity": "medium",
+      "location": "Neighbor calculation",
+      "description": "Neighbor calculations may create temporary arrays",
+      "memory_impact_mb": 200.0,
+      "fix_suggestion": "Optimize neighbor calculation to avoid temporary arrays",
+      "code_location": "src/core/fire_simulation_engine.py:1100-1200"
+    }
+  ],
+  "recommendations": [
+    "Implement immediate fixes for critical issues",
+    "Add periodic memory cleanup in simulation loop",
+    "Use shared terrain system consistently",
+    "Implement proper worker process cleanup",
+    "Add memory monitoring during simulation",
+    "Optimize sparse storage for large grids"
+  ]
+}

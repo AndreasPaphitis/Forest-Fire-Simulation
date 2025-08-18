@@ -1873,6 +1873,89 @@ class ForestModel(BaseForestModel):
             self.wind_speed = 0.0
         if not hasattr(self, 'wind_direction'):
             self.wind_direction = 0.0
+    
+    def cleanup(self):
+        """Clean up memory resources to prevent memory leaks."""
+        try:
+            import gc
+            
+            # Clear terrain data references
+            terrain_attrs = [
+                'terrain_elevation', 'terrain_slope', 'terrain_aspect',
+                'barranco_mask', 'barranco_directions', 'depression_mask',
+                'wind_channeling_mask', 'wind_amplification', 'wind_direction_modification'
+            ]
+            
+            for attr in terrain_attrs:
+                if hasattr(self, attr):
+                    setattr(self, attr, None)
+            
+            # Clear shared terrain references
+            if hasattr(self, '_shared_terrain_refs') and self._shared_terrain_refs is not None:
+                self._shared_terrain_refs.clear()
+                self._shared_terrain_refs = None
+            
+            # Clear sparse storage layers
+            if hasattr(self, 'fuel_load_layers') and self.fuel_load_layers is not None:
+                self.fuel_load_layers.clear()
+                self.fuel_load_layers = None
+            
+            if hasattr(self, 'state_layers') and self.state_layers is not None:
+                self.state_layers.clear()
+                self.state_layers = None
+            
+            # Clear dense arrays
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense = None
+            
+            if hasattr(self, '_state_dense'):
+                self._state_dense = None
+            
+            # Clear wind fields
+            if hasattr(self, 'wind_speed_field'):
+                self.wind_speed_field = None
+            
+            if hasattr(self, 'wind_direction_field'):
+                self.wind_direction_field = None
+            
+            # Clear simulation state
+            if hasattr(self, 'fire_history') and self.fire_history is not None:
+                self.fire_history.clear()
+                self.fire_history = None
+            
+            if hasattr(self, 'spread_stats') and self.spread_stats is not None:
+                self.spread_stats.clear()
+                self.spread_stats = None
+            
+            if hasattr(self, 'stats') and self.stats is not None:
+                self.stats.clear()
+                self.stats = None
+            
+            # Clear additional list attributes
+            if hasattr(self, 'history') and self.history is not None:
+                self.history.clear()
+                self.history = None
+            
+            if hasattr(self, '_ignition_points') and self._ignition_points is not None:
+                self._ignition_points.clear()
+                self._ignition_points = None
+            
+            # Clear additional dictionary attributes
+            if hasattr(self, '_wind_cache') and self._wind_cache is not None:
+                self._wind_cache.clear()
+                self._wind_cache = None
+            
+            # Force garbage collection
+            collected = gc.collect()
+            if collected > 0:
+                logger.debug(f"🧹 ForestModel cleanup freed {collected} objects")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  ForestModel cleanup warning: {e}")
+    
+    def close(self):
+        """Alias for cleanup method."""
+        self.cleanup()
         
         # Reference to simulation engine for access to detailed history
         self.simulation_engine = None
@@ -2677,7 +2760,7 @@ class MemoryOptimizedForestModel(ForestModel):
             
             # Initialize sparse storage if needed
             if self.use_sparse_storage:
-                self._initialize_sparse_storage()
+                self._initialize_optimized_sparse_storage()
     
     def _initialize_directly_as_sparse(self, grid_size, num_layers, layer_height_meters, 
                                       model_resolution, initial_fuel_load, config, **kwargs):
@@ -2777,6 +2860,65 @@ class MemoryOptimizedForestModel(ForestModel):
             'slope_assisted_spread': 0,
             'barranco_assisted_spread': 0
         }
+    
+    def _initialize_optimized_sparse_storage(self):
+        """Initialize sparse storage with optimization."""
+        try:
+            from scipy.sparse import csr_matrix
+            
+            # Use CSR format for better memory efficiency
+            self.fuel_load_layers = {}
+            self.state_layers = {}
+            
+            # Pre-allocate with estimated non-zero elements
+            estimated_nnz = max(1000, self.width * self.height * self.num_layers // 1000)
+            
+            for layer in range(self.num_layers):
+                shape = (self.width, self.height)
+                self.fuel_load_layers[layer] = csr_matrix(shape, dtype=np.float32)
+                self.state_layers[layer] = csr_matrix(shape, dtype=np.int8)
+            
+            logger.debug(f"🧹 Optimized sparse storage initialized for {self.num_layers} layers")
+            
+        except ImportError:
+            logger.warning("⚠️  scipy.sparse not available - using basic sparse storage")
+            self.fuel_load_layers = {}
+            self.state_layers = {}
+    
+    def optimize_sparse_storage(self):
+        """Optimize sparse storage for large grids."""
+        if hasattr(self, 'fuel_load_layers'):
+            # Compact sparse matrices
+            for layer_idx, sparse_matrix in self.fuel_load_layers.items():
+                if hasattr(sparse_matrix, 'eliminate_zeros'):
+                    sparse_matrix.eliminate_zeros()
+            
+            # Remove empty layers
+            empty_layers = [idx for idx, matrix in self.fuel_load_layers.items() 
+                           if matrix.nnz == 0]
+            for idx in empty_layers:
+                del self.fuel_load_layers[idx]
+            
+            logger.debug(f"🧹 Sparse storage optimized: removed {len(empty_layers)} empty layers")
+    
+    def compact_sparse_storage(self):
+        """Compact sparse storage to free memory."""
+        self.optimize_sparse_storage()
+    
+    def ensure_shared_terrain_usage(self):
+        """Ensure terrain data uses shared memory system."""
+        if hasattr(self, 'terrain_elevation') and self.terrain_elevation is not None:
+            # Check if terrain is already shared
+            if not hasattr(self, '_terrain_is_shared'):
+                try:
+                    from src.utils.shared_terrain import get_shared_terrain
+                    shared_terrain = get_shared_terrain('terrain_elevation')
+                    if shared_terrain is not None:
+                        self.terrain_elevation = shared_terrain
+                        self._terrain_is_shared = True
+                        logger.info("✅ Using shared terrain data")
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not use shared terrain: {e}")
         
         # Initialize fire history tracking
         self.fire_history = []
@@ -2810,6 +2952,9 @@ class MemoryOptimizedForestModel(ForestModel):
         
         logger.info(f"✅ Successfully initialized sparse model: {self.width}×{self.height}×{num_layers} "
                    f"({self.width * self.height * num_layers:,} total cells)")
+        
+        # MEMORY OPTIMIZATION: Ensure shared terrain usage
+        self.ensure_shared_terrain_usage()
 
     def _setup_sparse_property_accessors(self):
         """Set up property accessors to maintain API compatibility when initialized directly as sparse."""

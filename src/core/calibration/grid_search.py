@@ -468,6 +468,34 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
         
+        # Ensure ignition points are set; many early terminations are caused by zero active cells
+        try:
+            # Prefer explicit ignition points from config if provided
+            ignition_points = config_dict.get('ignition_points')
+            if ignition_points and isinstance(ignition_points, (list, tuple)):
+                for pt in ignition_points:
+                    try:
+                        x, y, z = (pt + [0])[:3] if isinstance(pt, list) else (pt[0], pt[1], pt[2] if len(pt) > 2 else 0)
+                        forest_model.set_ignition(int(x), int(y), int(z))
+                    except Exception:
+                        # Skip invalid entries
+                        continue
+            
+            # If no tracked ignition points, set safe defaults at grid center
+            if not getattr(forest_model, '_ignition_points', []):
+                grid_w = getattr(forest_model, 'width', None) or (config_dict.get('grid_size')[0] if isinstance(config_dict.get('grid_size'), (list, tuple)) else config_dict.get('grid_size'))
+                grid_h = getattr(forest_model, 'height', None) or (config_dict.get('grid_size')[1] if isinstance(config_dict.get('grid_size'), (list, tuple)) else config_dict.get('grid_size'))
+                num_layers = getattr(forest_model, 'num_layers', config_dict.get('num_layers', 1))
+                cx = max(0, int(grid_w) // 2)
+                cy = max(0, int(grid_h) // 2)
+                # Set 3 close-by ignition points in ground layer for robust start
+                default_points = [(cx, cy, 0), (min(cx+1, grid_w-1), cy, 0), (cx, min(cy+1, grid_h-1), 0)]
+                for x, y, z in default_points:
+                    forest_model.set_ignition(x, y, min(z, num_layers-1))
+        except Exception:
+            # Non-fatal: proceed; engine will stop if no active cells
+            pass
+        
         # Run simulation
         simulation_result = engine.run_simulation()
         

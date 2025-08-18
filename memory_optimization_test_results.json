@@ -1,0 +1,63 @@
+{
+  "timestamp": 1755519099.7528617,
+  "total_tests": 6,
+  "successful_tests": 3,
+  "test_results": [
+    {
+      "test": "active_cells_cleanup",
+      "initial_memory_gb": 0.08554458618164062,
+      "final_memory_gb": 0.0864105224609375,
+      "cleanup_memory_gb": 0.08641815185546875,
+      "memory_change_gb": 0.000865936279296875,
+      "cleanup_effectiveness": -0.000873565673828125,
+      "success": true
+    },
+    {
+      "test": "shared_terrain_usage",
+      "initial_memory_gb": 0.08641815185546875,
+      "final_memory_gb": 0.086456298828125,
+      "cleanup_memory_gb": 0.086456298828125,
+      "memory_change_gb": 3.814697265625e-05,
+      "terrain_shared": false,
+      "terrain_refs_count": 3,
+      "success": false
+    },
+    {
+      "test": "sparse_storage_optimization",
+      "initial_memory_gb": 0.086456298828125,
+      "final_memory_gb": 0.09267425537109375,
+      "cleanup_memory_gb": 0.09267425537109375,
+      "memory_change_gb": 0.00621795654296875,
+      "optimization_available": false,
+      "success": false
+    },
+    {
+      "test": "periodic_cleanup",
+      "initial_memory_gb": 0.08670806884765625,
+      "final_memory_gb": 0.08670806884765625,
+      "cleanup_memory_gb": 0.08670806884765625,
+      "memory_change_gb": 0.0,
+      "simulation_steps": 1,
+      "success": true
+    },
+    {
+      "test": "history_cleanup",
+      "initial_memory_gb": 0.08670806884765625,
+      "final_memory_gb": 0.08670806884765625,
+      "cleanup_memory_gb": 0.08670806884765625,
+      "memory_change_gb": 0.0,
+      "history_saved": false,
+      "history_files_count": 0,
+      "success": false
+    },
+    {
+      "test": "shared_memory_cleanup",
+      "initial_memory_gb": 0.08670806884765625,
+      "final_memory_gb": 0.08670806884765625,
+      "cleanup_memory_gb": 0.08670806884765625,
+      "memory_change_gb": 0.0,
+      "cleanup_available": true,
+      "success": true
+    }
+  ]
+}
