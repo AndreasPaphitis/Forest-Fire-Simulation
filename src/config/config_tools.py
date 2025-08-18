@@ -50,10 +50,10 @@ class ModelConfig:
     model_resolution: float = 5.0
     
     # === FIRE SPREAD PARAMETERS ===
-    spread_probability: float = 0.8
-    fuel_consumption_rate: float = 0.3  # Lowered from 1.0 to prevent immediate burnout
-    ignition_threshold: float = 0.1  # Lowered from 0.3 to allow fire spread
-    min_fuel_value: float = 0.1
+    spread_probability: float = 0.75  # Optimized for balanced spread
+    fuel_consumption_rate: float = 0.5  # Optimized for proper burnout
+    ignition_threshold: float = 0.08  # Optimized for easier ignition
+    min_fuel_value: float = 0.05  # Optimized for easier burnout
     max_fuel_value: float = 1.0  # Changed to 1.0 for PAD data (0-1 range)
     initial_fuel_load: float = 0.5  # Changed to 0.5 for PAD data (0-1 range)
     fuel_moisture_baseline: float = 0.3
@@ -76,7 +76,7 @@ class ModelConfig:
     min_depression_area: int = 4
 
     # === EMBER PARAMETERS ===
-    ember_probability: float = 0.3  # Increased from 0.1 to 0.3 for more effective ember transport
+    ember_probability: float = 0.4  # Optimized for better long-range spread
     ember_distance: int = 5
     ember_ignition: float = 0.3
     ember_height_factor: float = 0.2

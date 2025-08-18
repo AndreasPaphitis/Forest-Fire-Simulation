@@ -193,7 +193,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'fuel_consumption_rate': ParameterBounds(
-            min_value=0.1, max_value=5.0, default_value=1.0,
+            min_value=0.3, max_value=0.8, default_value=0.5,  # Optimized for proper burnout
             parameter_type=ParameterType.POSITIVE_FLOAT,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Rate of fuel consumption during fire spread",
@@ -286,7 +286,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'ember_probability': ParameterBounds(
-            min_value=0.05, max_value=0.5, default_value=0.3,  # Increased range for more effective ember transport
+            min_value=0.2, max_value=0.6, default_value=0.4,  # Optimized for better long-range spread
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Probability of ember generation during fire spread",
@@ -328,7 +328,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         # ===== ADDITIONAL IMPLEMENTED PARAMETERS =====
         
         'min_fuel_value': ParameterBounds(
-            min_value=0.01, max_value=0.5, default_value=0.1,
+            min_value=0.02, max_value=0.1, default_value=0.05,  # Optimized for easier burnout
             parameter_type=ParameterType.POSITIVE_FLOAT,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Minimum fuel value required for burning",

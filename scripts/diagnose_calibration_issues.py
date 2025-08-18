@@ -1,250 +1,236 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
+#!/usr/bin/env python3
 """
-Diagnose Calibration Issues
-
-This script diagnoses why the calibration framework is still getting small objective values
-despite all the fixes being applied.
-
-Author: Forest Fire Simulation Team
-Date: 2025
+Diagnostic script to identify calibration issues with fire propagation and extinction.
 """
 
 import sys
 import os
+import logging
 import numpy as np
 from pathlib import Path
 
-# Add project root to path
+# Add the project root to the path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config.config_tools import ModelConfig
-from src.core.forest_model import create_forest_model
 from src.core.fire_simulation_engine import FireSimulationEngine
-from src.core.calibration.objective_functions import SpatialSimilarityObjective
+from src.core.forest_model import ForestModel
+import logging
 
-def check_configuration_fixes():
-    """Check if all configuration fixes are properly applied."""
-    print("🔧 Checking Configuration Fixes...")
-    print("=" * 50)
+def diagnose_calibration_issues():
+    """Diagnose the specific issues with fire propagation and extinction."""
+    
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger("calibration_diagnostic")
+    logger.info("🔍 Starting calibration diagnostic...")
     
     # Create a test configuration
     config = ModelConfig(
-        width=50,
-        height=50,
+        grid_size=(50, 50),
         num_layers=5,
-        max_steps=20
+        max_steps=20,
+        model_resolution=5.0,
+        
+        # Test different parameter combinations
+        spread_probability=0.8,
+        ignition_threshold=0.1,
+        fuel_consumption_rate=0.3,
+        min_fuel_value=0.1,
+        max_fuel_value=1.0,
+        
+        # Environmental factors
+        wind_influence_on_spread=0.5,
+        slope_influence=0.3,
+        reference_wind_speed=10.0,
+        
+        # Ember parameters
+        ember_probability=0.3,
+        ember_distance=5,
+        ember_ignition=0.3,
+        
+        # Memory optimization
+        memory_optimization_level=1,
+        use_sparse_storage=True,
+        
+        # Debug mode
+        debug=True,
+        engine_logging_interval=1
     )
     
-    print(f"✅ use_terrain: {config.use_terrain}")
-    print(f"✅ use_preprocessed_terrain: {config.use_preprocessed_terrain}")
-    print(f"✅ preprocessed_terrain_dir: {config.preprocessed_terrain_dir}")
-    print(f"✅ spread_probability: {config.spread_probability}")
-    print(f"✅ ignition_threshold: {config.ignition_threshold}")
-    print(f"✅ ember_probability: {config.ember_probability}")
+    logger.info("📊 Configuration created:")
+    logger.info(f"   - Spread probability: {config.spread_probability}")
+    logger.info(f"   - Ignition threshold: {config.ignition_threshold}")
+    logger.info(f"   - Fuel consumption rate: {config.fuel_consumption_rate}")
+    logger.info(f"   - Min fuel value: {config.min_fuel_value}")
+    logger.info(f"   - Max fuel value: {config.max_fuel_value}")
     
-    # Check if fixes are applied
-    fixes_applied = {
-        'terrain_enabled': config.use_terrain == True,
-        'preprocessed_terrain_enabled': config.use_preprocessed_terrain == True,
-        'spread_probability_increased': config.spread_probability >= 0.8,
-        'ignition_threshold_lowered': config.ignition_threshold <= 0.1,
-        'ember_probability_increased': config.ember_probability >= 0.3
-    }
-    
-    print("\n📊 Fix Status:")
-    for fix_name, applied in fixes_applied.items():
-        status = "✅" if applied else "❌"
-        print(f"   {status} {fix_name}: {applied}")
-    
-    return all(fixes_applied.values())
-
-def test_fire_spreading():
-    """Test if fire spreading works with the new parameters."""
-    print("\n🔥 Testing Fire Spreading...")
-    print("=" * 50)
-    
+    # Create forest model
     try:
-        # Create configuration with all fixes
-        config = ModelConfig(
-            width=40,
-            height=40,
-            num_layers=4,
-            max_steps=15,
-            spread_probability=0.8,
-            ignition_threshold=0.1,
-            ember_probability=0.3,
-            use_terrain=True,
-            use_preprocessed_terrain=True,
-            preprocessed_terrain_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"
+        forest_model = ForestModel(
+            grid_size=config.grid_size,
+            num_layers=config.num_layers,
+            layer_height_meters=config.layer_height,
+            model_resolution=config.model_resolution,
+            initial_fuel_load=config.initial_fuel_load,
+            config=config
         )
-        
-        # Create forest model
-        forest_model = create_forest_model(config)
-        
-        # Set multiple ignition points
-        ignition_points = [
-            (config.width // 2, config.height // 2, 0),
-            (config.width // 2 + 3, config.height // 2, 0),
-            (config.width // 2, config.height // 2 + 3, 0)
-        ]
-        
-        for x, y, z in ignition_points:
-            if 0 <= x < config.width and 0 <= y < config.height and 0 <= z < config.num_layers:
-                forest_model.state[x, y, z] = 1  # BURNING
-        
-        # Create simulation engine
-        engine = FireSimulationEngine(forest_model=forest_model, config=config)
-        
-        # Run simulation
-        result = engine.run_simulation(max_steps=10)
-        
-        # Check results
-        stats = result.get('stats', {})
-        total_burned = stats.get('total_burned_cells', 0)
-        steps = stats.get('steps', 0)
-        runtime = stats.get('runtime_seconds', 0)
-        
-        print(f"   Simulation completed in {steps} steps")
-        print(f"   Total burned cells: {total_burned}")
-        print(f"   Runtime: {runtime:.2f} seconds")
-        print(f"   Spread probability: {config.spread_probability}")
-        print(f"   Ignition threshold: {config.ignition_threshold}")
-        print(f"   Ember probability: {config.ember_probability}")
-        
-        if total_burned > 3:  # More than just ignition points
-            print("✅ Fire spreading test PASSED")
-            return True
-        else:
-            print("❌ Fire spreading test FAILED - fire did not spread")
-            return False
-            
+        logger.info("✅ Forest model created successfully")
     except Exception as e:
-        print(f"❌ Fire spreading test FAILED with error: {e}")
-        return False
-
-def test_objective_function():
-    """Test if objective function calculates proper scores."""
-    print("\n🎯 Testing Objective Function...")
-    print("=" * 50)
+        logger.error(f"❌ Failed to create forest model: {e}")
+        return
     
+    # Create fire simulation engine
     try:
-        # Create test data
-        predicted = np.zeros((20, 20))
-        predicted[8:12, 8:12] = 1  # Small square fire
-        
-        actual = np.zeros((20, 20))
-        actual[7:13, 7:13] = 1  # Slightly larger overlapping fire
-        
-        # Create mock simulation result
-        mock_forest_model = type('MockModel', (), {
-            'state': np.stack([predicted] * 5, axis=2),
-            'width': 20,
-            'height': 20,
-            'num_layers': 5
-        })()
-        
-        mock_result = {'forest_model': mock_forest_model}
-        mock_target = {'fire_perimeter': actual}
-        
-        # Test objective function
-        spatial_obj = SpatialSimilarityObjective()
-        result = spatial_obj.evaluate(mock_result, mock_target)
-        
-        print(f"   Objective value: {result.value:.4f}")
-        print(f"   Components: {result.components}")
-        print(f"   Is valid: {result.is_valid}")
-        
-        if result.value > 0.0 and result.is_valid:
-            print("✅ Objective function test PASSED")
-            return True
-        else:
-            print("❌ Objective function test FAILED - zero or invalid objective")
-            return False
-            
+        engine = FireSimulationEngine(forest_model, config)
+        logger.info("✅ Fire simulation engine created successfully")
     except Exception as e:
-        print(f"❌ Objective function test FAILED with error: {e}")
-        return False
-
-def test_terrain_loading():
-    """Test if terrain data is being loaded properly."""
-    print("\n🏔️ Testing Terrain Loading...")
-    print("=" * 50)
+        logger.error(f"❌ Failed to create fire simulation engine: {e}")
+        return
     
-    try:
-        config = ModelConfig(
-            width=30,
-            height=30,
-            num_layers=3,
-            use_terrain=True,
-            use_preprocessed_terrain=True,
-            preprocessed_terrain_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"
-        )
-        
-        # Create forest model
-        forest_model = create_forest_model(config)
-        
-        # Check if terrain data is loaded
-        terrain_loaded = (
-            hasattr(forest_model, 'terrain_elevation') and forest_model.terrain_elevation is not None or
-            hasattr(forest_model, 'barranco_mask') and forest_model.barranco_mask is not None or
-            hasattr(forest_model, 'wind_channeling_mask') and forest_model.wind_channeling_mask is not None
-        )
-        
-        print(f"   Terrain enabled in config: {config.use_terrain}")
-        print(f"   Preprocessed terrain enabled: {config.use_preprocessed_terrain}")
-        print(f"   Preprocessed terrain dir: {config.preprocessed_terrain_dir}")
-        print(f"   Terrain data loaded: {terrain_loaded}")
-        
-        if terrain_loaded:
-            print("✅ Terrain loading test PASSED")
-            return True
-        else:
-            print("❌ Terrain loading test FAILED - no terrain data loaded")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Terrain loading test FAILED with error: {e}")
-        return False
-
-def main():
-    """Run all diagnostic tests."""
-    print("🔍 CALIBRATION ISSUES DIAGNOSTIC")
-    print("=" * 60)
+    # Test ignition probability calculation
+    logger.info("\n🧪 Testing ignition probability calculation...")
     
-    tests = [
-        check_configuration_fixes,
-        test_fire_spreading,
-        test_objective_function,
-        test_terrain_loading
+    # Test with different scenarios
+    test_scenarios = [
+        {"name": "High fuel, no wind", "fuel": 1.0, "wind_speed": 0.0, "slope": 0.0},
+        {"name": "Low fuel, no wind", "fuel": 0.2, "wind_speed": 0.0, "slope": 0.0},
+        {"name": "High fuel, high wind", "fuel": 1.0, "wind_speed": 15.0, "slope": 0.0},
+        {"name": "High fuel, uphill", "fuel": 1.0, "wind_speed": 0.0, "slope": 0.5},
+        {"name": "High fuel, downhill", "fuel": 1.0, "wind_speed": 0.0, "slope": -0.5},
     ]
     
-    passed = 0
-    total = len(tests)
+    for scenario in test_scenarios:
+        logger.info(f"\n📋 Testing scenario: {scenario['name']}")
+        
+        # Simulate the scenario
+        base_prob = config.spread_probability
+        fuel_factor = scenario['fuel']
+        wind_factor = 1.0 + (scenario['wind_speed'] / config.reference_wind_speed) * config.wind_influence_on_spread
+        slope_factor = 1.0 + config.slope_influence * scenario['slope']
+        distance_factor = 1.0  # Orthogonal spread
+        
+        ignition_prob = base_prob * fuel_factor * wind_factor * slope_factor * distance_factor
+        effective_prob = max(0.0, min(1.0, ignition_prob))
+        will_ignite = effective_prob >= config.ignition_threshold
+        
+        logger.info(f"   - Base probability: {base_prob:.3f}")
+        logger.info(f"   - Fuel factor: {fuel_factor:.3f}")
+        logger.info(f"   - Wind factor: {wind_factor:.3f}")
+        logger.info(f"   - Slope factor: {slope_factor:.3f}")
+        logger.info(f"   - Final probability: {effective_prob:.3f}")
+        logger.info(f"   - Ignition threshold: {config.ignition_threshold:.3f}")
+        logger.info(f"   - Will ignite: {will_ignite}")
+        
+        if not will_ignite:
+            logger.warning(f"   ⚠️  Fire will NOT spread in this scenario!")
     
-    for test in tests:
-        if test():
-            passed += 1
+    # Test burnout calculation
+    logger.info("\n🔥 Testing burnout calculation...")
     
-    print(f"\n📊 Diagnostic Results: {passed}/{total} tests passed")
+    # Test different fuel consumption scenarios
+    burnout_scenarios = [
+        {"name": "High fuel consumption", "consumption_rate": 0.8, "initial_fuel": 1.0},
+        {"name": "Low fuel consumption", "consumption_rate": 0.1, "initial_fuel": 1.0},
+        {"name": "Low initial fuel", "consumption_rate": 0.3, "initial_fuel": 0.2},
+    ]
     
-    if passed == total:
-        print("🎉 All tests PASSED! The fixes should be working.")
-        print("\n💡 If you're still getting small objective values, possible causes:")
-        print("   1. The calibration parameters are too conservative")
-        print("   2. The target data doesn't match the simulation scale")
-        print("   3. The simulation is running too few steps")
-        print("   4. The ignition points are not in good locations")
-        return True
+    for scenario in burnout_scenarios:
+        logger.info(f"\n📋 Testing burnout scenario: {scenario['name']}")
+        
+        initial_fuel = scenario['initial_fuel']
+        consumption_rate = scenario['consumption_rate']
+        min_fuel = config.min_fuel_value
+        
+        # Calculate how many steps until burnout
+        remaining_fuel = initial_fuel
+        steps_to_burnout = 0
+        
+        while remaining_fuel > min_fuel and steps_to_burnout < 50:
+            remaining_fuel -= consumption_rate
+            steps_to_burnout += 1
+        
+        logger.info(f"   - Initial fuel: {initial_fuel:.3f}")
+        logger.info(f"   - Consumption rate: {consumption_rate:.3f}")
+        logger.info(f"   - Min fuel threshold: {min_fuel:.3f}")
+        logger.info(f"   - Steps to burnout: {steps_to_burnout}")
+        logger.info(f"   - Final fuel: {max(min_fuel, remaining_fuel):.3f}")
+        
+        if steps_to_burnout <= 3:
+            logger.warning(f"   ⚠️  Fire will burn out too quickly!")
+        elif steps_to_burnout > 20:
+            logger.info(f"   ✅ Fire will burn for a reasonable duration")
+    
+    # Test ember generation
+    logger.info("\n🌪️ Testing ember generation...")
+    
+    ember_prob = config.ember_probability
+    ember_distance = config.ember_distance
+    ember_ignition = config.ember_ignition
+    
+    logger.info(f"   - Ember probability: {ember_prob:.3f}")
+    logger.info(f"   - Ember distance: {ember_distance}")
+    logger.info(f"   - Ember ignition probability: {ember_ignition:.3f}")
+    
+    # Calculate effective ember ignition probability
+    effective_ember_ignition = ember_prob * ember_ignition
+    logger.info(f"   - Effective ember ignition: {effective_ember_ignition:.3f}")
+    
+    if effective_ember_ignition < 0.05:
+        logger.warning(f"   ⚠️  Ember ignition is too low for effective long-range spread!")
+    
+    logger.info("\n🎯 DIAGNOSTIC SUMMARY:")
+    logger.info("=" * 50)
+    
+    # Check for potential issues
+    issues = []
+    
+    if config.ignition_threshold > 0.3:
+        issues.append("Ignition threshold too high - fires won't spread")
+    
+    if config.fuel_consumption_rate > 0.5:
+        issues.append("Fuel consumption too high - fires burn out too fast")
+    
+    if config.spread_probability < 0.6:
+        issues.append("Spread probability too low - limited fire propagation")
+    
+    if config.ember_probability * config.ember_ignition < 0.05:
+        issues.append("Ember ignition too low - no long-range spread")
+    
+    if config.min_fuel_value > 0.2:
+        issues.append("Min fuel threshold too high - fires extinguish too easily")
+    
+    if issues:
+        logger.error("❌ POTENTIAL ISSUES IDENTIFIED:")
+        for issue in issues:
+            logger.error(f"   - {issue}")
     else:
-        print("⚠️  Some tests FAILED. This explains the small objective values.")
-        print("\n🔧 Issues to address:")
-        if passed < total:
-            print("   • Some calibration framework components are not working properly")
-        return False
+        logger.info("✅ No obvious issues identified in current configuration")
+    
+    # Suggest parameter adjustments
+    logger.info("\n💡 SUGGESTED PARAMETER ADJUSTMENTS:")
+    logger.info("=" * 50)
+    
+    if config.ignition_threshold > 0.2:
+        logger.info(f"   - Lower ignition_threshold from {config.ignition_threshold} to 0.1")
+    
+    if config.fuel_consumption_rate > 0.4:
+        logger.info(f"   - Lower fuel_consumption_rate from {config.fuel_consumption_rate} to 0.3")
+    
+    if config.spread_probability < 0.7:
+        logger.info(f"   - Increase spread_probability from {config.spread_probability} to 0.8")
+    
+    if config.ember_probability < 0.2:
+        logger.info(f"   - Increase ember_probability from {config.ember_probability} to 0.3")
+    
+    if config.min_fuel_value > 0.15:
+        logger.info(f"   - Lower min_fuel_value from {config.min_fuel_value} to 0.1")
+    
+    logger.info("\n🔍 Diagnostic complete!")
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    diagnose_calibration_issues()
