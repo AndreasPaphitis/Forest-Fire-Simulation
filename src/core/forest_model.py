@@ -168,7 +168,7 @@ class BaseForestModel(ABC):
                  num_layers: int = 10, 
                  layer_height_meters: float = 2.0, 
                  model_resolution: float = 5.0, 
-                 initial_fuel_load: float = 0.0, # Changed default from 5.0 to 0.0
+                 initial_fuel_load: float = 5.0, # Changed back to 5.0 to allow fire to spread
                  config: Optional[ModelConfig] = None, 
                  **kwargs):
         """
@@ -1787,7 +1787,7 @@ class ForestModel(BaseForestModel):
                  num_layers: int = 10, 
                  layer_height_meters: float = 2.0, 
                  model_resolution: float = 5.0,
-                 initial_fuel_load: float = 0.0,
+                 initial_fuel_load: float = 5.0,
                  config: Optional[ModelConfig] = None,
                  **kwargs):
         """
@@ -2819,7 +2819,7 @@ class MemoryOptimizedForestModel(ForestModel):
             
             logger.warning("SciPy not available. Cannot use sparse storage. Falling back to dense arrays.")
             # Fallback to dense arrays if SciPy is not available.
-            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
             default_moisture = getattr(self.config, 'fuel_moisture_baseline', 0.3) if self.config else 0.3
 
             # Store dense arrays with different names to avoid conflicts
@@ -2852,7 +2852,7 @@ class MemoryOptimizedForestModel(ForestModel):
         self.fuel_load_layers = []
         self.state_layers = []
 
-        default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+        default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
         
         for z in range(self.num_layers):
             # Initialize fuel load layer
@@ -2908,16 +2908,17 @@ class MemoryOptimizedForestModel(ForestModel):
         """Access fuel load data - returns sparse or dense depending on storage mode."""
         if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
             # Ensure consistent default fuel value between sparse and dense
-            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
             return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
         else:
-            # Access the dense storage or create default array
+            # Access the dense storage or create default array ONCE
             if hasattr(self, '_fuel_load_dense'):
                 return self._fuel_load_dense
             else:
-                # Create a default fuel load array if nothing exists
-                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
-                return np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                # Create a default fuel load array if nothing exists - STORE IT
+                default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                return self._fuel_load_dense
     
     @fuel_load.setter
     def fuel_load(self, value):
@@ -2974,7 +2975,7 @@ class MemoryOptimizedForestModel(ForestModel):
                 self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
             else:
                 # Create dense array if needed
-                default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+                default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
                 self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
                 self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
 

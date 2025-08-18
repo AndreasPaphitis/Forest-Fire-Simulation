@@ -55,7 +55,7 @@ class ModelConfig:
     ignition_threshold: float = 0.5
     min_fuel_value: float = 0.1
     max_fuel_value: float = 10.0
-    initial_fuel_load: float = 0.0
+    initial_fuel_load: float = 5.0  # Changed from 0.0 to 5.0 to allow fire to spread
     fuel_moisture_baseline: float = 0.3
     
     # === WEATHER PARAMETERS ===
@@ -497,7 +497,7 @@ if __name__ == "__main__":
     fuel_consumption_rate = 1.0
     min_fuel_value = 0.1
     max_fuel_value = 10.0
-    initial_fuel_load = 0.0
+    initial_fuel_load = 5.0
     fuel_moisture_baseline = 0.3
     
     # Weather parameters

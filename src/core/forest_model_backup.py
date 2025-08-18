@@ -167,7 +167,7 @@ class BaseForestModel(ABC):
                  num_layers: int = 10, 
                  layer_height_meters: float = 2.0, 
                  model_resolution: float = 5.0, 
-                 initial_fuel_load: float = 0.0, # Changed default from 5.0 to 0.0
+                 initial_fuel_load: float = 5.0, # Changed back to 5.0 to allow fire to spread
                  config: Optional[ModelConfig] = None, 
                  **kwargs):
         """

@@ -432,6 +432,8 @@ class TiledLiDARIntegration:
             logger.error(traceback.format_exc())
             return False # Indicate failure
     
+
+    
     @error_handler()
     def _process_tile(self, x_start, y_start, x_end, y_end, num_layers):
         """
@@ -465,68 +467,76 @@ class TiledLiDARIntegration:
                             continue
                             
                         if layer_data_2d is not None:
-                            slice_width = x_end - x_start
-                            slice_height = y_end - y_start
+                            # PAD data is already normalized fuel values (0-1 range)
+                            fuel_data_2d = layer_data_2d
                             
-                            # Check if shapes match and use safe tile setting method
-                            if layer_data_2d.shape == (slice_height, slice_width):
-                                # Already in correct orientation (height, width)
-                                data_to_set = layer_data_2d.T
-                            elif layer_data_2d.shape == (slice_width, slice_height):
-                                # In (width, height) orientation
-                                data_to_set = layer_data_2d
-                            else:
-                                logger.warning(f"Shape mismatch for tile layer {layer_idx}, attempting resize...")
-                                data_to_set = None
-                            
-                            # Use safe tile setting method if available (for sparse storage)
-                            if data_to_set is not None:
-                                if hasattr(self.forest_model, 'set_fuel_load_tile'):
-                                    self.forest_model.set_fuel_load_tile(x_start, x_end, y_start, y_end, layer_idx, data_to_set)
-                                else:
-                                    # Fallback to regular array slicing for non-sparse models
-                                    self.forest_model.fuel_load[x_start:x_end, y_start:y_end, layer_idx] = data_to_set
-                            else:
-                                logger.warning(f"Shape mismatch for tile ({x_start},{y_start})-({x_end},{y_end}) layer {layer_idx}. " +
-                                                f"Fuel load slice expects ({slice_width},{slice_height}), got {layer_data_2d.shape}. Attempting resizing.")
+                            if fuel_data_2d is not None:
+                                slice_width = x_end - x_start
+                                slice_height = y_end - y_start
                                 
-                                try:
-                                    # Try to resize the data to match the expected shape
-                                    from scipy.ndimage import zoom
-                                    zoom_factor_x = slice_width / layer_data_2d.shape[0]
-                                    zoom_factor_y = slice_height / layer_data_2d.shape[1]
-                                    resized_data = zoom(layer_data_2d, (zoom_factor_x, zoom_factor_y), order=1)
-                                    
-                                    # Double-check the resized shape
-                                    if resized_data.shape == (slice_width, slice_height):
-                                        self.forest_model.fuel_load[x_start:x_end, y_start:y_end, layer_idx] = resized_data
-                                        logger.info(f"Successfully resized layer {layer_idx} data to match tile dimensions")
+                                # Check if shapes match and use safe tile setting method
+                                if fuel_data_2d.shape == (slice_height, slice_width):
+                                    # Already in correct orientation (height, width)
+                                    data_to_set = fuel_data_2d.T
+                                elif fuel_data_2d.shape == (slice_width, slice_height):
+                                    # In (width, height) orientation
+                                    data_to_set = fuel_data_2d
+                                else:
+                                    logger.warning(f"Shape mismatch for tile layer {layer_idx}, attempting resize...")
+                                    data_to_set = None
+                                
+                                # Use safe tile setting method if available (for sparse storage)
+                                if data_to_set is not None:
+                                    if hasattr(self.forest_model, 'set_fuel_load_tile'):
+                                        self.forest_model.set_fuel_load_tile(x_start, x_end, y_start, y_end, layer_idx, data_to_set)
                                     else:
-                                        logger.warning(f"Resized data still has incorrect shape: {resized_data.shape}, skipping layer {layer_idx}")
-                                except Exception as e:
-                                    logger.error(f"Error during resizing of layer {layer_idx}: {e}")
-                                    continue
+                                        # Fallback to regular array slicing for non-sparse models
+                                        self.forest_model.fuel_load[x_start:x_end, y_start:y_end, layer_idx] = data_to_set
+                                else:
+                                    logger.warning(f"Shape mismatch for tile ({x_start},{y_start})-({x_end},{y_end}) layer {layer_idx}. " +
+                                                    f"Fuel load slice expects ({slice_width},{slice_height}), got {fuel_data_2d.shape}. Attempting resizing.")
+                                    
+                                    try:
+                                        # Try to resize the data to match the expected shape
+                                        from scipy.ndimage import zoom
+                                        zoom_factor_x = slice_width / fuel_data_2d.shape[0]
+                                        zoom_factor_y = slice_height / fuel_data_2d.shape[1]
+                                        resized_data = zoom(fuel_data_2d, (zoom_factor_x, zoom_factor_y), order=1)
+                                        
+                                        # Double-check the resized shape
+                                        if resized_data.shape == (slice_width, slice_height):
+                                            self.forest_model.fuel_load[x_start:x_end, y_start:y_end, layer_idx] = resized_data
+                                            logger.info(f"Successfully resized layer {layer_idx} data to match tile dimensions")
+                                        else:
+                                            logger.warning(f"Resized data still has incorrect shape: {resized_data.shape}, skipping layer {layer_idx}")
+                                    except Exception as e:
+                                        logger.error(f"Error during resizing of layer {layer_idx}: {e}")
+                                        continue
                 else:
                     # Legacy approach with list of arrays
                     for z, layer_data_2d in enumerate(tile_data):
                         if layer_data_2d is not None:
-                            slice_width = x_end - x_start
-                            slice_height = y_end - y_start
-
-                            if layer_data_2d.shape == (slice_height, slice_width):
-                                data_to_set = layer_data_2d.T
-                            elif layer_data_2d.shape == (slice_width, slice_height):
-                                # This case implies layer_data_2d is already (width, height) for the tile
-                                data_to_set = layer_data_2d
-                            else:
-                                logger.warning(f"Shape mismatch for legacy tile layer {z}")
-                                continue
+                            # PAD data is already normalized fuel values (0-1 range)
+                            fuel_data_2d = layer_data_2d
                             
-                            # Use safe tile setting method if available
-                            if hasattr(self.forest_model, 'set_fuel_load_tile'):
-                                self.forest_model.set_fuel_load_tile(x_start, x_end, y_start, y_end, z, data_to_set)
-                            else:
-                                self.forest_model.fuel_load[x_start:x_end, y_start:y_end, z] = data_to_set
+                            if fuel_data_2d is not None:
+                                slice_width = x_end - x_start
+                                slice_height = y_end - y_start
+
+                                if fuel_data_2d.shape == (slice_height, slice_width):
+                                    data_to_set = fuel_data_2d.T
+                                elif fuel_data_2d.shape == (slice_width, slice_height):
+                                    # This case implies layer_data_2d is already (width, height) for the tile
+                                    data_to_set = fuel_data_2d
+                                else:
+                                    logger.warning(f"Shape mismatch for legacy tile layer {z}")
+                                    continue
+                                
+                                # Use safe tile setting method if available
+                                if hasattr(self.forest_model, 'set_fuel_load_tile'):
+                                    self.forest_model.set_fuel_load_tile(x_start, x_end, y_start, y_end, z, data_to_set)
+                                else:
+                                    self.forest_model.fuel_load[x_start:x_end, y_start:y_end, z] = data_to_set
                 return True
         
         # If no LiDAR data, use fallback initialization
@@ -608,7 +618,7 @@ class TiledLiDARIntegration:
                 
         if not pad_files_dict:
             logger.info(f"No PAD files found for any layer in {pad_dir}")
-            logger.info("No LiDAR data indicates no vegetation - creating bare area with zero fuel")
+            logger.info("No LiDAR data available - creating bare area with default fuel")
             return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
             
         # Use the new resampling method with robust error handling
@@ -626,7 +636,7 @@ class TiledLiDARIntegration:
             
             if not resampled_layers:
                 logger.warning("No layers were successfully resampled.")
-                logger.info("No vegetation data available - creating bare area with zero fuel")
+                logger.info("No vegetation data available - creating bare area with default fuel")
                 return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
                 
             logger.info(f"Successfully resampled {len(resampled_layers)} layers for tile ({x_start},{y_start})-({x_end},{y_end})")
@@ -634,7 +644,7 @@ class TiledLiDARIntegration:
             
         except Exception as e:
             logger.error(f"Error resampling PAD data for tile ({x_start},{y_start})-({x_end},{y_end}): {e}")
-            logger.info("LiDAR processing failed - creating bare area with zero fuel")
+            logger.info("LiDAR processing failed - creating bare area with default fuel")
             return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
     
     def _legacy_load_lidar_data_for_tile(self, x_start, y_start, x_end, y_end, num_layers):
@@ -712,7 +722,7 @@ class TiledLiDARIntegration:
                 tile_data.append(None)
 
         if all(d is None for d in tile_data):
-            logger.info("No LiDAR data loaded for tile - creating bare area with zero fuel")
+            logger.info("No LiDAR data loaded for tile - creating bare area with default fuel")
             return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
         return tile_data
 
@@ -732,7 +742,7 @@ class TiledLiDARIntegration:
         """
         try:
             # Get default fuel value from config
-            default_fuel = getattr(self.config, 'initial_fuel_load', 0.0) if self.config else 0.0
+            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
             
             # Create fuel data for each layer
             tile_width = x_end - x_start
@@ -761,10 +771,10 @@ class TiledLiDARIntegration:
 
     def _create_bare_area_data(self, x_start, y_start, x_end, y_end, num_layers):
         """
-        Create bare area data with zero fuel for areas with no LiDAR data.
+        Create bare area data with default fuel for areas with no LiDAR data.
         
-        This method creates layers with zero fuel values, which is optimal for sparse storage
-        since zeros match the default value and won't be stored in memory.
+        This method creates layers with default fuel values when no PAD data is available,
+        ensuring fire can still spread in areas without LiDAR coverage.
         
         Args:
             x_start, y_start: Start coordinates of the tile
@@ -772,20 +782,23 @@ class TiledLiDARIntegration:
             num_layers: Number of vertical layers
             
         Returns:
-            List of numpy arrays with zero fuel data for each layer
+            List of numpy arrays with default fuel data for each layer
         """
         try:
             tile_width = x_end - x_start
             tile_height = y_end - y_start
             
-            # Create zero fuel data for each layer (bare ground)
+            # Get default fuel value from config
+            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+            
+            # Create default fuel data for each layer (not zero!)
             bare_area_layers = []
             for z in range(num_layers):
-                # Create array filled with zeros (no fuel)
-                layer_data = np.zeros((tile_width, tile_height), dtype=np.float32)
+                # Create array filled with default fuel (not zero)
+                layer_data = np.full((tile_width, tile_height), default_fuel, dtype=np.float32)
                 bare_area_layers.append(layer_data)
                 
-            logger.info(f"Created bare area data for tile ({x_start},{y_start})-({x_end},{y_end}) with {num_layers} layers")
+            logger.info(f"Created bare area data for tile ({x_start},{y_start})-({x_end},{y_end}) with {num_layers} layers using default fuel {default_fuel}")
             return bare_area_layers
             
         except Exception as e:
