@@ -444,9 +444,31 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         from src.config.config_tools import ModelConfig
         from src.core.fire_simulation_engine import FireSimulationEngine
         
-        # Set up logging for worker process
-        logging.basicConfig(level=logging.INFO)
+        # Set up logging for worker process - COMPREHENSIVE FIX
+        # Completely isolate worker logging to prevent duplicates
         worker_logger = logging.getLogger(f"worker_{time.time()}")
+        worker_logger.setLevel(logging.INFO)
+        
+        # Clear any existing handlers
+        for handler in worker_logger.handlers[:]:
+            worker_logger.removeHandler(handler)
+        
+        # Add a single handler with unique formatting
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[WORKER] %(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        worker_logger.addHandler(handler)
+        
+        # Critical: Prevent propagation to avoid duplicate logging
+        worker_logger.propagate = False
+        
+        # Also disable propagation for all child loggers
+        for name in ['src.core.fire_simulation_engine', 'src.core.forest_model', 'src.core.calibration.objective_functions']:
+            child_logger = logging.getLogger(name)
+            child_logger.propagate = False
+            # Clear any existing handlers to prevent duplicates
+            for child_handler in child_logger.handlers[:]:
+                child_logger.removeHandler(child_handler)
         
         start_time = time.time()
         
