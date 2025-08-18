@@ -2818,8 +2818,8 @@ class MemoryOptimizedForestModel(ForestModel):
         self.config = config if config is not None else get_global_config()
         
         # Initialize sparse storage directly - NO DENSE ARRAYS CREATED
-        self.fuel_load_layers = []
-        self.state_layers = []
+        self.fuel_load_layers = {}
+        self.state_layers = {}
         
         # CRITICAL FIX: Initialize ignition points tracking (missing from direct sparse initialization)
         self._ignition_points = []
@@ -2843,8 +2843,8 @@ class MemoryOptimizedForestModel(ForestModel):
                 
                 # Convert to lil_matrix only when needed (lil is better for modifications)
                 # But keep dok for now to avoid segfault during initialization
-                self.fuel_load_layers.append(fuel_layer)
-                self.state_layers.append(state_layer)
+                self.fuel_load_layers[z] = fuel_layer
+                self.state_layers[z] = state_layer
                 
                 if (z + 1) % 5 == 0:  # Progress logging every 5 layers
                     logger.info(f"   ✅ Initialized sparse layer {z+1}/{num_layers}")
@@ -2917,6 +2917,10 @@ class MemoryOptimizedForestModel(ForestModel):
     def optimize_sparse_storage(self):
         """Optimize sparse storage for large grids."""
         if hasattr(self, 'fuel_load_layers'):
+            # CRITICAL DEBUG: Ensure expected dict type before using .items()
+            if not isinstance(self.fuel_load_layers, dict):
+                logger.error(f"CRITICAL ERROR: fuel_load_layers is not a dict: {type(self.fuel_load_layers)}")
+                return
             # Compact sparse matrices
             for layer_idx, sparse_matrix in self.fuel_load_layers.items():
                 if hasattr(sparse_matrix, 'eliminate_zeros'):
@@ -2924,7 +2928,7 @@ class MemoryOptimizedForestModel(ForestModel):
             
             # Remove empty layers
             empty_layers = [idx for idx, matrix in self.fuel_load_layers.items() 
-                           if matrix.nnz == 0]
+                           if hasattr(matrix, 'nnz') and matrix.nnz == 0]
             for idx in empty_layers:
                 del self.fuel_load_layers[idx]
             
@@ -3053,9 +3057,9 @@ class MemoryOptimizedForestModel(ForestModel):
             if isinstance(base_state, np.ndarray):
                 original_state = base_state.copy()
         
-        # Initialize sparse storage lists
-        self.fuel_load_layers = []
-        self.state_layers = []
+        # Initialize sparse storage dictionaries
+        self.fuel_load_layers = {}
+        self.state_layers = {}
 
         default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
         
@@ -3069,7 +3073,7 @@ class MemoryOptimizedForestModel(ForestModel):
                 # DON'T fill with default values - this defeats the purpose of sparse storage
                 # Default values will be returned by the accessor when cells are not set
                 fuel_layer = lil_matrix((self.width, self.height), dtype=np.float32)
-            self.fuel_load_layers.append(fuel_layer)
+            self.fuel_load_layers[z] = fuel_layer
 
             # Initialize state layer
             if original_state is not None:
@@ -3078,7 +3082,7 @@ class MemoryOptimizedForestModel(ForestModel):
             else:
                 # Create new sparse layer (starts as zeros, which is efficient for sparse)
                 state_layer = lil_matrix((self.width, self.height), dtype=np.int8)
-            self.state_layers.append(state_layer)
+            self.state_layers[z] = state_layer
 
         # Store references to original dense arrays (already copied above)
         self._original_fuel_load = original_fuel_load
@@ -3090,9 +3094,9 @@ class MemoryOptimizedForestModel(ForestModel):
         # Calculate and log memory savings
         try:
             total_sparse_bytes = 0
-            for layer in self.fuel_load_layers:
+            for layer_idx, layer in self.fuel_load_layers.items():
                 total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
-            for layer in self.state_layers:
+            for layer_idx, layer in self.state_layers.items():
                 total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
 
             sparse_size_mb = total_sparse_bytes / (1024**2)
