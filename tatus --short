@@ -1,0 +1,281 @@
+[1mdiff --git a/scripts/analyze_simulation_timing.py b/scripts/analyze_simulation_timing.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f5dda49[m
+[1m--- /dev/null[m
+[1m+++ b/scripts/analyze_simulation_timing.py[m
+[36m@@ -0,0 +1,275 @@[m
+[32m+[m[32m#!/usr/bin/env python[m
+[32m+[m[32m# -*- coding: utf-8 -*-[m
+[32m+[m
+[32m+[m[32m"""[m
+[32m+[m[32mAnalyze Simulation Timing and Fuel Consumption[m
+[32m+[m
+[32m+[m[32mThis script investigates why simulations are finishing too quickly and analyzes[m
+[32m+[m[32mthe fuel consumption mechanism to understand the root cause.[m
+[32m+[m
+[32m+[m[32mAuthor: Forest Fire Simulation Team[m
+[32m+[m[32mDate: 2025[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mimport sys[m
+[32m+[m[32mimport os[m
+[32m+[m[32mimport numpy as np[m
+[32m+[m[32mfrom pathlib import Path[m
+[32m+[m
+[32m+[m[32m# Add project root to path[m
+[32m+[m[32mproject_root = Path(__file__).parent.parent[m
+[32m+[m[32msys.path.insert(0, str(project_root))[m
+[32m+[m
+[32m+[m[32mfrom src.config.config_tools import ModelConfig[m
+[32m+[m[32mfrom src.core.forest_model import create_forest_model[m
+[32m+[m[32mfrom src.core.fire_simulation_engine import FireSimulationEngine[m
+[32m+[m
+[32m+[m[32mdef analyze_fuel_consumption():[m
+[32m+[m[32m    """Analyze how fuel consumption affects simulation duration."""[m
+[32m+[m[32m    print("🔍 Analyzing Fuel Consumption Impact")[m
+[32m+[m[32m    print("=" * 60)[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Test different fuel consumption rates[m
+[32m+[m[32m    fuel_rates = [0.1, 0.3, 0.5, 1.0, 2.0, 5.0][m
+[32m+[m[41m    [m
+[32m+[m[32m    for fuel_rate in fuel_rates:[m
+[32m+[m[32m        print(f"\n🔥 Testing fuel_consumption_rate: {fuel_rate}")[m
+[32m+[m[32m        print("-" * 40)[m
+[32m+[m[41m        [m
+[32m+[m[32m        config = ModelConfig([m
+[32m+[m[32m            grid_size=(50, 50),  # Smaller grid for faster testing[m
+[32m+[m[32m            num_layers=3,[m
+[32m+[m[32m            max_steps=50,  # More steps to see the effect[m
+[32m+[m[32m            fuel_consumption_rate=fuel_rate,[m
+[32m+[m[32m            spread_probability=0.8,[m
+[32m+[m[32m            ignition_threshold=0.1,[m
+[32m+[m[32m            use_terrain=True,[m
+[32m+[m[32m            use_preprocessed_terrain=True,[m
+[32m+[m[32m            preprocessed_terrain_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"[m
+[32m+[m[32m        )[m
+[32m+[m[41m        [m
+[32m+[m[32m        try:[m
+[32m+[m[32m            # Create forest model[m
+[32m+[m[32m            forest_model = create_forest_model(model_type="standard", config=config)[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Set ignition points[m
+[32m+[m[32m            grid_width, grid_height = config.grid_size if isinstance(config.grid_size, tuple) else (config.grid_size, config.grid_size)[m
+[32m+[m[32m            ignition_points = [[m
+[32m+[m[32m                (grid_width // 2, grid_height // 2, 0),[m
+[32m+[m[32m                (grid_width // 2 + 1, grid_height // 2, 0),[m
+[32m+[m[32m                (grid_width // 2, grid_height // 2 + 1, 0)[m
+[32m+[m[32m            ][m
+[32m+[m[41m            [m
+[32m+[m[32m            for x, y, z in ignition_points:[m
+[32m+[m[32m                if 0 <= x < grid_width and 0 <= y < grid_height and 0 <= z < config.num_layers:[m
+[32m+[m[32m                    forest_model.state[x, y, z] = 1  # BURNING[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Create simulation engine[m
+[32m+[m[32m            engine = FireSimulationEngine(forest_model=forest_model, config=config)[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Run simulation[m
+[32m+[m[32m            result = engine.run_simulation()[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Check results[m
+[32m+[m[32m            stats = result.get('stats', {})[m
+[32m+[m[32m            total_burned = stats.get('total_burned_cells', 0)[m
+[32m+[m[32m            steps = stats.get('steps', 0)[m
+[32m+[m[32m            runtime = stats.get('runtime_seconds', 0)[m
+[32m+[m[41m            [m
+[32m+[m[32m            print(f"   Steps completed: {steps}/{config.max_steps}")[m
+[32m+[m[32m            print(f"   Total burned cells: {total_burned}")[m
+[32m+[m[32m            print(f"   Runtime: {runtime:.3f} seconds")[m
+[32m+[m[32m            print(f"   Burnout rate: {total_burned/steps:.1f} cells/step" if steps > 0 else "   Burnout rate: N/A")[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Calculate fuel consumption analysis[m
+[32m+[m[32m            initial_fuel = config.initial_fuel_load[m
+[32m+[m[32m            min_fuel = config.min_fuel_value[m
+[32m+[m[32m            steps_to_burnout = (initial_fuel - min_fuel) / fuel_rate if fuel_rate > 0 else float('inf')[m
+[32m+[m[41m            [m
+[32m+[m[32m            print(f"   Theoretical steps to burnout: {steps_to_burnout:.1f}")[m
+[32m+[m[32m            print(f"   Fuel consumption per step: {fuel_rate}")[m
+[32m+[m[41m            [m
+[32m+[m[32m            if steps < config.max_steps:[m
+[32m+[m[32m                print(f"   ⚠️  Simulation stopped early (fire extinguished)")[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                print(f"   ✅ Simulation completed all steps")[m
+[32m+[m[41m                [m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            print(f"   ❌ Error: {e}")[m
+[32m+[m
+[32m+[m[32mdef analyze_simulation_steps():[m
+[32m+[m[32m    """Analyze what happens in each simulation step."""[m
+[32m+[m[32m    print("\n📊 Analyzing Simulation Steps")[m
+[32m+[m[32m    print("=" * 60)[m
+[32m+[m[41m    [m
+[32m+[m[32m    config = ModelConfig([m
+[32m+[m[32m        grid_size=(30, 30),  # Very small grid for detailed analysis[m
+[32m+[m[32m        num_layers=2,[m
+[32m+[m[32m        max_steps=10,  # Few steps for detailed analysis[m
+[32m+[m[32m        fuel_consumption_rate=0.3,  # Moderate rate[m
+[32m+[m[32m        spread_probability=0.8,[m
+[32m+[m[32m        ignition_threshold=0.1,[m
+[32m+[m[32m        use_terrain=True,[m
+[32m+[m[32m        use_preprocessed_terrain=True,[m
+[32m+[m[32m        preprocessed_terrain_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"[m
+[32m+[m[32m    )[m
+[32m+[m[41m    [m
+[32m+[m[32m    try:[m
+[32m+[m[32m        # Create forest model[m
+[32m+[m[32m        forest_model = create_forest_model(model_type="standard", config=config)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Set single ignition point[m
+[32m+[m[32m        grid_width, grid_height = config.grid_size if isinstance(config.grid_size, tuple) else (config.grid_size, config.grid_size)[m
+[32m+[m[32m        ignition_point = (grid_width // 2, grid_height // 2, 0)[m
+[32m+[m[32m        forest_model.state[ignition_point[0], ignition_point[1], ignition_point[2]] = 1[m
+[32m+[m[41m        [m
+[32m+[m[32m        print(f"Grid size: {grid_width}x{grid_height}x{config.num_layers} = {grid_width * grid_height * config.num_layers} total cells")[m
+[32m+[m[32m        print(f"Ignition point: {ignition_point}")[m
+[32m+[m[32m        print(f"Initial fuel load: {config.initial_fuel_load}")[m
+[32m+[m[32m        print(f"Min fuel value: {config.min_fuel_value}")[m
+[32m+[m[32m        print(f"Fuel consumption rate: {config.fuel_consumption_rate}")[m
+[32m+[m[32m        print(f"Steps to burnout: {(config.initial_fuel_load - config.min_fuel_value) / config.fuel_consumption_rate:.1f}")[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Create simulation engine[m
+[32m+[m[32m        engine = FireSimulationEngine(forest_model=forest_model, config=config)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # Run simulation with step-by-step analysis[m
+[32m+[m[32m        print("\nStep-by-step analysis:")[m
+[32m+[m[32m        print("-" * 40)[m
+[32m+[m[41m        [m
+[32m+[m[32m        for step in range(config.max_steps):[m
+[32m+[m[32m            # Check current state before step[m
+[32m+[m[32m            active_cells = len(engine.active_cells)[m
+[32m+[m[32m            burned_cells = len(engine.burned_cells)[m
+[32m+[m[41m            [m
+[32m+[m[32m            print(f"Step {step+1}: Active={active_cells}, Burned={burned_cells}")[m
+[32m+[m[41m            [m
+[32m+[m[32m            if active_cells == 0:[m
+[32m+[m[32m                print(f"   Fire extinguished after {step+1} steps")[m
+[32m+[m[32m                break[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Process one step[m
+[32m+[m[32m            engine._process_step()[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Check state after step[m
+[32m+[m[32m            new_active_cells = len(engine.active_cells)[m
+[32m+[m[32m            new_burned_cells = len(engine.burned_cells)[m
+[32m+[m[41m            [m
+[32m+[m[32m            print(f"   After step: Active={new_active_cells}, Burned={new_burned_cells}")[m
+[32m+[m[32m            print(f"   Change: Active={new_active_cells-active_cells:+d}, Burned={new_burned_cells-burned_cells:+d}")[m
+[32m+[m[41m            [m
+[32m+[m[32m            if new_active_cells == 0:[m
+[32m+[m[32m                print(f"   Fire extinguished after {step+1} steps")[m
+[32m+[m[32m                break[m
+[32m+[m[41m                [m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        print(f"❌ Error in step analysis: {e}")[m
+[32m+[m[32m        import traceback[m
+[32m+[m[32m        print(f"Traceback: {traceback.format_exc()}")[m
+[32m+[m
+[32m+[m[32mdef analyze_parameter_impact():[m
+[32m+[m[32m    """Analyze the impact of different parameters on simulation duration."""[m
+[32m+[m[32m    print("\n⚙️ Analyzing Parameter Impact")[m
+[32m+[m[32m    print("=" * 60)[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Test different parameter combinations[m
+[32m+[m[32m    test_cases = [[m
+[32m+[m[32m        {[m
+[32m+[m[32m            'name': 'Low fuel consumption, high spread',[m
+[32m+[m[32m            'params': {[m
+[32m+[m[32m                'fuel_consumption_rate': 0.1,[m
+[32m+[m[32m                'spread_probability': 0.9,[m
+[32m+[m[32m                'ignition_threshold': 0.05[m
+[32m+[m[32m            }[m
+[32m+[m[32m        },[m
+[32m+[m[32m        {[m
+[32m+[m[32m            'name': 'High fuel consumption, low spread',[m
+[32m+[m[32m            'params': {[m
+[32m+[m[32m                'fuel_consumption_rate': 1.0,[m
+[32m+[m[32m                'spread_probability': 0.3,[m
+[32m+[m[32m                'ignition_threshold': 0.3[m
+[32m+[m[32m            }[m
+[32m+[m[32m        },[m
+[32m+[m[32m        {[m
+[32m+[m[32m            'name': 'Balanced parameters',[m
+[32m+[m[32m            'params': {[m
+[32m+[m[32m                'fuel_consumption_rate': 0.3,[m
+[32m+[m[32m                'spread_probability': 0.6,[m
+[32m+[m[32m                'ignition_threshold': 0.1[m
+[32m+[m[32m            }[m
+[32m+[m[32m        }[m
+[32m+[m[32m    ][m
+[32m+[m[41m    [m
+[32m+[m[32m    for test_case in test_cases:[m
+[32m+[m[32m        print(f"\n🧪 {test_case['name']}")[m
+[32m+[m[32m        print("-" * 30)[m
+[32m+[m[41m        [m
+[32m+[m[32m        config = ModelConfig([m
+[32m+[m[32m            grid_size=(40, 40),[m
+[32m+[m[32m            num_layers=3,[m
+[32m+[m[32m            max_steps=30,[m
+[32m+[m[32m            **test_case['params'],[m
+[32m+[m[32m            use_terrain=True,[m
+[32m+[m[32m            use_preprocessed_terrain=True,[m
+[32m+[m[32m            preprocessed_terrain_dir="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"[m
+[32m+[m[32m        )[m
+[32m+[m[41m        [m
+[32m+[m[32m        try:[m
+[32m+[m[32m            # Create forest model[m
+[32m+[m[32m            forest_model = create_forest_model(model_type="standard", config=config)[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Set ignition points[m
+[32m+[m[32m            grid_width, grid_height = config.grid_size if isinstance(config.grid_size, tuple) else (config.grid_size, config.grid_size)[m
+[32m+[m[32m            ignition_points = [[m
+[32m+[m[32m                (grid_width // 2, grid_height // 2, 0),[m
+[32m+[m[32m                (grid_width // 2 + 1, grid_height // 2, 0)[m
+[32m+[m[32m            ][m
+[32m+[m[41m            [m
+[32m+[m[32m            for x, y, z in ignition_points:[m
+[32m+[m[32m                if 0 <= x < grid_width and 0 <= y < grid_height and 0 <= z < config.num_layers:[m
+[32m+[m[32m                    forest_model.state[x, y, z] = 1[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Create simulation engine[m
+[32m+[m[32m            engine = FireSimulationEngine(forest_model=forest_model, config=config)[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Run simulation[m
+[32m+[m[32m            result = engine.run_simulation()[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Check results[m
+[32m+[m[32m            stats = result.get('stats', {})[m
+[32m+[m[32m            total_burned = stats.get('total_burned_cells', 0)[m
+[32m+[m[32m            steps = stats.get('steps', 0)[m
+[32m+[m[32m            runtime = stats.get('runtime_seconds', 0)[m
+[32m+[m[41m            [m
+[32m+[m[32m            print(f"   Steps: {steps}/{config.max_steps}")[m
+[32m+[m[32m            print(f"   Burned cells: {total_burned}")[m
+[32m+[m[32m            print(f"   Runtime: {runtime:.3f}s")[m
+[32m+[m[32m            print(f"   Efficiency: {total_burned/steps:.1f} cells/step" if steps > 0 else "   Efficiency: N/A")[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Parameter summary[m
+[32m+[m[32m            print(f"   Fuel consumption: {config.fuel_consumption_rate}")[m
+[32m+[m[32m            print(f"   Spread probability: {config.spread_probability}")[m
+[32m+[m[32m            print(f"   Ignition threshold: {config.ignition_threshold}")[m
+[32m+[m[41m            [m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            print(f"   ❌ Error: {e}")[m
+[32m+[m
+[32m+[m[32mdef main():[m
+[32m+[m[32m    """Run all timing analysis tests."""[m
+[32m+[m[32m    print("🔍 SIMULATION TIMING ANALYSIS")[m
+[32m+[m[32m    print("=" * 80)[m
+[32m+[m[41m    [m
+[32m+[m[32m    analyze_fuel_consumption()[m
+[32m+[m[32m    analyze_simulation_steps()[m
+[32m+[m[32m    analyze_parameter_impact()[m
+[32m+[m[41m    [m
+[32m+[m[32m    print("\n📋 Summary:")[m
+[32m+[m[32m    print("=" * 40)[m
+[32m+[m[32m    print("The analysis will help identify:")[m
+[32m+[m[32m    print("1. How fuel consumption rate affects simulation duration")[m
+[32m+[m[32m    print("2. What happens in each simulation step")[m
+[32m+[m[32m    print("3. Which parameters have the biggest impact on timing")[m
+[32m+[m[32m    print("4. Whether simulations are terminating prematurely")[m
+[32m+[m
+[32m+[m[32mif __name__ == "__main__":[m
+[32m+[m[32m    main()[m
