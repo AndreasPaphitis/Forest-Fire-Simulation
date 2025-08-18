@@ -436,6 +436,21 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     forest_model = None
     engine = None
     
+    # CRITICAL FIX: Ensure parameter_values is a dictionary
+    if not isinstance(parameter_values, dict):
+        worker_logger = logging.getLogger(f"worker_{time.time()}")
+        worker_logger.error(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
+        # Return error result
+        return {
+            'parameter_values': {},
+            'objective_value': 0.0,
+            'objective_components': {},
+            'simulation_stats': {},
+            'evaluation_time': 0.0,
+            'is_valid': False,
+            'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
+        }
+    
     try:
         import time
         import logging
@@ -1221,6 +1236,20 @@ class GridSearchCalibrator:
         config_variant = copy.deepcopy(config_dict)
         
         # Update with parameter values
+        # CRITICAL FIX: Ensure parameter_values is a dictionary before calling .items()
+        if not isinstance(parameter_values, dict):
+            logger.error(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
+            # Convert to dictionary if it's a list/tuple or use empty dict as fallback
+            if isinstance(parameter_values, (list, tuple)) and len(parameter_values) > 0:
+                # Try to convert list to dict using parameter names
+                param_names = list(self.parameter_space.keys())
+                if len(parameter_values) == len(param_names):
+                    parameter_values = dict(zip(param_names, parameter_values))
+                else:
+                    parameter_values = {}
+            else:
+                parameter_values = {}
+        
         for param_name, param_value in parameter_values.items():
             if param_name in config_variant:
                 config_variant[param_name] = param_value
