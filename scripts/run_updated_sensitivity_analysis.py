@@ -97,7 +97,7 @@ def create_updated_calibration_config() -> CalibrationConfig:
         calibration_parameters=implemented_parameters,
         grid_search_points=9,  # 9 test points per parameter for Method 2
         parallel_execution=True,
-        max_workers=8,  # Conservative for stability
+        max_workers=16,  # 1 worker per parameter for optimal parallelization
         experiment_name="definitive_sensitivity_analysis",
         experiment_description="Sensitivity analysis using only implemented parameters"
     )
