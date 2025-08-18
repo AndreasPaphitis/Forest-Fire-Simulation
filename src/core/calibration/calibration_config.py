@@ -294,6 +294,12 @@ class CalibrationConfig:
         config_dict = asdict(self.base_config)
         
         # Update with new parameter values
+        # CRITICAL FIX: Ensure parameter_values is a dictionary before calling .items()
+        if not isinstance(parameter_values, dict):
+            logger.error(f"parameter_values is not a dictionary in create_config_variant: {type(parameter_values)} = {parameter_values}")
+            # Return the base config without modifications if parameter_values is invalid
+            return ModelConfig(**config_dict)
+        
         for param_name, param_value in parameter_values.items():
             if param_name in self.calibration_parameters:
                 config_dict[param_name] = param_value
