@@ -15,10 +15,10 @@ Top 5 Parameters (from sensitivity analysis):
 5. fuel_moisture_baseline: 0.0382 (MODERATE)
 
 Configuration:
-- Grid points: 5 per parameter
-- Total combinations: 5^5 = 3,125
-- Estimated time: 2-4 hours
-- Memory requirement: <500 MB
+- Grid points: 3 per parameter
+- Total combinations: 3^5 = 243
+- Estimated time: 20-30 minutes
+- Memory requirement: <100 MB
 
 Author: Forest Fire Simulation Team
 Date: 2025-08-18
@@ -57,8 +57,8 @@ Examples:
   # Run focused calibration with default settings
   python scripts/run_focused_calibration.py
   
-  # Run with custom grid points
-  python scripts/run_focused_calibration.py --grid-points 7
+     # Run with custom grid points
+   python scripts/run_focused_calibration.py --grid-points 5
   
   # Run with custom workers
   python scripts/run_focused_calibration.py --workers 10
@@ -69,13 +69,13 @@ Examples:
     )
     
     parser.add_argument(
-        "--grid-points", type=int, default=5,
-        help="Number of grid points per parameter (default: 5)"
+        "--grid-points", type=int, default=3,
+        help="Number of grid points per parameter (default: 3)"
     )
     
     parser.add_argument(
-        "--workers", type=int, default=7,
-        help="Number of parallel workers (default: 7)"
+        "--workers", type=int, default=10,
+        help="Number of parallel workers (default: 10)"
     )
     
     parser.add_argument(
@@ -146,11 +146,11 @@ Examples:
     print(f"   Test days: {args.test_days}")
     print(f"   Experiment name: {args.name}")
     
-    # Estimate time and memory
-    time_per_sim_minutes = 2.0  # Conservative estimate
-    total_time_hours = (total_combinations * time_per_sim_minutes) / (60 * args.workers)
-    memory_per_sim_gb = 0.5  # Conservative estimate with optimization
-    peak_memory_gb = memory_per_sim_gb * min(args.workers, total_combinations)
+         # Estimate time and memory (optimized for Day 4 grid with buffer)
+     time_per_sim_minutes = 3.0  # Day 4 grid size estimate
+     total_time_hours = (total_combinations * time_per_sim_minutes) / (60 * args.workers)
+     memory_per_sim_gb = 0.2  # Optimized for Day 4 area
+     peak_memory_gb = memory_per_sim_gb * min(args.workers, total_combinations)
     
     print(f"\n⏱️  ESTIMATES:")
     print(f"   Time per simulation: ~{time_per_sim_minutes:.1f} minutes")
