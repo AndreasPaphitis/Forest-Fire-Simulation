@@ -2556,6 +2556,26 @@ class SparseLayerAccessor:
         """Return the shape of the array."""
         return (self.width, self.height, self.num_layers)
     
+    def copy(self):
+        """Create a copy of the SparseLayerAccessor."""
+        # Create a deep copy of the sparse layers
+        import copy
+        copied_sparse_layers = []
+        for layer in self.sparse_layers:
+            if hasattr(layer, 'copy'):
+                copied_sparse_layers.append(layer.copy())
+            else:
+                # Fallback: create a new sparse matrix with the same data
+                copied_sparse_layers.append(layer.tocoo().tocsr())
+        
+        return SparseLayerAccessor(
+            sparse_layers=copied_sparse_layers,
+            width=self.width,
+            height=self.height,
+            num_layers=self.num_layers,
+            default_value=self.default_value
+        )
+    
     def set_tile_data(self, x_start, x_end, y_start, y_end, layer_idx, data):
         """
         Special method for tile-based data setting optimized for sparse storage.

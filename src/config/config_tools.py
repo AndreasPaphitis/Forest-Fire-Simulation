@@ -50,9 +50,9 @@ class ModelConfig:
     model_resolution: float = 5.0
     
     # === FIRE SPREAD PARAMETERS ===
-    spread_probability: float = 0.4
+    spread_probability: float = 0.8
     fuel_consumption_rate: float = 1.0
-    ignition_threshold: float = 0.5
+    ignition_threshold: float = 0.3
     min_fuel_value: float = 0.1
     max_fuel_value: float = 10.0
     initial_fuel_load: float = 5.0  # Changed from 0.0 to 5.0 to allow fire to spread
@@ -493,7 +493,7 @@ if __name__ == "__main__":
     model_resolution = 5.0
     
     # Fire spread parameters
-    spread_probability = 0.4
+    spread_probability = 0.8
     fuel_consumption_rate = 1.0
     min_fuel_value = 0.1
     max_fuel_value = 10.0
