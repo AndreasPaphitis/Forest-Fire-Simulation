@@ -1,6 +1,0 @@
-src/core/forest_model.py
-src/utils/terrain_preprocessor_rasterio.py
-src/utils/terrain_preprocessor_rasterio_backup.py
-src/utils/terrain_preprocessor_rasterio_fixed.py
-src/utils/terrain_preprocessor_rasterio_old.py
-src/utils/terrain_preprocessor_rasterio_optimized.py

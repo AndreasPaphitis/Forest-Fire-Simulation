@@ -72,7 +72,7 @@ class FireSimulationEngine:
                  forest_model: Optional[ForestModel] = None, # forest_model first
                  config: Optional[Union[Dict[str, Any], ModelConfig]] = None):
         
-        # EMERGENCY FIX: Enable emergency mode for massive grids to prevent segfaults
+        # Emergency mode for massive grids to prevent segfaults
         self.emergency_mode = False
         
         # Initialize logging statistics
@@ -131,10 +131,8 @@ class FireSimulationEngine:
             logger.error(f"Invalid config type: {type(config)}. Using global configuration as fallback.")
             self.config = get_global_config()
 
-        # CRITICAL FIX: Skip config attribute access that might trigger segfaults
-        # Config property access might trigger validation or computation that causes segfaults
-        # Store config reference but avoid accessing properties until absolutely necessary
-        logger.debug("Skipping config attribute access to prevent segfaults during initialization")
+        # Skip config attribute access during initialization to prevent issues
+        logger.debug("Initializing configuration")
 
         # Initialize the forest model if not provided
         if forest_model is not None:
@@ -1011,8 +1009,19 @@ class FireSimulationEngine:
             slope_factor = self._calculate_slope_factor(x, y, z, src_x, src_y)
 
         # Fuel factor (common for both vertical and horizontal)
+        # PAD data is already normalized to 0-1 range, so use it directly
+        # Only apply max_fuel normalization if the data is not already normalized
+        current_fuel = self.forest_model.fuel_load[x, y, z]
         max_fuel = self.config.max_fuel_value
-        fuel_factor = min(1.0, self.forest_model.fuel_load[x, y, z] / max_fuel if max_fuel > 0 else 1.0)
+        
+        # Check if fuel data is already normalized (0-1 range)
+        # If max_fuel is 10.0 and we have PAD data, assume it's already normalized
+        if max_fuel > 1.0 and current_fuel <= 1.0:
+            # PAD data is already normalized, use directly
+            fuel_factor = current_fuel
+        else:
+            # Legacy fuel data, apply normalization
+            fuel_factor = min(1.0, current_fuel / max_fuel if max_fuel > 0 else 1.0)
         
         # Distance factor for diagonal vs orthogonal spread
         distance_factor = 1.0
@@ -1174,9 +1183,7 @@ class FireSimulationEngine:
         current_state_data = None
         store_full = self.config.store_full_states
         use_disk = self.config.use_disk_storage
-        # DEBUG PRINT
-        logger.info(f"DEBUG _store_history_step: self.config.use_disk_storage = {self.config.use_disk_storage}, eval_use_disk_var = {use_disk}") # DEBUG MODIFIED
-        # END DEBUG PRINT
+
 
         # Use config method to get temp storage directory if available
         if hasattr(self.config, 'get_temp_storage_dir'):

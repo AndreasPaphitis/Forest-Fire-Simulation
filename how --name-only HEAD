@@ -1,5 +1,0 @@
-[33m9d14cec[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mclean-hpc-branch[m[33m, [m[1;31morigin/clean-hpc-branch[m[33m)[m Update calibration files and add tatus file
-[33m9a5ee3c[m Change grid resolution from 5m to 10m to reduce memory usage and prevent segfaults
-[33m4dbd4bf[m Implement Solution 2: Memory-Safe Sparse Matrix Access
-[33mf555561[m Fix string indices error in main calibration script
-[33md12ad69[m Fix string indices error in calibration validation

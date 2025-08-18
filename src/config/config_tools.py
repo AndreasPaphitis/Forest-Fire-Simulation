@@ -54,8 +54,8 @@ class ModelConfig:
     fuel_consumption_rate: float = 1.0
     ignition_threshold: float = 0.3
     min_fuel_value: float = 0.1
-    max_fuel_value: float = 10.0
-    initial_fuel_load: float = 5.0  # Changed from 0.0 to 5.0 to allow fire to spread
+    max_fuel_value: float = 1.0  # Changed to 1.0 for PAD data (0-1 range)
+    initial_fuel_load: float = 0.5  # Changed to 0.5 for PAD data (0-1 range)
     fuel_moisture_baseline: float = 0.3
     
     # === WEATHER PARAMETERS ===
