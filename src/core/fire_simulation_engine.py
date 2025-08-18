@@ -25,6 +25,7 @@ import numpy as np
 import math
 import json
 import pickle
+import gc  # Add garbage collector import
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union, Any, Callable
 from datetime import datetime
