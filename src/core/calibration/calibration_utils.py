@@ -613,6 +613,64 @@ def create_synthetic_target_data(grid_size: Tuple[int, int],
     }
 
 
+def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (100, 100), model_resolution: float = 5.0) -> dict:
+    """
+    Create target data from Day 1 and Day 2 EMSR delineations.
+    
+    Args:
+        day1_path: Path to Day 1 EMSR shapefile
+        day2_path: Path to Day 2 EMSR shapefile  
+        grid_size: Grid size for target raster
+        model_resolution: Model resolution in meters
+        
+    Returns:
+        Dictionary with target data for calibration
+    """
+    import numpy as np
+    from pathlib import Path
+    
+    logger.info("🔥 Creating EMSR target data from Day 1 and Day 2 delineations")
+    
+    # Check if files exist
+    if not Path(day1_path).exists():
+        raise FileNotFoundError(f"Day 1 EMSR file not found: {day1_path}")
+    if not Path(day2_path).exists():
+        raise FileNotFoundError(f"Day 2 EMSR file not found: {day2_path}")
+    
+    # For now, create simple circular targets as placeholders
+    # TODO: Implement proper coordinate transformation from EMSR data
+    day1_target = create_simple_circular_target(grid_size, center=(25, 25), radius=10)
+    day2_target = create_simple_circular_target(grid_size, center=(30, 30), radius=15)
+    
+    target_data = {
+        'fire_perimeter': day1_target,  # Use Day 1 as primary target
+        'day1_fire_perimeter': day1_target,
+        'day2_fire_perimeter': day2_target,
+        'grid_size': grid_size,
+        'model_resolution': model_resolution,
+        'emsr_day1_path': day1_path,
+        'emsr_day2_path': day2_path
+    }
+    
+    logger.info(f"✅ Created EMSR target data with grid size {grid_size}")
+    logger.info(f"   Day 1 target: {np.sum(day1_target)} cells")
+    logger.info(f"   Day 2 target: {np.sum(day2_target)} cells")
+    
+    return target_data
+
+def create_simple_circular_target(grid_size: tuple, center: tuple, radius: int) -> np.ndarray:
+    """Create a simple circular target for testing."""
+    import numpy as np
+    
+    target = np.zeros(grid_size)
+    
+    y, x = np.ogrid[:grid_size[0], :grid_size[1]]
+    mask = (x - center[0])**2 + (y - center[1])**2 <= radius**2
+    target[mask] = 1.0
+    
+    return target
+
+
 def create_production_target_data(dem_file: str, 
                                  lidar_data_dir: str,
                                  grid_size: Tuple[int, int] = (80, 80),

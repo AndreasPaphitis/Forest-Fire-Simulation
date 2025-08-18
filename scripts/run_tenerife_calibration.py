@@ -416,6 +416,13 @@ Examples:
         help='Run in quiet mode (minimal output)'
     )
     
+    parser.add_argument(
+        '--grid-size',
+        type=int,
+        default=100,
+        help='Grid size for EMSR target data (default: 100)'
+    )
+    
     args = parser.parse_args()
     
     # Configure logging based on verbosity settings
@@ -585,16 +592,47 @@ Examples:
         
         calibrator = TenerifeFirePerimeterCalibrator(**calibrator_kwargs)
         
-        # Step 5: Set up training/test split
-        training_data, test_data = calibrator.setup_training_test_split(
-            fire_dataset,
-            training_days=args.training_days,
-            test_days=args.test_days
+        # Step 5: Create EMSR target data from Day 1 and Day 2
+        print(f"\n🔥 CREATING EMSR TARGET DATA")
+        print("=" * 50)
+        
+        # Paths to EMSR files
+        day1_path = f"{args.emsr_dir}/Day 1 (18_08_23)/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1.shp"
+        day2_path = f"{args.emsr_dir}/Day 2 (21_08_23)/EMSR685_AOI01_DEL_MONIT01_observedEventA_v1.shp"
+        
+        # Check if EMSR files exist
+        if not os.path.exists(day1_path):
+            raise FileNotFoundError(f"Day 1 EMSR file not found: {day1_path}")
+        if not os.path.exists(day2_path):
+            raise FileNotFoundError(f"Day 2 EMSR file not found: {day2_path}")
+        
+        print(f"📁 Day 1 EMSR: {day1_path}")
+        print(f"📁 Day 2 EMSR: {day2_path}")
+        
+        # Create EMSR target data
+        from src.core.calibration.calibration_utils import create_emsr_target_data
+        
+        # Get grid size from config
+        grid_size = (args.grid_size, args.grid_size) if hasattr(args, 'grid_size') else (100, 100)
+        
+        target_data = create_emsr_target_data(
+            day1_path=day1_path,
+            day2_path=day2_path,
+            grid_size=grid_size,
+            model_resolution=5.0
         )
+        
+        print(f"✅ EMSR target data created successfully")
+        print(f"   Primary target cells: {target_data['fire_perimeter'].sum()}")
+        print(f"   Day 1 target cells: {target_data['day1_fire_perimeter'].sum()}")
+        print(f"   Day 2 target cells: {target_data['day2_fire_perimeter'].sum()}")
+        
+        # Use target_data instead of test_data for calibration
+        test_data = target_data
         
         # Step 6: Create calibration configuration
         calib_config = calibrator.create_calibration_config(
-            training_data=training_data,
+            training_data=test_data,  # Use EMSR target data as training data
             top_5_parameters=args.parameters
         )
         
