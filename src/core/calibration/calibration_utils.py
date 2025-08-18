@@ -613,7 +613,7 @@ def create_synthetic_target_data(grid_size: Tuple[int, int],
     }
 
 
-def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (100, 100), model_resolution: float = 5.0) -> dict:
+def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (100, 100), model_resolution: float = 5.0) -> List['FirePerimeterData']:
     """
     Create target data from Day 1 and Day 2 EMSR delineations.
     
@@ -624,10 +624,11 @@ def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (
         model_resolution: Model resolution in meters
         
     Returns:
-        Dictionary with target data for calibration
+        List of FirePerimeterData objects for calibration
     """
     import numpy as np
     from pathlib import Path
+    from .fire_perimeter_calibration import FirePerimeterData
     
     logger.info("🔥 Creating EMSR target data from Day 1 and Day 2 delineations")
     
@@ -637,26 +638,34 @@ def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (
     if not Path(day2_path).exists():
         raise FileNotFoundError(f"Day 2 EMSR file not found: {day2_path}")
     
-    # For now, create simple circular targets as placeholders
-    # TODO: Implement proper coordinate transformation from EMSR data
-    day1_target = create_simple_circular_target(grid_size, center=(25, 25), radius=10)
-    day2_target = create_simple_circular_target(grid_size, center=(30, 30), radius=15)
+    # Create FirePerimeterData objects for Day 1 and Day 2
+    day1_fire_perimeter = FirePerimeterData(
+        shapefile_path=day1_path,
+        date="2023-08-18",  # Day 1 date
+        day_number=1,
+        fire_id="EMSR685_Day1",
+        is_valid=True
+    )
     
-    target_data = {
-        'fire_perimeter': day1_target,  # Use Day 1 as primary target
-        'day1_fire_perimeter': day1_target,
-        'day2_fire_perimeter': day2_target,
-        'grid_size': grid_size,
-        'model_resolution': model_resolution,
-        'emsr_day1_path': day1_path,
-        'emsr_day2_path': day2_path
-    }
+    day2_fire_perimeter = FirePerimeterData(
+        shapefile_path=day2_path,
+        date="2023-08-21",  # Day 2 date
+        day_number=2,
+        fire_id="EMSR685_Day2",
+        is_valid=True
+    )
+    
+    # Validate the fire perimeter data
+    from .fire_perimeter_calibration import FirePerimeterDiscovery
+    discovery = FirePerimeterDiscovery()
+    discovery._validate_and_extract_metadata(day1_fire_perimeter)
+    discovery._validate_and_extract_metadata(day2_fire_perimeter)
     
     logger.info(f"✅ Created EMSR target data with grid size {grid_size}")
-    logger.info(f"   Day 1 target: {np.sum(day1_target)} cells")
-    logger.info(f"   Day 2 target: {np.sum(day2_target)} cells")
+    logger.info(f"   Day 1 target: {day1_fire_perimeter.area_hectares:.1f} ha" if day1_fire_perimeter.area_hectares else "   Day 1 target: Unknown area")
+    logger.info(f"   Day 2 target: {day2_fire_perimeter.area_hectares:.1f} ha" if day2_fire_perimeter.area_hectares else "   Day 2 target: Unknown area")
     
-    return target_data
+    return [day1_fire_perimeter, day2_fire_perimeter]
 
 def create_simple_circular_target(grid_size: tuple, center: tuple, radius: int) -> np.ndarray:
     """Create a simple circular target for testing."""

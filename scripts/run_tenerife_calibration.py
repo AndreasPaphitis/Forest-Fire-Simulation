@@ -623,11 +623,10 @@ Examples:
         )
         
         print(f"✅ EMSR target data created successfully")
-        print(f"   Primary target cells: {target_data['fire_perimeter'].sum()}")
-        print(f"   Day 1 target cells: {target_data['day1_fire_perimeter'].sum()}")
-        print(f"   Day 2 target cells: {target_data['day2_fire_perimeter'].sum()}")
+        print(f"   Day 1 target: {target_data[0].area_hectares:.1f} ha" if target_data[0].area_hectares else "   Day 1 target: Unknown area")
+        print(f"   Day 2 target: {target_data[1].area_hectares:.1f} ha" if target_data[1].area_hectares else "   Day 2 target: Unknown area")
         
-        # Use target_data instead of test_data for calibration
+        # Use target_data as test_data for calibration
         test_data = target_data
         
         # Step 6: Create calibration configuration
