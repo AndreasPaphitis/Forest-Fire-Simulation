@@ -285,7 +285,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'ember_probability': ParameterBounds(
-            min_value=0.01, max_value=0.25, default_value=0.1,
+            min_value=0.05, max_value=0.5, default_value=0.3,  # Increased range for more effective ember transport
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Probability of ember generation during fire spread",
@@ -295,7 +295,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'spread_probability': ParameterBounds(
-            min_value=0.2, max_value=0.8, default_value=0.4,
+            min_value=0.4, max_value=0.95, default_value=0.8,  # Increased range for better spreading
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Base probability of fire spreading between adjacent cells",
@@ -315,7 +315,7 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'ignition_threshold': ParameterBounds(
-            min_value=0.05, max_value=0.3, default_value=0.1,
+            min_value=0.02, max_value=0.2, default_value=0.1,  # Lowered range for easier ignition
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Threshold for ignition probability (deterministic)",
