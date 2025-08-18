@@ -66,22 +66,30 @@ class CalibrationConfig:
     
     # === PARAMETER SELECTION ===
     calibration_parameters: List[str] = field(default_factory=lambda: [
-        # Group 1: Full Range Parameters (9 parameters)
-        'spread_probability',  # Critical for fire spread - added back
-        'wind_influence_on_spread',
-        'fuel_consumption_rate',
-        'terrain_effect_strength',
-        'barranco_amplification',
-        'barranco_direction_weight',
-        'slope_influence',
-        'ember_height_factor',
-        'ignition_threshold',  # Critical for fire spread - added
-        # Group 2: Constrained Range Parameters (5 parameters)
-        'wind_speed',
-        'wind_direction',
-        'ember_distance',
-        'ember_probability',
-        'ember_ignition'
+        # ✅ COMPLETE LIST OF IMPLEMENTED PARAMETERS - Updated based on thorough analysis
+        # Core Fire Mechanics
+        'spread_probability',      # ✅ Used in base probability calculation (line 906)
+        'fuel_consumption_rate',   # ✅ Used in fuel consumption (line 824)
+        'ignition_threshold',      # ✅ Used in ignition check (line 1050)
+        
+        # Environmental Interactions  
+        'wind_influence_on_spread', # ✅ Used in wind factor calculation (line 990)
+        'slope_influence',         # ✅ Used in slope factor calculation (line 1114)
+        
+        # Ember Mechanics
+        'ember_probability',       # ✅ Used in ember generation (line 1250)
+        'ember_distance',          # ✅ Used in ember landing (line 1284, 1401)
+        'ember_ignition',          # ✅ Used in ember ignition (line 1374)
+        'ember_height_factor',     # ✅ Used in ember height calculation (line 1254)
+        'ember_wind_factor',       # ✅ Used in ember wind strength (line 1301)
+        'ember_rise'               # ✅ Used in ember height change (line 1314)
+        
+        # ❌ REMOVED UNIMPLEMENTED PARAMETERS:
+        # 'terrain_effect_strength' - NOT IMPLEMENTED in simulation engine
+        # 'barranco_amplification' - NOT IMPLEMENTED in simulation engine  
+        # 'barranco_direction_weight' - NOT IMPLEMENTED in simulation engine
+        # 'wind_speed' - Only used in ember calculations, not main fire spread
+        # 'wind_direction' - Only used in ember calculations, not main fire spread
     ])
     
     # === CALIBRATION TARGETS ===

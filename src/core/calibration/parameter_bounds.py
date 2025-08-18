@@ -202,35 +202,36 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
             suggested_points=5
         ),
         
-        'terrain_effect_strength': ParameterBounds(
-            min_value=0.0, max_value=1.0, default_value=0.6,
-            parameter_type=ParameterType.PROBABILITY,
-            calibration_tier=CalibrationTier.CRITICAL,
-            physical_interpretation="Overall terrain effect strength",
-            literature_range=(0.3, 0.9),
-            units="scaling factor",
-            suggested_points=5
-        ),
+        # ❌ UNIMPLEMENTED PARAMETERS - Commented out until implemented in simulation engine
+        # 'terrain_effect_strength': ParameterBounds(
+        #     min_value=0.0, max_value=1.0, default_value=0.6,
+        #     parameter_type=ParameterType.PROBABILITY,
+        #     calibration_tier=CalibrationTier.CRITICAL,
+        #     physical_interpretation="Overall terrain effect strength",
+        #     literature_range=(0.3, 0.9),
+        #     units="scaling factor",
+        #     suggested_points=5
+        # ),
         
-        'barranco_amplification': ParameterBounds(
-            min_value=1.0, max_value=5.0, default_value=2.0,
-            parameter_type=ParameterType.POSITIVE_FLOAT,
-            calibration_tier=CalibrationTier.CRITICAL,
-            physical_interpretation="Wind speed amplification in barrancos",
-            literature_range=(1.5, 3.5),
-            units="multiplier",
-            suggested_points=5
-        ),
+        # 'barranco_amplification': ParameterBounds(
+        #     min_value=1.0, max_value=5.0, default_value=2.0,
+        #     parameter_type=ParameterType.POSITIVE_FLOAT,
+        #     calibration_tier=CalibrationTier.CRITICAL,
+        #     physical_interpretation="Wind speed amplification in barrancos",
+        #     literature_range=(1.5, 3.5),
+        #     units="multiplier",
+        #     suggested_points=5
+        # ),
         
-        'barranco_direction_weight': ParameterBounds(
-            min_value=0.0, max_value=1.0, default_value=0.8,
-            parameter_type=ParameterType.PROBABILITY,
-            calibration_tier=CalibrationTier.CRITICAL,
-            physical_interpretation="Wind direction alignment weight in barrancos",
-            literature_range=(0.5, 0.95),
-            units="weight",
-            suggested_points=5
-        ),
+        # 'barranco_direction_weight': ParameterBounds(
+        #     min_value=0.0, max_value=1.0, default_value=0.8,
+        #     parameter_type=ParameterType.PROBABILITY,
+        #     calibration_tier=CalibrationTier.CRITICAL,
+        #     physical_interpretation="Wind direction alignment weight in barrancos",
+        #     literature_range=(0.5, 0.95),
+        #     units="weight",
+        #     suggested_points=5
+        # ),
         
         'slope_influence': ParameterBounds(
             min_value=0.0, max_value=1.0, default_value=0.3,
