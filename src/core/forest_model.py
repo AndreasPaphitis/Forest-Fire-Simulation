@@ -3019,16 +3019,16 @@ class MemoryOptimizedForestModel(ForestModel):
                     setattr(self, attr, None)
             
             # Clear shared terrain references
-            if hasattr(self, '_shared_terrain_refs'):
+            if hasattr(self, '_shared_terrain_refs') and self._shared_terrain_refs is not None:
                 self._shared_terrain_refs.clear()
                 self._shared_terrain_refs = None
             
             # Clear sparse storage layers
-            if hasattr(self, 'fuel_load_layers'):
+            if hasattr(self, 'fuel_load_layers') and self.fuel_load_layers is not None:
                 self.fuel_load_layers.clear()
                 self.fuel_load_layers = None
             
-            if hasattr(self, 'state_layers'):
+            if hasattr(self, 'state_layers') and self.state_layers is not None:
                 self.state_layers.clear()
                 self.state_layers = None
             
@@ -3047,15 +3047,15 @@ class MemoryOptimizedForestModel(ForestModel):
                 self.wind_direction_field = None
             
             # Clear simulation state
-            if hasattr(self, 'fire_history'):
+            if hasattr(self, 'fire_history') and self.fire_history is not None:
                 self.fire_history.clear()
                 self.fire_history = None
             
-            if hasattr(self, 'spread_stats'):
+            if hasattr(self, 'spread_stats') and self.spread_stats is not None:
                 self.spread_stats.clear()
                 self.spread_stats = None
             
-            if hasattr(self, 'stats'):
+            if hasattr(self, 'stats') and self.stats is not None:
                 self.stats.clear()
                 self.stats = None
             

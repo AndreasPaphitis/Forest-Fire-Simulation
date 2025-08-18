@@ -1583,11 +1583,11 @@ class FireSimulationEngine:
             import gc
             
             # Clear ember tracking data
-            if hasattr(self, 'ember_events'):
+            if hasattr(self, 'ember_events') and self.ember_events is not None:
                 self.ember_events.clear()
                 self.ember_events = None
             
-            if hasattr(self, 'ember_statistics'):
+            if hasattr(self, 'ember_statistics') and self.ember_statistics is not None:
                 self.ember_statistics.clear()
                 self.ember_statistics = None
             
@@ -1599,7 +1599,7 @@ class FireSimulationEngine:
                 self.simulation_time = None
             
             # Clear forest model reference (but don't delete it - let caller handle that)
-            if hasattr(self, 'forest_model'):
+            if hasattr(self, 'forest_model') and self.forest_model is not None:
                 # Clean up the forest model if it has a cleanup method
                 if hasattr(self.forest_model, 'cleanup'):
                     self.forest_model.cleanup()
@@ -1610,7 +1610,7 @@ class FireSimulationEngine:
                 self.config = None
             
             # Clear logging statistics
-            if hasattr(self, 'log_stats'):
+            if hasattr(self, 'log_stats') and self.log_stats is not None:
                 self.log_stats.clear()
                 self.log_stats = None
             
