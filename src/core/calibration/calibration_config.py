@@ -66,7 +66,7 @@ class CalibrationConfig:
     
     # === PARAMETER SELECTION ===
     calibration_parameters: List[str] = field(default_factory=lambda: [
-        # Group 1: Full Range Parameters (8 parameters)
+        # Group 1: Full Range Parameters (9 parameters)
         'spread_probability',  # Critical for fire spread - added back
         'wind_influence_on_spread',
         'fuel_consumption_rate',
@@ -75,6 +75,7 @@ class CalibrationConfig:
         'barranco_direction_weight',
         'slope_influence',
         'ember_height_factor',
+        'ignition_threshold',  # Critical for fire spread - added
         # Group 2: Constrained Range Parameters (5 parameters)
         'wind_speed',
         'wind_direction',

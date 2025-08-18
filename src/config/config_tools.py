@@ -51,8 +51,8 @@ class ModelConfig:
     
     # === FIRE SPREAD PARAMETERS ===
     spread_probability: float = 0.8
-    fuel_consumption_rate: float = 1.0
-    ignition_threshold: float = 0.3
+    fuel_consumption_rate: float = 0.3  # Lowered from 1.0 to prevent immediate burnout
+    ignition_threshold: float = 0.1  # Lowered from 0.3 to allow fire spread
     min_fuel_value: float = 0.1
     max_fuel_value: float = 1.0  # Changed to 1.0 for PAD data (0-1 range)
     initial_fuel_load: float = 0.5  # Changed to 0.5 for PAD data (0-1 range)

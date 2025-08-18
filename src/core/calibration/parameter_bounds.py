@@ -314,6 +314,16 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
             suggested_points=5
         ),
         
+        'ignition_threshold': ParameterBounds(
+            min_value=0.05, max_value=0.3, default_value=0.1,
+            parameter_type=ParameterType.PROBABILITY,
+            calibration_tier=CalibrationTier.CRITICAL,
+            physical_interpretation="Threshold for ignition probability (deterministic)",
+            literature_range=(0.05, 0.3),
+            units="probability",
+            suggested_points=5
+        ),
+        
 
     }
     
