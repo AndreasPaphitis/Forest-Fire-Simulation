@@ -2016,6 +2016,10 @@ class ForestModel(BaseForestModel):
             burned_cells: Number of burned cells at this step
             state: Optional state array (can be None for memory optimization)
         """
+        # CRITICAL FIX: Ensure fire_history is initialized before using it
+        if not hasattr(self, 'fire_history'):
+            self.fire_history = []
+        
         entry = {
             'step': step,
             'active_cells': active_cells,
@@ -2863,6 +2867,9 @@ class MemoryOptimizedForestModel(ForestModel):
             'slope_assisted_spread': 0,
             'barranco_assisted_spread': 0
         }
+        
+        # CRITICAL FIX: Initialize fire_history attribute that's expected by simulation engine
+        self.fire_history = []
     
     def _initialize_optimized_sparse_storage(self):
         """Initialize sparse storage with optimization."""
