@@ -666,9 +666,9 @@ def create_production_target_data(dem_file: str,
             # Realistic fire parameters (will be varied in sensitivity analysis)
             spread_probability=0.4,
             fuel_consumption_rate=1.0,
-            ignition_threshold=0.5,
+            ignition_threshold=0.15,  # Reduced threshold for easier ignition with PAD data
             min_fuel_value=0.1,
-            max_fuel_value=10.0,
+            max_fuel_value=1.0,  # Fixed for PAD data (0-1 range)
             
             # Wind and terrain settings
             wind_speed=5.0,

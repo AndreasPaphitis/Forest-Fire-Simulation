@@ -1015,8 +1015,8 @@ class FireSimulationEngine:
         max_fuel = self.config.max_fuel_value
         
         # Check if fuel data is already normalized (0-1 range)
-        # If max_fuel is 10.0 and we have PAD data, assume it's already normalized
-        if max_fuel > 1.0 and current_fuel <= 1.0:
+        # If max_fuel is 1.0 and current_fuel is <= 1.0, assume it's PAD data
+        if max_fuel <= 1.0 and current_fuel <= 1.0:
             # PAD data is already normalized, use directly
             fuel_factor = current_fuel
         else:
