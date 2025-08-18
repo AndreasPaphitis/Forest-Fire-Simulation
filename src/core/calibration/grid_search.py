@@ -433,6 +433,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     
     This function is designed to be picklable and run in separate processes.
     """
+    # CRITICAL FIX: Import all required modules at the top to avoid scoping issues
+    import time
+    import logging
+    import gc
+    from src.core.forest_model import ForestModel, create_forest_model
+    from src.config.config_tools import ModelConfig
+    from src.core.fire_simulation_engine import FireSimulationEngine
+    
     forest_model = None
     engine = None
     
@@ -495,13 +503,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             }
     
     try:
-        import time
-        import logging
-        import gc
-        from src.core.forest_model import ForestModel
-        from src.config.config_tools import ModelConfig
-        from src.core.fire_simulation_engine import FireSimulationEngine
-        
         # Also disable propagation for all child loggers
         for name in ['src.core.fire_simulation_engine', 'src.core.forest_model', 'src.core.calibration.objective_functions']:
             child_logger = logging.getLogger(name)
@@ -511,9 +512,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 child_logger.removeHandler(child_handler)
         
         start_time = time.time()
-        
-        # CRITICAL FIX: Use create_forest_model factory to ensure memory optimized model type
-        from src.core.forest_model import create_forest_model
         
         # Extract simulation type from config to ensure memory optimized model
         simulation_type = config_dict.get('simulation_type', 'memory_optimized')
