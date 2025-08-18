@@ -48,6 +48,8 @@ except ImportError:
         logger = logging.getLogger(__name__)
 
 logger = get_logger(__name__)
+# Set main logger level to WARNING to reduce verbosity
+logger.setLevel(logging.WARNING)
 
 
 @dataclass
@@ -393,7 +395,7 @@ def set_shared_target_data(target_data: Dict[str, Any]):
             pickle.dump(target_data, f, protocol=pickle.HIGHEST_PROTOCOL)
         
         _shared_target_data = target_file
-        logger.info(f"📦 Set shared target data in {target_file} (size: {os.path.getsize(target_file):,} bytes)")
+        logger.debug(f"📦 Set shared target data in {target_file} (size: {os.path.getsize(target_file):,} bytes)")
         
     except Exception as e:
         logger.warning(f"⚠️  Failed to set shared target data: {e}")
@@ -1006,7 +1008,7 @@ class GridSearchCalibrator:
             # Set target data for multiprocessing access using shared memory
             if target_data is not None:
                 set_shared_target_data(target_data)
-                logger.info(f"📦 Set shared target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
+                logger.debug(f"📦 Set shared target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
             
             logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
             self.start_time = time.time()  # Store start time for ETA calculations
@@ -1045,12 +1047,12 @@ class GridSearchCalibrator:
             if should_run_parallel:
                 if cli_override:
                     # CLI override - respect user choice but provide warnings
-                    logger.info(f"🎛️  CLI Override: Respecting user-specified {self.max_workers} workers")
+                    logger.debug(f"🎛️  CLI Override: Respecting user-specified {self.max_workers} workers")
                     if available_memory_gb < 32 and total_model_cells > 10_000_000_000:
                         logger.error(f"🚨 CRITICAL: Extremely large grid on very low memory - forcing sequential despite CLI override")
                         should_run_parallel = False
                     else:
-                        logger.info(f"✅ Proceeding with parallel execution as requested")
+                        logger.debug(f"✅ Proceeding with parallel execution as requested")
                 else:
                     # Auto-detection mode - use intelligent thresholds
                     if available_memory_gb >= 120:  # High-memory HPC environment
@@ -1128,7 +1130,7 @@ class GridSearchCalibrator:
         """
         Run parallel calibration with optimized serialization.
         """
-        logger.info(f"🚀 Starting parallel calibration with {self.total_combinations} combinations")
+        logger.debug(f"🚀 Starting parallel calibration with {self.total_combinations} combinations")
         
         # Calculate optimal worker count
         if not self.bypass_worker_limit:
@@ -1151,7 +1153,7 @@ class GridSearchCalibrator:
             logger.info("   ThreadPoolExecutor was causing GIL deadlocks with many workers")
         
         # Pre-optimize configurations for workers
-        logger.info("📦 Pre-optimizing configurations for worker processes...")
+        logger.debug("📦 Pre-optimizing configurations for worker processes...")
         self._pre_optimize_for_workers()
         
         # Convert generator to list for parallel processing
@@ -1159,11 +1161,11 @@ class GridSearchCalibrator:
         combinations_list = list(self._generate_parameter_combinations())
         
         # CRITICAL DEBUG: Validate combinations_list
-        logger.info(f"🔍 DEBUG: combinations_list type: {type(combinations_list)}")
-        logger.info(f"🔍 DEBUG: combinations_list length: {len(combinations_list)}")
+        logger.debug(f"combinations_list type: {type(combinations_list)}")
+        logger.debug(f"combinations_list length: {len(combinations_list)}")
         if len(combinations_list) > 0:
-            logger.info(f"🔍 DEBUG: First combination type: {type(combinations_list[0])}")
-            logger.info(f"🔍 DEBUG: First combination value: {combinations_list[0]}")
+            logger.debug(f"First combination type: {type(combinations_list[0])}")
+            logger.debug(f"First combination value: {combinations_list[0]}")
         
         # Prepare configuration and objective function name for workers
         # CRITICAL FIX: Ensure config_dict is properly created
@@ -1199,8 +1201,8 @@ class GridSearchCalibrator:
                 logger.error(f"config_dict is still not a dictionary after processing: {type(config_dict)} = {config_dict}")
                 config_dict = {}
             
-            logger.info(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
-            logger.info(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+            logger.debug(f"config_dict type: {type(config_dict)}")
+            logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
             
             # CRITICAL FIX: Ensure essential keys are present
             essential_keys = ['grid_size', 'num_layers', 'max_steps', 'simulation_type']
@@ -1217,12 +1219,12 @@ class GridSearchCalibrator:
                 for key in missing_keys:
                     if key in defaults:
                         config_dict[key] = defaults[key]
-                        logger.info(f"Added default value for {key}: {defaults[key]}")
+                        logger.debug(f"Added default value for {key}: {defaults[key]}")
             
         except Exception as e:
-            logger.error(f"🔍 DEBUG: Error creating config_dict: {e}")
+            logger.error(f"Error creating config_dict: {e}")
             import traceback
-            logger.error(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Create a minimal fallback config_dict
             config_dict = {
                 'grid_size': (100, 100),
@@ -1234,7 +1236,7 @@ class GridSearchCalibrator:
                 'ignition_threshold': 0.1,
                 'stop_when_fire_extinguished': False
             }
-            logger.info(f"Using fallback config_dict with {len(config_dict)} keys")
+            logger.debug(f"Using fallback config_dict with {len(config_dict)} keys")
         
         objective_function_name = self.objective_function.__class__.__name__
         
@@ -1312,7 +1314,7 @@ class GridSearchCalibrator:
                 self.serialization_optimizer.cache_serialized_object(config_key, optimized_config)
                 common_configs[config_key] = optimized_config
             
-            logger.info(f"📦 Pre-cached {len(common_configs)} configurations for workers")
+            logger.debug(f"📦 Pre-cached {len(common_configs)} configurations for workers")
                     
         except Exception as e:
             logger.warning(f"⚠️  Pre-optimization failed: {e}")
@@ -1419,7 +1421,7 @@ class GridSearchCalibrator:
             # Cap at reasonable maximum
             optimal_workers = min(optimal_workers, 32)
             
-            logger.info(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
+            logger.debug(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
             
             return optimal_workers
             
