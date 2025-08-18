@@ -115,7 +115,20 @@ class FireSimulationEngine:
         if config is None:
             self.config = get_global_config()
             logger.info("FireSimulationEngine initialized using global configuration.")
-        elif isinstance(config, dict):
+        elif isinstance(config, (list, tuple)):
+            logger.error(f"CRITICAL ERROR: config is a list/tuple instead of dict: {type(config)} = {config}")
+            logger.error("This indicates a parameter passing issue in calibration")
+            # Convert list to dict if possible, or use empty dict as fallback
+            if len(config) > 0 and hasattr(config[0], 'items'):
+                # If it's a list of dictionaries, use the first one
+                config = config[0]
+                logger.warning(f"Using first item from config list: {type(config)}")
+            else:
+                # Fallback to empty dict
+                config = {}
+                logger.warning("Using empty dict as config fallback")
+
+        if isinstance(config, dict):
             try:
                 self.config = ModelConfig(**config) 
                 logger.info("FireSimulationEngine initialized with ModelConfig created from dictionary.")
@@ -126,6 +139,10 @@ class FireSimulationEngine:
                 # This ensures self.config is always a ModelConfig instance
                 temp_mc = ModelConfig()
                 valid_keys = {f.name for f in fields(ModelConfig)}
+                # CRITICAL FIX: Ensure config is a dictionary before calling .items()
+                if not isinstance(config, dict):
+                    logger.error(f"config is not a dictionary: {type(config)} = {config}")
+                    config = {}
                 filtered_config_dict = {k: v for k, v in config.items() if k in valid_keys}
                 try:
                     self.config = ModelConfig(**filtered_config_dict)

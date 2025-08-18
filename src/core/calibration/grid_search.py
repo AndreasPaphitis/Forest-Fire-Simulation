@@ -436,9 +436,36 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     forest_model = None
     engine = None
     
+    # Set up logging for worker process - COMPREHENSIVE FIX
+    # Completely isolate worker logging to prevent duplicates
+    worker_logger = logging.getLogger(f"worker_{time.time()}")
+    worker_logger.setLevel(logging.INFO)
+    
+    # Clear any existing handlers
+    for handler in worker_logger.handlers[:]:
+        worker_logger.removeHandler(handler)
+    
+    # Add a single handler with unique formatting
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[WORKER] %(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    worker_logger.addHandler(handler)
+    
+    # Critical: Prevent propagation to avoid duplicate logging
+    worker_logger.propagate = False
+    
+    # CRITICAL DEBUG: Log all input types to identify the source of the list
+    worker_logger.info(f"🔍 DEBUG: parameter_values type: {type(parameter_values)}")
+    worker_logger.info(f"🔍 DEBUG: parameter_values value: {parameter_values}")
+    worker_logger.info(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+    worker_logger.info(f"🔍 DEBUG: target_data type: {type(target_data)}")
+    
+    if isinstance(parameter_values, (list, tuple)):
+        worker_logger.error(f"🔍 DEBUG: parameter_values is a list/tuple with length: {len(parameter_values)}")
+        worker_logger.error(f"🔍 DEBUG: parameter_values content: {list(parameter_values)}")
+    
     # CRITICAL FIX: Ensure parameter_values is a dictionary
     if not isinstance(parameter_values, dict):
-        worker_logger = logging.getLogger(f"worker_{time.time()}")
         worker_logger.error(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
         
         # Try to convert list to dictionary if possible
@@ -475,24 +502,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         from src.config.config_tools import ModelConfig
         from src.core.fire_simulation_engine import FireSimulationEngine
         
-        # Set up logging for worker process - COMPREHENSIVE FIX
-        # Completely isolate worker logging to prevent duplicates
-        worker_logger = logging.getLogger(f"worker_{time.time()}")
-        worker_logger.setLevel(logging.INFO)
-        
-        # Clear any existing handlers
-        for handler in worker_logger.handlers[:]:
-            worker_logger.removeHandler(handler)
-        
-        # Add a single handler with unique formatting
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('[WORKER] %(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        worker_logger.addHandler(handler)
-        
-        # Critical: Prevent propagation to avoid duplicate logging
-        worker_logger.propagate = False
-        
         # Also disable propagation for all child loggers
         for name in ['src.core.fire_simulation_engine', 'src.core.forest_model', 'src.core.calibration.objective_functions']:
             child_logger = logging.getLogger(name)
@@ -512,11 +521,33 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             worker_logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
             simulation_type = 'memory_optimized'
         
+        # CRITICAL DEBUG: Log config_dict before creating forest model
+        worker_logger.info(f"🔍 DEBUG: About to create forest model with config_dict type: {type(config_dict)}")
+        worker_logger.info(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+        
+        # CRITICAL FIX: Ensure config_dict is a dictionary
+        if not isinstance(config_dict, dict):
+            worker_logger.error(f"CRITICAL ERROR: config_dict is not a dictionary: {type(config_dict)} = {config_dict}")
+            # Try to convert if it's a list/tuple
+            if isinstance(config_dict, (list, tuple)) and len(config_dict) > 0:
+                if isinstance(config_dict[0], dict):
+                    config_dict = config_dict[0]
+                    worker_logger.warning(f"Using first item from config_dict list: {type(config_dict)}")
+                else:
+                    worker_logger.error("config_dict is a list but first item is not a dictionary")
+                    config_dict = {}
+            else:
+                config_dict = {}
+                worker_logger.warning("Using empty dict as config_dict fallback")
+        
         # Create forest model using factory function to ensure correct type
         forest_model = create_forest_model(
             model_type=simulation_type,
             config=ModelConfig(**config_dict)
         )
+        
+        # CRITICAL DEBUG: Log before creating simulation engine
+        worker_logger.info(f"🔍 DEBUG: About to create FireSimulationEngine with config_dict type: {type(config_dict)}")
         
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
@@ -1048,8 +1079,27 @@ class GridSearchCalibrator:
         # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
         combinations_list = list(self._generate_parameter_combinations())
         
+        # CRITICAL DEBUG: Validate combinations_list
+        logger.info(f"🔍 DEBUG: combinations_list type: {type(combinations_list)}")
+        logger.info(f"🔍 DEBUG: combinations_list length: {len(combinations_list)}")
+        if len(combinations_list) > 0:
+            logger.info(f"🔍 DEBUG: First combination type: {type(combinations_list[0])}")
+            logger.info(f"🔍 DEBUG: First combination value: {combinations_list[0]}")
+        
         # Prepare configuration and objective function name for workers
-        config_dict = self.config.create_config_variant({}).__dict__ if hasattr(self.config.create_config_variant({}), '__dict__') else self.config.create_config_variant({})
+        # CRITICAL FIX: Ensure config_dict is properly created
+        try:
+            base_config_variant = self.config.create_config_variant({})
+            if hasattr(base_config_variant, '__dict__'):
+                config_dict = base_config_variant.__dict__
+            else:
+                config_dict = base_config_variant
+            logger.info(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+            logger.info(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+        except Exception as e:
+            logger.error(f"🔍 DEBUG: Error creating config_dict: {e}")
+            config_dict = {}
+        
         objective_function_name = self.objective_function.__class__.__name__
         
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
