@@ -53,8 +53,8 @@
   },
   
   "simulation": {
-    "max_time_steps": 100,
-    "time_step": 60,
+    "max_time_steps": 300,
+    "time_step": 1,
     "ignition_points": [
       {
         "x": 2500,

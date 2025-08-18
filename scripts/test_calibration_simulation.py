@@ -83,7 +83,7 @@ def test_simulation_behavior():
         config = ModelConfig(
             grid_size=(30, 30),
             num_layers=5,
-            max_steps=15,
+            max_steps=30,  # Increased for testing but not full 300
             model_resolution=5.0,
             
             # Test parameters

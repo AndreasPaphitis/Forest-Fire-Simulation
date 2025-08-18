@@ -32,7 +32,7 @@ def test_optimized_configuration():
     config = ModelConfig(
         grid_size=(30, 30),
         num_layers=5,
-        max_steps=20,
+        max_steps=50,  # Increased for testing but not full 300
         model_resolution=5.0,
         
         # Optimized parameters based on test results

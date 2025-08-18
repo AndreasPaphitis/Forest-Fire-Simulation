@@ -213,7 +213,7 @@ class HPCOptimizedSensitivityRunner:
         elif self.hpc_mode:
             self.calibration_config.base_config.grid_size = (120, 120)
             self.calibration_config.base_config.num_layers = 8
-            self.calibration_config.base_config.max_steps = 50
+            self.calibration_config.base_config.max_steps = 300
         
         self.calibration_config.base_config.memory_optimization_level = memory_level
         self.calibration_config.simulation_timeout_minutes = 30.0  # Longer timeout for larger grids

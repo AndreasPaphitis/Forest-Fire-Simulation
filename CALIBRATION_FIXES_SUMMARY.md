@@ -94,6 +94,12 @@ Your calibration should now work properly with the optimized parameters:
 python scripts/run_tenerife_calibration.py
 ```
 
+### **2. Updated Timestep Configuration**
+- **Calibration runs**: Now use **300 timesteps** (increased from 100)
+- **Timestep meaning**: Each timestep = 1 simulation step (no direct time equivalent yet)
+- **Simulation timeout**: Extended to 360 minutes (6 hours) per run
+- **Total runtime**: ~60-90 hours for full calibration (243 combinations)
+
 ### **2. Fine-tune if Needed**
 If the burned area is too high for your specific use case:
 - **Reduce spread_probability** to 0.6-0.7

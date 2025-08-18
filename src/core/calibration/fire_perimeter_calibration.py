@@ -827,7 +827,7 @@ class TenerifeFirePerimeterCalibrator:
             # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
             grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
             num_layers=25,             # Original 25 layers for detailed vertical modeling
-            max_steps=100,             # Sufficient for fire progression
+            max_steps=300,             # Extended for comprehensive fire progression
             model_resolution=5.0,      # Original 5m resolution for high detail
             
             # CRITICAL FIX: FORCE MEMORY OPTIMIZED MODEL TYPE
@@ -911,7 +911,7 @@ class TenerifeFirePerimeterCalibrator:
             parallel_execution=True,
             max_workers=self.workers,  # Use CLI-specified worker count
             memory_limit_gb=self.memory_gb * 0.9,  # Leave 10% for system
-            simulation_timeout_minutes=180.0,      # 3 hours per simulation (full Tenerife needs more time)
+            simulation_timeout_minutes=360.0,      # 6 hours per simulation (extended for 300 timesteps)
             
             # SPATIAL SIMILARITY WEIGHTS
             jaccard_weight=0.4,

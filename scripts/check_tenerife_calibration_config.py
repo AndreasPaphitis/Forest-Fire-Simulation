@@ -45,10 +45,10 @@ def main():
     # TIMESTEP CONFIGURATION
     print(f"\n⏰ TIMESTEP CONFIGURATION:")
     print(f"   Default max_steps: 20 (from ModelConfig)")
-    print(f"   Calibration max_steps: 100 (extended for fire progression)")
-    print(f"   Each timestep represents: ~1 time unit of fire spread")
+    print(f"   Calibration max_steps: 300 (extended for comprehensive fire progression)")
+    print(f"   Each timestep represents: 1 simulation step (no direct time equivalent yet)")
     print(f"   Stop condition: Fire extinguished OR max steps reached")
-    print(f"   Simulation timeout: 120 minutes per run")
+    print(f"   Simulation timeout: 360 minutes per run")
     
     # DOMAIN CONFIGURATION  
     print(f"\n🌍 FULL TENERIFE DOMAIN:")
@@ -83,7 +83,7 @@ def main():
         concurrent_sims = min(config["workers"], total_combinations)
         peak_memory = shared_terrain + (memory_per_sim * concurrent_sims)
         
-        time_per_sim_minutes = 20.0
+        time_per_sim_minutes = 60.0  # Increased for 300 timesteps
         total_time_hours = (total_combinations * time_per_sim_minutes) / (60 * config["workers"])
         
         safety_icon = "✅" if config["safe"] else "⚠️ "
@@ -114,7 +114,7 @@ def main():
     print(f"   1. Load fire perimeter shapefiles for Days 1-2 (training)")
     print(f"   2. For each of {total_combinations} parameter combinations:")
     print(f"      a. Set up full Tenerife simulation with those parameters")
-    print(f"      b. Run simulation for up to 100 timesteps")
+    print(f"      b. Run simulation for up to 300 timesteps")
     print(f"      c. Compare final fire shape to training perimeters")
     print(f"      d. Calculate spatial similarity score")
     print(f"   3. Select best parameter combination")
