@@ -325,6 +325,68 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
             suggested_points=5
         ),
         
+        # ===== ADDITIONAL IMPLEMENTED PARAMETERS =====
+        
+        'min_fuel_value': ParameterBounds(
+            min_value=0.01, max_value=0.5, default_value=0.1,
+            parameter_type=ParameterType.POSITIVE_FLOAT,
+            calibration_tier=CalibrationTier.CRITICAL,
+            physical_interpretation="Minimum fuel value required for burning",
+            literature_range=(0.01, 0.3),
+            units="fuel units",
+            suggested_points=5
+        ),
+        
+        'max_fuel_value': ParameterBounds(
+            min_value=0.5, max_value=10.0, default_value=1.0,
+            parameter_type=ParameterType.POSITIVE_FLOAT,
+            calibration_tier=CalibrationTier.CRITICAL,
+            physical_interpretation="Maximum fuel value for normalization",
+            literature_range=(0.5, 5.0),
+            units="fuel units",
+            suggested_points=5
+        ),
+        
+        'reference_wind_speed': ParameterBounds(
+            min_value=5.0, max_value=25.0, default_value=10.0,
+            parameter_type=ParameterType.POSITIVE_FLOAT,
+            calibration_tier=CalibrationTier.MODERATE,
+            physical_interpretation="Reference wind speed for scaling wind effects",
+            literature_range=(5.0, 20.0),
+            units="m/s",
+            suggested_points=5
+        ),
+        
+        'fuel_moisture_baseline': ParameterBounds(
+            min_value=0.1, max_value=0.8, default_value=0.3,
+            parameter_type=ParameterType.PROBABILITY,
+            calibration_tier=CalibrationTier.MODERATE,
+            physical_interpretation="Baseline fuel moisture content",
+            literature_range=(0.1, 0.6),
+            units="moisture fraction",
+            suggested_points=5
+        ),
+        
+        'ember_wind_factor': ParameterBounds(
+            min_value=0.0, max_value=1.0, default_value=0.5,
+            parameter_type=ParameterType.PROBABILITY,
+            calibration_tier=CalibrationTier.MODERATE,
+            physical_interpretation="Wind influence on ember direction",
+            literature_range=(0.2, 0.8),
+            units="scaling factor",
+            suggested_points=5
+        ),
+        
+        'ember_rise': ParameterBounds(
+            min_value=1, max_value=10, default_value=3,
+            parameter_type=ParameterType.INTEGER,
+            calibration_tier=CalibrationTier.MODERATE,
+            physical_interpretation="Maximum ember height rise in grid cells",
+            literature_range=(1, 8),
+            units="cells",
+            suggested_points=5
+        ),
+        
 
     }
     
