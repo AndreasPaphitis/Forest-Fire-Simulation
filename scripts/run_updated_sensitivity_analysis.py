@@ -196,7 +196,11 @@ def save_results(results: SensitivityResults, output_dir: Path):
         f.write(f"Valid analyses: {summary['valid_parameters']}\n")
         f.write(f"Total evaluations: {summary['total_evaluations']}\n")
         f.write(f"Total time: {summary['total_time']:.2f} seconds\n")
-        f.write(f"Baseline objective: {summary['baseline_objective']:.4f}\n\n")
+        baseline_obj = summary.get('baseline_objective')
+        if baseline_obj is not None:
+            f.write(f"Baseline objective: {baseline_obj:.4f}\n\n")
+        else:
+            f.write(f"Baseline objective: Not available (evaluation failed)\n\n")
         
         f.write("PARAMETER RANKINGS (by sensitivity)\n")
         f.write("-" * 40 + "\n")

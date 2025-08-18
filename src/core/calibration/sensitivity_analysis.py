@@ -253,9 +253,7 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         # Create forest model and simulation engine
         forest_model = create_forest_model(
             model_type='memory_optimized',
-            config=config,
-            grid_size=config.grid_size,
-            num_layers=config.num_layers
+            config=config
         )
         
         engine = FireSimulationEngine(forest_model=forest_model, config=config)
