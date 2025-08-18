@@ -141,9 +141,9 @@ class CalibrationConfig:
     exclude_ground_layer: bool = True
     max_vegetation_height_m: float = 50.0
     
-    # Terrain data configuration
-    use_terrain: bool = False
-    dem_file: Optional[str] = None
+    # === TERRAIN FILE PARAMETERS ===
+    use_terrain: bool = True  # Changed from False to True - terrain effects are essential for realistic fire simulation
+    dem_file: Optional[str] = "Data/DTM/Merged_DTM.tif"
     
     # Memory and processing for LiDAR calibration
     tile_size: int = 200

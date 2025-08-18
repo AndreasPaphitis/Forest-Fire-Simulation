@@ -76,7 +76,7 @@ class ModelConfig:
     min_depression_area: int = 4
 
     # === EMBER PARAMETERS ===
-    ember_probability: float = 0.1
+    ember_probability: float = 0.3  # Increased from 0.1 to 0.3 for more effective ember transport
     ember_distance: int = 5
     ember_ignition: float = 0.3
     ember_height_factor: float = 0.2
@@ -148,7 +148,7 @@ class ModelConfig:
     lidar_load_retry_delay_seconds: float = 0.1
 
     # === TERRAIN FILE PARAMETERS ===
-    use_terrain: bool = False
+    use_terrain: bool = True  # Changed from False to True - terrain effects are essential for realistic fire simulation
     dem_file: Optional[str] = "Data/DTM/Merged_DTM.tif"  # Updated to local path
     
     # === TERRAIN PREPROCESSING PARAMETERS ===

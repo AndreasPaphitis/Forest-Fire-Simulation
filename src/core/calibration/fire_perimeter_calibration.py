@@ -1575,8 +1575,11 @@ class TenerifeFirePerimeterCalibrator:
             logger.warning(f"⚠️  validation_results is not a dict: {type(validation_results)}")
             validation_results = {'status': 'error', 'reason': 'invalid_type', 'original_type': str(type(validation_results))}
         
+        # Import the serialization function
+        from src.core.calibration.calibration_utils import _convert_to_serializable
+        
         with open(validation_file, 'w') as f:
-            json.dump(validation_results, f, indent=2, default=str)
+            json.dump(_convert_to_serializable(validation_results), f, indent=2)
         
         # Save summary report
         summary_file = self.results_dir / f"{self.experiment_name}_calibration_summary.json"

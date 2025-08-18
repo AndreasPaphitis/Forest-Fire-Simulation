@@ -279,9 +279,13 @@ def _convert_to_serializable(obj: Any) -> Any:
         return int(obj)
     elif isinstance(obj, np.floating):
         return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
     elif isinstance(obj, dict):
         return {key: _convert_to_serializable(value) for key, value in obj.items()}
     elif isinstance(obj, list):
+        return [_convert_to_serializable(item) for item in obj]
+    elif isinstance(obj, tuple):
         return [_convert_to_serializable(item) for item in obj]
     elif hasattr(obj, '__dict__'):
         return _convert_to_serializable(obj.__dict__)

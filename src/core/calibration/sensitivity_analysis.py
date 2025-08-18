@@ -190,8 +190,11 @@ class SensitivityResults:
             'summary': self.get_sensitivity_summary()
         }
         
+        # Import the serialization function
+        from src.core.calibration.calibration_utils import _convert_to_serializable
+        
         with open(filepath, 'w') as f:
-            json.dump(results_data, f, indent=2)
+            json.dump(_convert_to_serializable(results_data), f, indent=2)
         
         logger.info(f"Saved sensitivity analysis results to {filepath}")
 

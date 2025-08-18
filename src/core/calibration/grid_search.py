@@ -206,8 +206,11 @@ class GridSearchResults:
                 'objective_components': self.best_result.objective_components
             }
         
+        # Import the serialization function
+        from src.core.calibration.calibration_utils import _convert_to_serializable
+        
         with open(filepath, 'w') as f:
-            json.dump(results_data, f, indent=2)
+            json.dump(_convert_to_serializable(results_data), f, indent=2)
         
         logger.info(f"Saved grid search results to {filepath}")
     
@@ -510,27 +513,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 elif hasattr(forest_model, 'close'):
                     forest_model.close()
                 
-                # Clear terrain data references
+                # CRITICAL FIX: Preserve terrain effects for realistic fire simulation
+                # Terrain effects (barranco, wind channeling, etc.) are essential for proper fire behavior
+                # and should NOT be disabled during calibration as this causes fires to not spread properly
+                # Only clear shared terrain references to free memory, but preserve the actual terrain data
                 if hasattr(forest_model, '_shared_terrain_refs'):
                     forest_model._shared_terrain_refs.clear()
-                if hasattr(forest_model, 'terrain_elevation'):
-                    forest_model.terrain_elevation = None
-                if hasattr(forest_model, 'terrain_slope'):
-                    forest_model.terrain_slope = None
-                if hasattr(forest_model, 'terrain_aspect'):
-                    forest_model.terrain_aspect = None
-                if hasattr(forest_model, 'barranco_mask'):
-                    forest_model.barranco_mask = None
-                if hasattr(forest_model, 'barranco_directions'):
-                    forest_model.barranco_directions = None
-                if hasattr(forest_model, 'depression_mask'):
-                    forest_model.depression_mask = None
-                if hasattr(forest_model, 'wind_channeling_mask'):
-                    forest_model.wind_channeling_mask = None
-                if hasattr(forest_model, 'wind_amplification'):
-                    forest_model.wind_amplification = None
-                if hasattr(forest_model, 'wind_direction_modification'):
-                    forest_model.wind_direction_modification = None
+                # DO NOT clear terrain data - it's essential for realistic fire simulation
+                worker_logger.debug("Preserving terrain effects for realistic fire simulation")
             except Exception as e:
                 worker_logger.debug(f"Forest model cleanup warning: {e}")
         

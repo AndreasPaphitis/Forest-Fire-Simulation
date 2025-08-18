@@ -904,7 +904,7 @@ class FireSimulationEngine:
             slope_factor = 1.0 # Slope effect is primarily horizontal terrain-based
         else:
             # Horizontal or diagonal spread logic (existing logic)
-            base_prob = getattr(self.config, 'spread_probability', 0.5)
+            base_prob = getattr(self.config, 'spread_probability', 0.8)  # Increased from 0.5 to 0.8 for better spreading
             
             # Wind factor - use memory-safe access
             wind_factor = 1.0 # Default if no wind data or wind speed is zero
@@ -1046,8 +1046,9 @@ class FireSimulationEngine:
         # Clip probability to ensure it's within [0, 1]
         effective_spread_prob = max(0.0, min(1.0, ignition_prob))
         
-        # Deterministic threshold-based ignition (no random number)
-        ignition_threshold = getattr(self.config, 'ignition_threshold', 0.5)  # Default threshold of 0.5
+        # CRITICAL FIX: Lower ignition threshold to improve fire spreading
+        # The default threshold of 0.5 was too high, causing fires to not spread
+        ignition_threshold = getattr(self.config, 'ignition_threshold', 0.1)  # Lowered from 0.5 to 0.1
         
         # --- DEBUG PRINT --- (Only in emergency mode to reduce log spam)
         if self.emergency_mode:
