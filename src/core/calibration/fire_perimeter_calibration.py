@@ -824,6 +824,9 @@ class TenerifeFirePerimeterCalibrator:
             max_steps=100,             # Sufficient for fire progression
             model_resolution=5.0,      # Original 5m resolution for high detail
             
+            # CRITICAL FIX: FORCE MEMORY OPTIMIZED MODEL TYPE
+            simulation_type="memory_optimized",  # Force sparse storage and memory optimizations
+            
             # MAXIMUM MEMORY OPTIMIZATION
             memory_optimization_level=2,  # Maximum valid optimization level
             use_disk_storage=True,        # Store history on disk
@@ -1167,6 +1170,15 @@ class TenerifeFirePerimeterCalibrator:
             print(f"⚠️  WARNING: Each worker will load 14.5 GB terrain data individually!")
             print(f"   Total memory usage: ~{14.5 * self.workers:.1f} GB")
             print(f"   Consider reducing workers or fixing shared terrain setup")
+            
+        # CRITICAL FIX: Ensure memory optimized model type is set
+        if hasattr(calibration_config.base_config, 'simulation_type'):
+            if calibration_config.base_config.simulation_type != "memory_optimized":
+                print(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
+                calibration_config.base_config.simulation_type = "memory_optimized"
+        else:
+            print(f"⚠️  Adding simulation_type='memory_optimized' to base_config")
+            calibration_config.base_config.simulation_type = "memory_optimized"
         
         # Create parameter bounds
         parameter_bounds = get_default_calibration_bounds()

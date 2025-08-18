@@ -443,8 +443,20 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         
         start_time = time.time()
         
-        # Create forest model from config
-        forest_model = ForestModel(config=ModelConfig(**config_dict))
+        # CRITICAL FIX: Use create_forest_model factory to ensure memory optimized model type
+        from src.core.forest_model import create_forest_model
+        
+        # Extract simulation type from config to ensure memory optimized model
+        simulation_type = config_dict.get('simulation_type', 'memory_optimized')
+        if simulation_type != 'memory_optimized':
+            worker_logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
+            simulation_type = 'memory_optimized'
+        
+        # Create forest model using factory function to ensure correct type
+        forest_model = create_forest_model(
+            model_type=simulation_type,
+            config=ModelConfig(**config_dict)
+        )
         
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
@@ -1081,8 +1093,8 @@ class GridSearchCalibrator:
             if param_name in config_variant:
                 config_variant[param_name] = param_value
         
-        # Create forest model
-        from src.core.forest_model import ForestModel
+        # CRITICAL FIX: Use create_forest_model factory to ensure memory optimized model type
+        from src.core.forest_model import create_forest_model
         from src.config.config_tools import ModelConfig
         import gc
         gc.disable()
@@ -1095,9 +1107,27 @@ class GridSearchCalibrator:
                     if not key.startswith('_'):
                         clean_config[key] = value
                 
-                forest_model = ForestModel(config=ModelConfig(**clean_config))
+                # CRITICAL FIX: Extract simulation type to ensure memory optimized model
+                simulation_type = clean_config.get('simulation_type', 'memory_optimized')
+                if simulation_type != 'memory_optimized':
+                    logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
+                    clean_config['simulation_type'] = 'memory_optimized'
+                
+                # Create forest model using factory function to ensure correct type
+                forest_model = create_forest_model(
+                    model_type=simulation_type,
+                    config=ModelConfig(**clean_config)
+                )
             else:
-                forest_model = ForestModel(config=config_variant)
+                # CRITICAL FIX: Ensure simulation_type is set for ModelConfig objects
+                if hasattr(config_variant, 'simulation_type') and config_variant.simulation_type != 'memory_optimized':
+                    logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
+                    config_variant.simulation_type = 'memory_optimized'
+                
+                forest_model = create_forest_model(
+                    model_type=getattr(config_variant, 'simulation_type', 'memory_optimized'),
+                    config=config_variant
+                )
             return forest_model
         finally:
             gc.enable()
