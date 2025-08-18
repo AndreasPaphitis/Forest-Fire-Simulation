@@ -193,9 +193,9 @@ class HPCOptimizedSensitivityRunner:
         if cli_workers is not None:
             self.calibration_config.max_workers = cli_workers
         elif self.hpc_mode:
-            self.calibration_config.max_workers = 28  # Leave 4 cores for system
+            self.calibration_config.max_workers = 16  # 1 worker per parameter for optimal parallelization
         else:
-            self.calibration_config.max_workers = min(24, 28)  # Conservative default
+            self.calibration_config.max_workers = 16  # 1 worker per parameter for optimal parallelization
             
         self.calibration_config.parallel_execution = True
         
@@ -547,49 +547,69 @@ class HPCOptimizedSensitivityRunner:
     
     def _get_all_calibration_parameters(self) -> List[str]:
         """
-        Get all 13 calibration parameters organized by sensitivity groups.
+        Get all 17 IMPLEMENTED calibration parameters based on definitive line-by-line analysis.
         
-        Group 1: Full range parameters (7 parameters)
-        Group 2: Constrained range parameters (6 parameters)
+        These parameters are actually used in the fire simulation engine.
         
         Returns:
-            List of all calibration parameter names in priority order
+            List of all implemented calibration parameter names in priority order
         """
         # Check if quick mode is enabled
         cli_args = getattr(self, '_cli_args', None)
         quick_mode = False
         if cli_args is not None and hasattr(cli_args, 'quick') and cli_args.quick:
             quick_mode = True
-            print("⚡ QUICK MODE: Analyzing only top 7 critical parameters")
+            print("⚡ QUICK MODE: Analyzing only top 8 critical parameters")
         
-        # Group 1: Full range parameters (test across complete theoretical ranges)
-        group1_full_range = [
-            'wind_influence_on_spread',  # Wind effect on spread probability
-            'fuel_consumption_rate',     # Rate of fuel consumption
-            'terrain_effect_strength',   # Overall terrain effect strength
-            'barranco_amplification',    # Wind speed amplification in ravines
-            'barranco_direction_weight', # Wind direction alignment weight in ravines
-            'slope_influence',           # Terrain slope effect on fire spread
-            'ember_height_factor'        # Height factor for ember generation
+        # DEFINITIVE LIST OF IMPLEMENTED PARAMETERS (from line-by-line analysis)
+        # Core Fire Mechanics
+        core_fire_mechanics = [
+            'spread_probability',      # Line 906 - Base fire spread probability
+            'fuel_consumption_rate',   # Line 824 - Fuel consumption rate
+            'ignition_threshold',      # Line 1050 - Ignition probability threshold
+            'min_fuel_value',          # Lines 825, 883, 1369 - Minimum fuel for burning
+            'max_fuel_value',          # Lines 1014, 1377 - Maximum fuel normalization
         ]
         
-        # Group 2: Constrained range parameters (test within realistic operational ranges)
-        group2_constrained_range = [
-            'wind_speed',                # Base wind speed affecting fire spread
-            'wind_direction',            # Wind direction in degrees
-            'ember_distance',            # Ember travel distance
-            'ember_probability',         # Ember generation probability
-            'ember_ignition',            # Ember ignition probability
-
+        # Environmental Interactions
+        environmental_interactions = [
+            'wind_influence_on_spread', # Line 990 - Wind effect on fire spread
+            'slope_influence',         # Line 1114 - Terrain slope effect
+            'reference_wind_speed',    # Line 989 - Reference wind speed for scaling
+            'fuel_moisture_baseline',  # Line 1387 - Baseline fuel moisture
         ]
+        
+        # Wind Parameters (Main Fire Spread)
+        wind_parameters = [
+            'wind_speed',              # Lines 920-994 - Wind speed via get_wind_speed_at_cell()
+            'wind_direction',          # Lines 926-994 - Wind direction via get_wind_direction_at_cell()
+        ]
+        
+        # Ember Mechanics
+        ember_mechanics = [
+            'ember_probability',       # Line 1250 - Ember generation probability
+            'ember_distance',          # Lines 1284, 1401 - Ember travel distance
+            'ember_ignition',          # Line 1374 - Ember ignition probability
+            'ember_height_factor',     # Line 1254 - Height factor for ember generation
+            'ember_wind_factor',       # Line 1301 - Wind influence on ember direction
+            'ember_rise'               # Line 1314 - Ember height change range
+        ]
+        
+        # All implemented parameters
+        all_implemented_parameters = (
+            core_fire_mechanics + 
+            environmental_interactions + 
+            wind_parameters + 
+            ember_mechanics
+        )
         
         # Return parameters based on mode
         if quick_mode:
-            # Quick mode: only top 7 critical parameters (Group 1)
-            return group1_full_range
+            # Quick mode: only top 8 critical parameters (core fire mechanics + key environmental)
+            return core_fire_mechanics + environmental_interactions[:3]
         else:
-            # Full mode: all 12 parameters
-            return group1_full_range + group2_constrained_range
+            # Full mode: all 17 implemented parameters
+            return all_implemented_parameters
     
     def setup_components(self):
         """Set up parameter bounds, objective function, and target data."""
