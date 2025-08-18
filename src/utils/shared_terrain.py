@@ -322,6 +322,14 @@ def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarra
             logger.error(f"CRITICAL ERROR: shared_names is not a dict: {type(shared_names)} = {shared_names}")
             return terrain_data
         
+        # CRITICAL DEBUG: Check if shapes/dtypes are dicts
+        if isinstance(shapes, (list, tuple)) or not isinstance(shapes, dict):
+            logger.error(f"CRITICAL ERROR: shapes is not a dict: {type(shapes)} = {shapes}")
+            return terrain_data
+        if isinstance(dtypes, (list, tuple)) or not isinstance(dtypes, dict):
+            logger.error(f"CRITICAL ERROR: dtypes is not a dict: {type(dtypes)} = {dtypes}")
+            return terrain_data
+
         # CRITICAL FIX: Add timeout and retry logic to prevent deadlocks
         import time
         import threading

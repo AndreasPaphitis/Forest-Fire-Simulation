@@ -11,20 +11,24 @@ import time
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+src_path = project_root / "src"
+sys.path.insert(0, str(src_path))
 
 from src.core.calibration.grid_search import GridSearchCalibrator
 from src.core.calibration.calibration_config import CalibrationConfig
-from src.utils.logging_utils import setup_logging
-
 def main():
     """Run local calibration test with comprehensive debugging."""
     
-    # Setup logging
-    setup_logging(
-        log_level=logging.DEBUG,
-        log_file="test_output/local_calibration_test.log",
-        console_level=logging.INFO
+    # Setup basic logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("test_output/local_calibration_test.log"),
+            logging.StreamHandler()
+        ]
     )
     
     logger = logging.getLogger(__name__)
@@ -39,7 +43,7 @@ def main():
     try:
         # Create calibration config
         logger.info("📋 Loading calibration configuration...")
-        calibration_config = CalibrationConfig.from_file(config_path)
+        calibration_config = CalibrationConfig.load_config(config_path)
         logger.info(f"✅ Loaded config: {calibration_config.config_name}")
         
         # Create calibrator

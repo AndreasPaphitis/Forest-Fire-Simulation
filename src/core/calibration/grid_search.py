@@ -447,7 +447,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     # Set up logging for worker process - COMPREHENSIVE FIX
     # Completely isolate worker logging to prevent duplicates
     worker_logger = logging.getLogger(f"worker_{time.time()}")
-    worker_logger.setLevel(logging.INFO)
+    worker_logger.setLevel(logging.WARNING)  # Changed from INFO to WARNING to reduce verbosity
     
     # Clear any existing handlers
     for handler in worker_logger.handlers[:]:
@@ -463,24 +463,24 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     worker_logger.propagate = False
     
     # CRITICAL DEBUG: Log all input types to identify the source of the list
-    worker_logger.info(f"🔍 DEBUG: parameter_values type: {type(parameter_values)}")
-    worker_logger.info(f"🔍 DEBUG: parameter_values value: {parameter_values}")
-    worker_logger.info(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
-    worker_logger.info(f"🔍 DEBUG: target_data type: {type(target_data)}")
+    worker_logger.debug(f"parameter_values type: {type(parameter_values)}")
+    worker_logger.debug(f"parameter_values value: {parameter_values}")
+    worker_logger.debug(f"config_dict type: {type(config_dict)}")
+    worker_logger.debug(f"target_data type: {type(target_data)}")
     
     if isinstance(parameter_values, (list, tuple)):
-        worker_logger.error(f"🔍 DEBUG: parameter_values is a list/tuple with length: {len(parameter_values)}")
-        worker_logger.error(f"🔍 DEBUG: parameter_values content: {list(parameter_values)}")
+        worker_logger.debug(f"List/tuple parameter_values with length: {len(parameter_values)}")
+        worker_logger.debug(f"List/tuple content: {list(parameter_values)}")
     
     # CRITICAL FIX: Ensure parameter_values is a dictionary
     if not isinstance(parameter_values, dict):
-        worker_logger.error(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
+        worker_logger.debug(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
         
         # Try to convert list to dictionary if possible
         if isinstance(parameter_values, (list, tuple)):
             # This is a fallback - we need to know the parameter names
             # For now, return an error result
-            worker_logger.error("Cannot convert list to dictionary without parameter names")
+            worker_logger.debug("Cannot convert list to dictionary without parameter names")
             return {
                 'parameter_values': {},
                 'objective_value': 0.0,
@@ -520,8 +520,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             simulation_type = 'memory_optimized'
         
         # CRITICAL DEBUG: Log config_dict before creating forest model
-        worker_logger.info(f"🔍 DEBUG: About to create forest model with config_dict type: {type(config_dict)}")
-        worker_logger.info(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+        worker_logger.debug(f"About to create forest model with config_dict type: {type(config_dict)}")
+        worker_logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
         
         # CRITICAL FIX: Ensure config_dict is a dictionary
         if not isinstance(config_dict, dict):
@@ -545,7 +545,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         )
         
         # CRITICAL DEBUG: Log before creating simulation engine
-        worker_logger.info(f"🔍 DEBUG: About to create FireSimulationEngine with config_dict type: {type(config_dict)}")
+        worker_logger.debug(f"About to create FireSimulationEngine with config_dict type: {type(config_dict)}")
         
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
@@ -579,31 +579,31 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             pass
         
         # CRITICAL DEBUG: Log before running simulation
-        worker_logger.info(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
-        worker_logger.info(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+        worker_logger.debug(f"About to run simulation with engine type: {type(engine)}")
+        worker_logger.debug(f"Forest model type: {type(forest_model)}")
         
         # Run simulation with detailed error tracking
         try:
-            worker_logger.info(f"🔍 DEBUG: Starting simulation run...")
+            worker_logger.debug(f"Starting simulation run...")
             simulation_result = engine.run_simulation()
-            worker_logger.info(f"🔍 DEBUG: Simulation completed successfully")
+            worker_logger.debug(f"Simulation completed successfully")
         except AttributeError as attr_error:
             if "'list' object has no attribute 'items'" in str(attr_error):
-                worker_logger.error(f"🔍 DEBUG: List object error in simulation: {attr_error}")
-                worker_logger.error(f"🔍 DEBUG: This indicates a parameter passing issue in the simulation engine")
-                worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
-                worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
-                worker_logger.error(f"🔍 DEBUG: config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+                worker_logger.debug(f"List object error in simulation: {attr_error}")
+                worker_logger.debug(f"This indicates a parameter passing issue in the simulation engine")
+                worker_logger.debug(f"parameter_values: {parameter_values}")
+                worker_logger.debug(f"config_dict type: {type(config_dict)}")
+                worker_logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
                 
                 # Log full traceback for precise origin
                 import traceback
-                worker_logger.error(f"🔍 DEBUG: Traceback for list.items error:\n{traceback.format_exc()}")
+                worker_logger.debug(f"Traceback for list.items error:\n{traceback.format_exc()}")
                 
                 # CRITICAL FIX: Try to identify which parameter is causing the issue
-                worker_logger.error(f"🔍 DEBUG: Checking parameter_values for list/tuple values:")
+                worker_logger.debug(f"Checking parameter_values for list/tuple values:")
                 for key, value in parameter_values.items():
                     if isinstance(value, (list, tuple)):
-                        worker_logger.error(f"🔍 DEBUG: Parameter {key} is a {type(value)}: {value}")
+                        worker_logger.debug(f"Parameter {key} is a {type(value)}: {value}")
                 
                 # Return error result for this evaluation
                 return {
@@ -616,15 +616,50 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     'error_message': f"List object error in simulation: {attr_error}. Check parameter_values for list/tuple values."
                 }
             else:
-                worker_logger.error(f"🔍 DEBUG: AttributeError in simulation: {attr_error}")
+                worker_logger.debug(f"AttributeError in simulation: {attr_error}")
                 raise attr_error
         except Exception as sim_error:
-            worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(sim_error)} = {sim_error}")
-            worker_logger.error(f"🔍 DEBUG: Error occurred in simulation run")
-            worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
-            worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+            worker_logger.debug(f"Simulation failed with error: {type(sim_error)} = {sim_error}")
+            worker_logger.debug(f"Error occurred in simulation run")
+            worker_logger.debug(f"parameter_values: {parameter_values}")
+            worker_logger.debug(f"config_dict type: {type(config_dict)}")
+            
+            # CRITICAL FIX: Handle KeyError 7 specifically
+            if isinstance(sim_error, KeyError) and sim_error.args[0] == 7:
+                worker_logger.error(f"🔍 CRITICAL: KeyError 7 detected - likely fuel type/category mapping issue")
+                worker_logger.error(f"🔍 This suggests a fuel type dictionary is missing key 7")
+                worker_logger.error(f"🔍 Checking for fuel type mappings in forest model...")
+                
+                # Try to identify the source of the KeyError 7
+                try:
+                    if hasattr(forest_model, 'fuel_load'):
+                        fuel_shape = forest_model.fuel_load.shape if hasattr(forest_model.fuel_load, 'shape') else 'unknown'
+                        worker_logger.error(f"🔍 Fuel load shape: {fuel_shape}")
+                    
+                    if hasattr(forest_model, 'state'):
+                        state_shape = forest_model.state.shape if hasattr(forest_model.state, 'shape') else 'unknown'
+                        worker_logger.error(f"🔍 State shape: {state_shape}")
+                    
+                    # Check if there are any fuel type mappings
+                    fuel_attrs = [attr for attr in dir(forest_model) if 'fuel' in attr.lower()]
+                    worker_logger.error(f"🔍 Fuel-related attributes: {fuel_attrs}")
+                    
+                except Exception as debug_error:
+                    worker_logger.error(f"🔍 Debug info collection failed: {debug_error}")
+                
+                # Return a specific error result for KeyError 7
+                return {
+                    'parameter_values': parameter_values.copy(),
+                    'objective_value': 0.0,
+                    'objective_components': {},
+                    'simulation_stats': {},
+                    'evaluation_time': time.time() - start_time,
+                    'is_valid': False,
+                    'error_message': f"KeyError 7 - Fuel type mapping issue. This may indicate missing fuel type definitions or incorrect fuel data structure."
+                }
+            
             import traceback
-            worker_logger.error(f"🔍 DEBUG: Simulation traceback: {traceback.format_exc()}")
+            worker_logger.debug(f"Simulation traceback: {traceback.format_exc()}")
             raise sim_error
         
         # Import and create objective function

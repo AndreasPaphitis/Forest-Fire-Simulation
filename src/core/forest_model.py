@@ -245,6 +245,35 @@ class BaseForestModel(ABC):
         self.temperature = np.full((self.width, self.height, self.num_layers), 25.0, dtype=np.float32)
         self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
         
+        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
+        # This ensures that any fuel type dictionary access will have proper defaults
+        self.fuel_types = {
+            0: 'bare_ground',
+            1: 'grass',
+            2: 'shrub',
+            3: 'low_vegetation',
+            4: 'medium_vegetation', 
+            5: 'high_vegetation',
+            6: 'canopy',
+            7: 'dense_canopy',  # This was likely missing, causing KeyError 7
+            8: 'very_dense_canopy',
+            9: 'maximum_vegetation'
+        }
+        
+        # Initialize fuel type properties for each type
+        self.fuel_type_properties = {
+            'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
+            'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
+            'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
+            'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
+            'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
+            'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
+            'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
+            'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
+            'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
+            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
+        }
+        
         # Minimal initialization of other attributes that both modules may expect
         self.wind_direction = np.zeros((self.width, self.height), dtype=np.float32)
         self.wind_speed = np.zeros((self.width, self.height), dtype=np.float32)
@@ -264,6 +293,33 @@ class BaseForestModel(ABC):
         
         # Track ignition points for efficient active cell detection
         self._ignition_points = []
+    
+    def get_fuel_type_property(self, fuel_type_id: int, property_name: str, default_value=None):
+        """
+        Safely get fuel type property to prevent KeyError 7.
+        
+        Args:
+            fuel_type_id: Fuel type ID (0-9)
+            property_name: Property name ('load', 'moisture', 'ignition')
+            default_value: Default value if property not found
+            
+        Returns:
+            Property value or default_value
+        """
+        try:
+            # Get fuel type name from ID
+            fuel_type_name = self.fuel_types.get(fuel_type_id, 'bare_ground')
+            
+            # Get property from fuel type properties
+            fuel_props = self.fuel_type_properties.get(fuel_type_name, {})
+            return fuel_props.get(property_name, default_value)
+            
+        except KeyError as e:
+            logger.warning(f"KeyError accessing fuel type {fuel_type_id}, property {property_name}: {e}")
+            return default_value
+        except Exception as e:
+            logger.warning(f"Error accessing fuel type properties: {e}")
+            return default_value
     
     def set_ignition(self, x, y, z=0):
         """
@@ -2787,6 +2843,35 @@ class MemoryOptimizedForestModel(ForestModel):
             # Initialize sparse storage if needed
             if self.use_sparse_storage:
                 self._initialize_optimized_sparse_storage()
+            
+            # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
+            # This ensures that any fuel type dictionary access will have proper defaults
+            self.fuel_types = {
+                0: 'bare_ground',
+                1: 'grass',
+                2: 'shrub',
+                3: 'low_vegetation',
+                4: 'medium_vegetation', 
+                5: 'high_vegetation',
+                6: 'canopy',
+                7: 'dense_canopy',  # This was likely missing, causing KeyError 7
+                8: 'very_dense_canopy',
+                9: 'maximum_vegetation'
+            }
+            
+            # Initialize fuel type properties for each type
+            self.fuel_type_properties = {
+                'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
+                'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
+                'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
+                'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
+                'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
+                'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
+                'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
+                'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
+                'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
+                'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
+            }
     
     def _initialize_directly_as_sparse(self, grid_size, num_layers, layer_height_meters, 
                                       model_resolution, initial_fuel_load, config, **kwargs):
@@ -2889,6 +2974,35 @@ class MemoryOptimizedForestModel(ForestModel):
         
         # CRITICAL FIX: Initialize fire_history attribute that's expected by simulation engine
         self.fire_history = []
+        
+        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
+        # This ensures that any fuel type dictionary access will have proper defaults
+        self.fuel_types = {
+            0: 'bare_ground',
+            1: 'grass',
+            2: 'shrub',
+            3: 'low_vegetation',
+            4: 'medium_vegetation', 
+            5: 'high_vegetation',
+            6: 'canopy',
+            7: 'dense_canopy',  # This was likely missing, causing KeyError 7
+            8: 'very_dense_canopy',
+            9: 'maximum_vegetation'
+        }
+        
+        # Initialize fuel type properties for each type
+        self.fuel_type_properties = {
+            'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
+            'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
+            'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
+            'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
+            'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
+            'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
+            'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
+            'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
+            'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
+            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
+        }
     
     def _initialize_optimized_sparse_storage(self):
         """Initialize sparse storage with optimization."""
