@@ -793,7 +793,6 @@ class TenerifeFirePerimeterCalibrator:
         # Calculate total combinations
         total_combinations = self.grid_search_points ** len(calibration_parameters)
         print(f"📋 Parameters: {len(calibration_parameters)} ({self.grid_search_points} points each) = {total_combinations:,} combinations")
-        print(f"🎯 Grid Search: {self.grid_search_points}^5 = {total_combinations:,} combinations (3-point search for Day 4 area)")
         
         # Estimate memory and time requirements
         memory_per_sim_gb = self._estimate_memory_per_simulation()

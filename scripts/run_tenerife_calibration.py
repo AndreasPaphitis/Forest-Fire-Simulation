@@ -283,42 +283,42 @@ def run_discovery_and_validation(emsr_dir: str = "EMSR Delineations"):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run Tenerife fire perimeter calibration with EMSR delineation data",
+        description="Run Tenerife Day 4 fire area calibration with EMSR delineation data (optimized for 6.25M cells)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect workers based on system memory (recommended)
+  # Auto-detect workers based on system memory (recommended for Day 4)
   python run_tenerife_calibration.py
   
   # Override with specific worker count (CLI takes precedence)
-  python run_tenerife_calibration.py --workers 40
+  python run_tenerife_calibration.py --workers 45
   
   # High-memory HPC configuration with custom workers
-  python run_tenerife_calibration.py --memory 128 --workers 45
+  python run_tenerife_calibration.py --memory 64 --workers 60
   
-  # Force many workers (system will warn if unsafe)
-  python run_tenerife_calibration.py --workers 60
+  # Conservative approach for Day 4 grid size
+  python run_tenerife_calibration.py --memory 50 --workers 32
   
-  # Bypass worker limits for high-memory systems
-  python run_tenerife_calibration.py --workers 70 --bypass-worker-limit
+  # 4-point grid search for higher accuracy (Day 4)
+  python run_tenerife_calibration.py --grid-points 4 --workers 45
   
-  # 4-point grid search for higher accuracy
-  python run_tenerife_calibration.py --grid-points 4 --workers 30
+  # 5-point grid search for maximum accuracy (Day 4)
+  python run_tenerife_calibration.py --grid-points 5 --workers 45
   
   # Custom parameters from sensitivity analysis
-  python run_tenerife_calibration.py --parameters fuel_consumption_rate terrain_effect_strength wind_influence_on_spread barranco_amplification slope_influence --workers 25
+  python run_tenerife_calibration.py --parameters spread_probability fuel_consumption_rate ember_probability ember_ignition fuel_moisture_baseline --workers 45
   
   # Dry run to validate setup
-  python run_tenerife_calibration.py --dry-run --verbose --workers 20
+  python run_tenerife_calibration.py --dry-run --verbose --workers 45
         """
     )
     
     parser.add_argument(
         '--memory',
         type=int,
-        default=512,
-        choices=[64, 128, 256, 512, 1024],
-        help='Available memory in GB (default: 512 for full Tenerife scale)'
+        default=50,
+        choices=[32, 50, 64, 128, 256, 512, 1024],
+        help='Available memory in GB (default: 50 for Day 4 grid size)'
     )
     
     parser.add_argument(
@@ -333,14 +333,14 @@ Examples:
         type=int,
         default=3,
         choices=[1, 2, 3, 4, 5],
-        help='Grid points per parameter (1-5, use 1-2 for testing)'
+        help='Grid points per parameter (default: 3 for Day 4 grid size, use 1-2 for testing)'
     )
     
     parser.add_argument(
         '--parameters',
         nargs='+',
         default=None,
-        help='Parameters to calibrate (default: top 5 from sensitivity analysis)'
+        help='Parameters to calibrate (default: top 5 from sensitivity analysis: spread_probability, fuel_consumption_rate, ember_probability, ember_ignition, fuel_moisture_baseline)'
     )
     
     parser.add_argument(
@@ -445,35 +445,39 @@ Examples:
         logging.getLogger('shared_utilities').setLevel(logging.INFO)
         print("🔊 Running in verbose mode - detailed output")
     
-    # Set default workers based on memory for massive scale (conservative for 9.3B cells)
+    # Set default workers based on memory for Day 4 grid size (optimized for 6.25M cells)
     if args.workers is None:
-        worker_map = {64: 8, 128: 16, 256: 24, 512: 32, 1024: 48}
-        args.workers = worker_map.get(args.memory, 32)
+        worker_map = {32: 16, 50: 45, 64: 60, 128: 80, 256: 100, 512: 120, 1024: 140}
+        args.workers = worker_map.get(args.memory, 45)
     
     # Set default experiment name
     if args.experiment_name is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        args.experiment_name = f"tenerife_emsr685_calibration_{timestamp}"
+        args.experiment_name = f"tenerife_day4_focused_calibration_{timestamp}"
     
     # Set default parameters if not provided
     if args.parameters is None:
-        # TOP 5 PARAMETERS FROM SENSITIVITY ANALYSIS (Method 2 Range-Based)
+        # TOP 5 PARAMETERS FROM SENSITIVITY ANALYSIS RESULTS (2025-08-18)
+        # Updated based on actual sensitivity analysis completed
         args.parameters = [
-            'ember_probability',        # 0.382 - Highest sensitivity
-            'fuel_consumption_rate',    # 0.165 - Second highest
-            'ember_ignition',          # 0.138 - Third highest
-            'slope_influence',         # 0.023 - Fourth
-            'ember_height_factor'      # 0.019 - Fifth
+            'spread_probability',        # 1.4063 - CRITICAL (13x more sensitive than #2)
+            'fuel_consumption_rate',     # 0.1609 - CRITICAL
+            'ember_probability',         # 0.1159 - CRITICAL
+            'ember_ignition',           # 0.0564 - CRITICAL
+            'fuel_moisture_baseline'    # 0.0382 - MODERATE
         ]
         if not args.quiet:
-            print(f"🔧 Using TOP 5 parameters from sensitivity analysis results")
+            print(f"🔧 Using TOP 5 parameters from sensitivity analysis (2025-08-18 results)")
             print(f"   ✅ Based on Method 2 Range-Based sensitivity analysis")
+            print(f"   🎯 spread_probability is 13x more sensitive than #2 parameter")
     
     if not args.quiet:
-        print(f"🔥 TENERIFE FIRE CALIBRATION")
+        print(f"🔥 TENERIFE DAY 4 FOCUSED CALIBRATION")
         print(f"=" * 50)
         print(f"Experiment: {args.experiment_name}")
         print(f"Config: {args.memory}GB / {args.workers} workers / {args.grid_points} points")
+        print(f"Grid: Day 4 fire area + buffer (~6.25M cells)")
+        print(f"Combinations: {args.grid_points}^{len(args.parameters)} = {args.grid_points**len(args.parameters):,}")
     
     try:
         # Step 0: Handle emergency small-scale mode
