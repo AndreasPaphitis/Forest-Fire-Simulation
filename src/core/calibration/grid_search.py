@@ -550,6 +550,39 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         # Create simulation engine
         engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
         
+        # CRITICAL DEBUG: Log before running simulation
+        worker_logger.info(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
+        worker_logger.info(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+        
+        # Run simulation with detailed error tracking
+        try:
+            worker_logger.info(f"🔍 DEBUG: Starting simulation run...")
+            simulation_result = engine.run_simulation()
+            worker_logger.info(f"🔍 DEBUG: Simulation completed successfully")
+        except AttributeError as attr_error:
+            if "'list' object has no attribute 'items'" in str(attr_error):
+                worker_logger.error(f"🔍 DEBUG: List object error in simulation: {attr_error}")
+                worker_logger.error(f"🔍 DEBUG: This indicates a parameter passing issue in the simulation engine")
+                # Return error result for this evaluation
+                return {
+                    'parameter_values': parameter_values.copy(),
+                    'objective_value': 0.0,
+                    'objective_components': {},
+                    'simulation_stats': {},
+                    'evaluation_time': time.time() - start_time,
+                    'is_valid': False,
+                    'error_message': f"List object error in simulation: {attr_error}"
+                }
+            else:
+                worker_logger.error(f"🔍 DEBUG: AttributeError in simulation: {attr_error}")
+                raise attr_error
+        except Exception as sim_error:
+            worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(sim_error)} = {sim_error}")
+            worker_logger.error(f"🔍 DEBUG: Error occurred in simulation run")
+            import traceback
+            worker_logger.error(f"🔍 DEBUG: Simulation traceback: {traceback.format_exc()}")
+            raise sim_error
+        
         # Ensure ignition points are set; many early terminations are caused by zero active cells
         try:
             # Prefer explicit ignition points from config if provided
