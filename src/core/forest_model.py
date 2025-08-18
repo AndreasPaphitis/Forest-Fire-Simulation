@@ -3059,6 +3059,20 @@ class MemoryOptimizedForestModel(ForestModel):
                 self.stats.clear()
                 self.stats = None
             
+            # Clear additional list attributes
+            if hasattr(self, 'history') and self.history is not None:
+                self.history.clear()
+                self.history = None
+            
+            if hasattr(self, '_ignition_points') and self._ignition_points is not None:
+                self._ignition_points.clear()
+                self._ignition_points = None
+            
+            # Clear additional dictionary attributes
+            if hasattr(self, '_wind_cache') and self._wind_cache is not None:
+                self._wind_cache.clear()
+                self._wind_cache = None
+            
             # Force garbage collection
             collected = gc.collect()
             if collected > 0:
