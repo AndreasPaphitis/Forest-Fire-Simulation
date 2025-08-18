@@ -396,32 +396,19 @@ class SpatialSimilarityObjective(ObjectiveFunction):
             else:
                 target_2d = target_data['fire_perimeter']
             
-            # Handle shape mismatches by resizing target to match prediction
+            # CRITICAL: Never resize target data - it represents real fire perimeter coordinates
             if predicted_2d.shape != target_2d.shape:
-                logger.warning(f"Shape mismatch: predicted {predicted_2d.shape} vs target {target_2d.shape}")
-                logger.info(f"Resizing target to match prediction shape")
+                logger.error(f"CRITICAL SHAPE MISMATCH: predicted {predicted_2d.shape} vs target {target_2d.shape}")
+                logger.error("Target data represents real fire perimeter coordinates - DO NOT RESIZE!")
+                logger.error("Simulation must run on the correct grid size that matches target data")
+                logger.error("This indicates a configuration error in the calibration setup")
                 
-                # Resize target to match prediction shape using nearest neighbor interpolation
-                from scipy.ndimage import zoom
-                
-                # Calculate zoom factors
-                zoom_y = predicted_2d.shape[0] / target_2d.shape[0]
-                zoom_x = predicted_2d.shape[1] / target_2d.shape[1]
-                
-                # Resize target array
-                target_2d = zoom(target_2d, (zoom_y, zoom_x), order=0)  # order=0 for nearest neighbor
-                
-                logger.info(f"Resized target to {target_2d.shape}")
-                
-                # Ensure the resized target has the same shape as prediction
-                if target_2d.shape != predicted_2d.shape:
-                    # If still not matching, pad or crop to exact size
-                    target_2d = target_2d[:predicted_2d.shape[0], :predicted_2d.shape[1]]
-                    if target_2d.shape != predicted_2d.shape:
-                        # Pad with zeros if needed
-                        padded_target = np.zeros(predicted_2d.shape, dtype=target_2d.dtype)
-                        padded_target[:target_2d.shape[0], :target_2d.shape[1]] = target_2d
-                        target_2d = padded_target
+                return ObjectiveResult(
+                    value=0.0,
+                    components={},
+                    is_valid=False,
+                    error_message=f"Shape mismatch: predicted {predicted_2d.shape} vs target {target_2d.shape}. Target data represents real fire perimeter coordinates and should never be resized. Simulation must run on correct grid size."
+                )
             
             # Calculate individual metrics
             components = {}

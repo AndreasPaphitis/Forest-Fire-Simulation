@@ -857,6 +857,67 @@ def create_production_target_data(dem_file: str,
         return synthetic
 
 
+def calculate_optimal_grid_size_from_emsr(day1_path: str, day2_path: str, buffer_percent: float = 10.0) -> Tuple[int, int]:
+    """
+    Calculate optimal grid size based on EMSR fire perimeter data.
+    
+    Args:
+        day1_path: Path to Day 1 EMSR shapefile
+        day2_path: Path to Day 2 EMSR shapefile
+        buffer_percent: Percentage buffer to add around fire perimeter
+        
+    Returns:
+        Tuple of (grid_width, grid_height) in cells
+    """
+    try:
+        import geopandas as gpd
+        
+        # Load both Day 1 and Day 2 data to get the full fire extent
+        gdf1 = gpd.read_file(day1_path)
+        gdf2 = gpd.read_file(day2_path)
+        
+        # Ensure both are in EPSG:25828 (Tenerife UTM Zone 28N)
+        if gdf1.crs != "EPSG:25828":
+            gdf1 = gdf1.to_crs("EPSG:25828")
+        if gdf2.crs != "EPSG:25828":
+            gdf2 = gdf2.to_crs("EPSG:25828")
+        
+        # Combine both datasets to get the full fire extent
+        combined_gdf = gpd.GeoDataFrame(pd.concat([gdf1, gdf2], ignore_index=True))
+        
+        # Get bounds of the entire fire complex
+        bounds = combined_gdf.total_bounds  # [minx, miny, maxx, maxy]
+        
+        # Calculate dimensions in meters
+        width_m = bounds[2] - bounds[0]  # maxx - minx
+        height_m = bounds[3] - bounds[1]  # maxy - miny
+        
+        # Add buffer
+        buffer_factor = 1.0 + (buffer_percent / 100.0)
+        buffered_width_m = width_m * buffer_factor
+        buffered_height_m = height_m * buffer_factor
+        
+        # Calculate grid size in cells (using 5m resolution)
+        cell_size_m = 5.0
+        grid_width = int(buffered_width_m / cell_size_m)
+        grid_height = int(buffered_height_m / cell_size_m)
+        
+        # Ensure minimum size
+        grid_width = max(grid_width, 500)  # Minimum 500x500 cells
+        grid_height = max(grid_height, 500)
+        
+        logger.info(f"🗺️  Fire bounds (EPSG:25828): {bounds}")
+        logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
+        logger.info(f"🎯 Calculated grid: {grid_width} × {grid_height} cells")
+        
+        return (grid_width, grid_height)
+        
+    except Exception as e:
+        logger.error(f"❌ Error calculating optimal grid size: {e}")
+        logger.warning("⚠️  Using fallback grid size")
+        return (1000, 1000)  # Fallback size
+
+
 if __name__ == "__main__":
     # Example usage
     print("Calibration Utilities Example")

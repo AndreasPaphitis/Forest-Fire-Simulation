@@ -612,8 +612,16 @@ Examples:
         # Create EMSR target data
         from src.core.calibration.calibration_utils import create_emsr_target_data
         
-        # Get grid size from config
-        grid_size = (args.grid_size, args.grid_size) if hasattr(args, 'grid_size') else (100, 100)
+        # CRITICAL: Use the same grid size for both target data creation and calibration
+        # The target data grid size must match the simulation grid size exactly
+        if hasattr(args, 'grid_size') and args.grid_size:
+            grid_size = (args.grid_size, args.grid_size)
+            print(f"🎯 Using specified grid size: {grid_size[0]} × {grid_size[1]}")
+        else:
+            # Use dynamic grid size calculation based on actual fire area
+            from src.core.calibration.calibration_utils import calculate_optimal_grid_size_from_emsr
+            grid_size = calculate_optimal_grid_size_from_emsr(day1_path, day2_path, buffer_percent=10.0)
+            print(f"🎯 Using dynamic grid size: {grid_size[0]} × {grid_size[1]} (based on fire area)")
         
         target_data = create_emsr_target_data(
             day1_path=day1_path,
@@ -630,9 +638,11 @@ Examples:
         test_data = target_data
         
         # Step 6: Create calibration configuration
+        # CRITICAL: Pass the grid size to ensure simulation matches target data
         calib_config = calibrator.create_calibration_config(
             training_data=test_data,  # Use EMSR target data as training data
-            top_5_parameters=args.parameters
+            top_5_parameters=args.parameters,
+            grid_size=grid_size  # Pass the calculated grid size
         )
         
         # Step 7: Final confirmation and execution

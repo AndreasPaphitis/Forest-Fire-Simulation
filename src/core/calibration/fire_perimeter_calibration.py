@@ -759,8 +759,9 @@ class TenerifeFirePerimeterCalibrator:
             return (1000, 1000)  # Much smaller fallback
     
     def create_calibration_config(self, 
-                                 training_data: List[FirePerimeterData],
-                                 top_5_parameters: Optional[List[str]] = None) -> CalibrationConfig:
+                                  training_data: List[FirePerimeterData],
+                                  top_5_parameters: Optional[List[str]] = None,
+                                  grid_size: Optional[Tuple[int, int]] = None) -> CalibrationConfig:
         """
         Create calibration configuration for full Tenerife domain.
         
@@ -808,7 +809,11 @@ class TenerifeFirePerimeterCalibrator:
         path_config = self._validate_paths()
         
         # Calculate optimal grid size based on fire perimeter with buffer
-        if self.grid_size:
+        if grid_size is not None:
+            # Use the grid size passed from the calibration script (matches target data)
+            optimal_grid_size = grid_size
+            print(f"🎯 Using target-matched grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+        elif self.grid_size:
             optimal_grid_size = self.grid_size
             print(f"🎯 Using provided grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
         else:
