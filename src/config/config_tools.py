@@ -150,6 +150,8 @@ class ModelConfig:
     # === TERRAIN FILE PARAMETERS ===
     use_terrain: bool = True  # Changed from False to True - terrain effects are essential for realistic fire simulation
     dem_file: Optional[str] = "Data/DTM/Merged_DTM.tif"  # Updated to local path
+    use_preprocessed_terrain: bool = True  # Changed from False to True - use preprocessed terrain by default
+    preprocessed_terrain_dir: Optional[str] = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"  # HPC path for preprocessed terrain
     
     # === TERRAIN PREPROCESSING PARAMETERS ===
     use_preprocessed_terrain: bool = False
