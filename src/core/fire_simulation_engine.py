@@ -1576,3 +1576,52 @@ class FireSimulationEngine:
         except Exception as e:
             logger.error(f"Failed to export ember data: {e}")
             return False
+
+    def cleanup(self):
+        """Clean up memory resources to prevent memory leaks."""
+        try:
+            import gc
+            
+            # Clear ember tracking data
+            if hasattr(self, 'ember_events'):
+                self.ember_events.clear()
+                self.ember_events = None
+            
+            if hasattr(self, 'ember_statistics'):
+                self.ember_statistics.clear()
+                self.ember_statistics = None
+            
+            # Clear simulation state
+            if hasattr(self, 'current_step'):
+                self.current_step = None
+            
+            if hasattr(self, 'simulation_time'):
+                self.simulation_time = None
+            
+            # Clear forest model reference (but don't delete it - let caller handle that)
+            if hasattr(self, 'forest_model'):
+                # Clean up the forest model if it has a cleanup method
+                if hasattr(self.forest_model, 'cleanup'):
+                    self.forest_model.cleanup()
+                self.forest_model = None
+            
+            # Clear configuration reference
+            if hasattr(self, 'config'):
+                self.config = None
+            
+            # Clear logging statistics
+            if hasattr(self, 'log_stats'):
+                self.log_stats.clear()
+                self.log_stats = None
+            
+            # Force garbage collection
+            collected = gc.collect()
+            if collected > 0:
+                logger.debug(f"🧹 FireSimulationEngine cleanup freed {collected} objects")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  FireSimulationEngine cleanup warning: {e}")
+
+    def close(self):
+        """Alias for cleanup method."""
+        self.cleanup()

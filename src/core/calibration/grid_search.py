@@ -430,9 +430,13 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     
     This function is designed to be picklable and run in separate processes.
     """
+    forest_model = None
+    engine = None
+    
     try:
         import time
         import logging
+        import gc
         from src.core.forest_model import ForestModel
         from src.config.config_tools import ModelConfig
         from src.core.fire_simulation_engine import FireSimulationEngine
@@ -476,8 +480,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         
         evaluation_time = time.time() - start_time
         
-        # Return result as dictionary (more picklable)
-        return {
+        # CRITICAL FIX: Extract results before cleanup
+        result_dict = {
             'parameter_values': parameter_values.copy(),
             'objective_value': objective_result.value if objective_result.is_valid else 0.0,
             'objective_components': objective_result.components,
@@ -487,8 +491,81 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             'error_message': objective_result.error_message
         }
         
+        # CRITICAL FIX: Explicit cleanup to prevent memory leaks
+        if engine is not None:
+            try:
+                # Clean up simulation engine
+                if hasattr(engine, 'cleanup'):
+                    engine.cleanup()
+                elif hasattr(engine, 'close'):
+                    engine.close()
+            except Exception as e:
+                worker_logger.debug(f"Engine cleanup warning: {e}")
+        
+        if forest_model is not None:
+            try:
+                # Clean up forest model
+                if hasattr(forest_model, 'cleanup'):
+                    forest_model.cleanup()
+                elif hasattr(forest_model, 'close'):
+                    forest_model.close()
+                
+                # Clear terrain data references
+                if hasattr(forest_model, '_shared_terrain_refs'):
+                    forest_model._shared_terrain_refs.clear()
+                if hasattr(forest_model, 'terrain_elevation'):
+                    forest_model.terrain_elevation = None
+                if hasattr(forest_model, 'terrain_slope'):
+                    forest_model.terrain_slope = None
+                if hasattr(forest_model, 'terrain_aspect'):
+                    forest_model.terrain_aspect = None
+                if hasattr(forest_model, 'barranco_mask'):
+                    forest_model.barranco_mask = None
+                if hasattr(forest_model, 'barranco_directions'):
+                    forest_model.barranco_directions = None
+                if hasattr(forest_model, 'depression_mask'):
+                    forest_model.depression_mask = None
+                if hasattr(forest_model, 'wind_channeling_mask'):
+                    forest_model.wind_channeling_mask = None
+                if hasattr(forest_model, 'wind_amplification'):
+                    forest_model.wind_amplification = None
+                if hasattr(forest_model, 'wind_direction_modification'):
+                    forest_model.wind_direction_modification = None
+            except Exception as e:
+                worker_logger.debug(f"Forest model cleanup warning: {e}")
+        
+        # Force garbage collection to free memory
+        collected = gc.collect()
+        if collected > 0:
+            worker_logger.debug(f"🧹 Garbage collection freed {collected} objects")
+        
+        return result_dict
+        
     except Exception as e:
         evaluation_time = time.time() - start_time
+        
+        # CRITICAL FIX: Cleanup even on exception
+        if engine is not None:
+            try:
+                if hasattr(engine, 'cleanup'):
+                    engine.cleanup()
+                elif hasattr(engine, 'close'):
+                    engine.close()
+            except Exception:
+                pass
+        
+        if forest_model is not None:
+            try:
+                if hasattr(forest_model, 'cleanup'):
+                    forest_model.cleanup()
+                elif hasattr(forest_model, 'close'):
+                    forest_model.close()
+            except Exception:
+                pass
+        
+        # Force garbage collection
+        gc.collect()
+        
         return {
             'parameter_values': parameter_values.copy(),
             'objective_value': 0.0,
@@ -913,6 +990,14 @@ class GridSearchCalibrator:
                 if i + batch_size < len(combinations_list):
                     time.sleep(0.1)  # Small delay between batches
             
+            # CRITICAL FIX: Ensure shared terrain cleanup after all workers complete
+            try:
+                from src.utils.shared_terrain import reset_shared_terrain_logging
+                reset_shared_terrain_logging()
+                logger.debug("🧹 Reset shared terrain logging for fresh worker processes")
+            except Exception as e:
+                logger.warning(f"⚠️  Shared terrain reset warning: {e}")
+            
             # Process results
             completed = 0
             for future in as_completed(all_futures):
@@ -928,6 +1013,13 @@ class GridSearchCalibrator:
                         progress_callback(completed, len(combinations_list), result)
                     
                     logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
+                    
+                    # CRITICAL FIX: Periodic memory cleanup to prevent accumulation
+                    if completed % 5 == 0:  # Every 5 evaluations
+                        import gc
+                        collected = gc.collect()
+                        if collected > 0:
+                            logger.debug(f"🧹 Periodic cleanup freed {collected} objects after {completed} evaluations")
                     
                 except TimeoutError:
                     logger.error("❌ Evaluation timed out")

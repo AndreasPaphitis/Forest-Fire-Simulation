@@ -3002,6 +3002,75 @@ class MemoryOptimizedForestModel(ForestModel):
                 self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
                 self._fuel_load_dense[x_start:x_end, y_start:y_end, layer_idx] = data
 
+    def cleanup(self):
+        """Clean up memory resources to prevent memory leaks."""
+        try:
+            import gc
+            
+            # Clear terrain data references
+            terrain_attrs = [
+                'terrain_elevation', 'terrain_slope', 'terrain_aspect',
+                'barranco_mask', 'barranco_directions', 'depression_mask',
+                'wind_channeling_mask', 'wind_amplification', 'wind_direction_modification'
+            ]
+            
+            for attr in terrain_attrs:
+                if hasattr(self, attr):
+                    setattr(self, attr, None)
+            
+            # Clear shared terrain references
+            if hasattr(self, '_shared_terrain_refs'):
+                self._shared_terrain_refs.clear()
+                self._shared_terrain_refs = None
+            
+            # Clear sparse storage layers
+            if hasattr(self, 'fuel_load_layers'):
+                self.fuel_load_layers.clear()
+                self.fuel_load_layers = None
+            
+            if hasattr(self, 'state_layers'):
+                self.state_layers.clear()
+                self.state_layers = None
+            
+            # Clear dense arrays
+            if hasattr(self, '_fuel_load_dense'):
+                self._fuel_load_dense = None
+            
+            if hasattr(self, '_state_dense'):
+                self._state_dense = None
+            
+            # Clear wind fields
+            if hasattr(self, 'wind_speed_field'):
+                self.wind_speed_field = None
+            
+            if hasattr(self, 'wind_direction_field'):
+                self.wind_direction_field = None
+            
+            # Clear simulation state
+            if hasattr(self, 'fire_history'):
+                self.fire_history.clear()
+                self.fire_history = None
+            
+            if hasattr(self, 'spread_stats'):
+                self.spread_stats.clear()
+                self.spread_stats = None
+            
+            if hasattr(self, 'stats'):
+                self.stats.clear()
+                self.stats = None
+            
+            # Force garbage collection
+            collected = gc.collect()
+            if collected > 0:
+                logger.debug(f"🧹 ForestModel cleanup freed {collected} objects")
+            
+        except Exception as e:
+            logger.warning(f"⚠️  ForestModel cleanup warning: {e}")
+
+    def close(self):
+        """Alias for cleanup method."""
+        self.cleanup()
+
     # Add property accessors for fuel_load and state to maintain compatibility
 
 
