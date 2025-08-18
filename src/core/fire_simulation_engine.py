@@ -364,7 +364,19 @@ class FireSimulationEngine:
                             if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                 self.active_cells.add((x, y, z))
                     logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
-                else:
+                
+                # If no active cells found from ignition points, scan for any burning cells
+                if not self.active_cells:
+                    logger.info("No active cells from ignition points - scanning for burning cells...")
+                    for x in range(self.forest_model.width):
+                        for y in range(self.forest_model.height):
+                            for z in range(self.forest_model.num_layers):
+                                if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                                    self.active_cells.add((x, y, z))
+                    logger.info(f"Scan found {len(self.active_cells)} burning cells")
+                
+                # If still no active cells, fall back to center region scan
+                if not self.active_cells:
                     # Fallback: scan only center region where ignition typically occurs
                     center_x, center_y = self.forest_model.width // 2, self.forest_model.height // 2
                     search_radius = min(50, self.forest_model.width // 10, self.forest_model.height // 10)
@@ -381,13 +393,28 @@ class FireSimulationEngine:
                     
                     logger.info(f"Center region scan found: {len(self.active_cells)} initial burning cells")
         else:
-            # Small grid - use traditional full scan
-            logger.info(f"Small grid ({total_cells:,} cells) - using full scan for initial burning cells")
-            for x in range(self.forest_model.width):
-                for y in range(self.forest_model.height):
-                    for z in range(self.forest_model.num_layers):
+            # Small grid - use traditional full scan with ignition point optimization
+            logger.info(f"Small grid ({total_cells:,} cells) - using optimized scan for initial burning cells")
+            
+            # Check for tracked ignition points first (same logic as large grid)
+            if hasattr(self.forest_model, '_ignition_points') and self.forest_model._ignition_points:
+                for x, y, z in self.forest_model._ignition_points:
+                    if (0 <= x < self.forest_model.width and 
+                        0 <= y < self.forest_model.height and 
+                        0 <= z < self.forest_model.num_layers):
                         if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                             self.active_cells.add((x, y, z))
+                logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
+            
+            # If no active cells found from ignition points, do full scan
+            if not self.active_cells:
+                logger.info("No active cells from ignition points - doing full scan...")
+                for x in range(self.forest_model.width):
+                    for y in range(self.forest_model.height):
+                        for z in range(self.forest_model.num_layers):
+                            if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
+                                self.active_cells.add((x, y, z))
+                logger.info(f"Full scan found {len(self.active_cells)} burning cells")
         
         # Enhanced initial logging with grid information
         total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
@@ -427,7 +454,12 @@ class FireSimulationEngine:
         for step in range(sim_max_steps):
             self.current_step = step
             
-            # Check if fire has stopped spreading
+            # Process single simulation step with timing
+            step_start = time.time()
+            self._process_step()
+            step_time = time.time() - step_start
+            
+            # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
                 # Protective fallback: attempt a single ignition before early exit
                 try:
@@ -458,10 +490,10 @@ class FireSimulationEngine:
                     logger.info(f"Fire extinguished after {step} steps")
                     break
             
-            # Process single simulation step with timing
-            step_start = time.time()
-            self._process_step()
-            step_time = time.time() - step_start
+            # Log step processing statistics occasionally (reduced frequency)
+            if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
+                cells_per_second = len(self.active_cells) / step_time if step_time > 0 else 0
+                logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
             
             # MEMORY OPTIMIZATION: Periodic cleanup during simulation
             if step - self.last_cleanup_step >= self.cleanup_interval:
@@ -475,11 +507,7 @@ class FireSimulationEngine:
             if len(self.burned_cells) > 50000:
                 self._cleanup_burned_cells()
             
-            # Log step processing statistics occasionally (reduced frequency)
-            if step % 50 == 0 and step > 0:  # Every 50 steps (reduced from 10)
-                avg_step_time = step_time
-                cells_per_second = len(self.active_cells) / avg_step_time if avg_step_time > 0 else 0
-                logger.debug(f"⚡ Step {step} processed in {step_time:.3f}s ({cells_per_second:.1f} cells/s)")
+
             
             # Update statistics for this step
             current_step_stats = {
@@ -517,6 +545,7 @@ class FireSimulationEngine:
         
         # Update final statistics
         stats['steps'] = self.current_step + 1
+        stats['total_steps'] = self.current_step + 1  # Add compatibility key
         stats['runtime_seconds'] = time.time() - start_time
         stats['total_burned_cells'] = len(self.burned_cells)
         stats['final_active_cells'] = len(self.active_cells)
@@ -534,6 +563,36 @@ class FireSimulationEngine:
         logger.info(f"     • Still Burning: {stats['final_active_cells']} cells")
         logger.info(f"     • Peak Active: {stats['max_active_cells']} cells")
         logger.info(f"   Performance: {avg_cells_per_second:.1f} cells burned/second")
+        
+        # Add advanced feature statistics to stats dictionary
+        if hasattr(self.forest_model, 'spread_statistics'):
+            stats['spread_statistics'] = self.forest_model.spread_statistics
+        
+        # Add ember statistics to stats dictionary
+        if self.ember_statistics:
+            stats['ember_statistics'] = self.ember_statistics
+        
+        # Add terrain and wind information
+        terrain_info = {}
+        if hasattr(self.forest_model, 'terrain_elevation') and self.forest_model.terrain_elevation is not None:
+            terrain_info['terrain_loaded'] = True
+            terrain_info['elevation_range'] = f"{self.forest_model.terrain_elevation.min():.1f}m to {self.forest_model.terrain_elevation.max():.1f}m"
+            terrain_info['slope_effects_enabled'] = hasattr(self.config, 'slope_influence')
+        else:
+            terrain_info['terrain_loaded'] = False
+        stats['terrain_info'] = terrain_info
+        
+        wind_info = {}
+        if hasattr(self.forest_model, 'wind_speed_ms') and self.forest_model.wind_speed_ms is not None:
+            wind_info['wind_initialized'] = True
+            if isinstance(self.forest_model.wind_speed_ms, (int, float)):
+                wind_info['wind_speed_range'] = f"{self.forest_model.wind_speed_ms:.1f} m/s"
+            else:
+                wind_info['wind_speed_range'] = f"{self.forest_model.wind_speed_ms.min():.1f} to {self.forest_model.wind_speed_ms.max():.1f} m/s"
+            wind_info['terrain_modified_wind'] = hasattr(self.config, 'terrain_effect_strength')
+        else:
+            wind_info['wind_initialized'] = False
+        stats['wind_info'] = wind_info
         
         return {
             'stats': stats,

@@ -2656,9 +2656,12 @@ class SparseLayerAccessor:
         for layer in self.sparse_layers:
             if hasattr(layer, 'copy'):
                 copied_sparse_layers.append(layer.copy())
-            else:
+            elif hasattr(layer, 'tocoo'):
                 # Fallback: create a new sparse matrix with the same data
                 copied_sparse_layers.append(layer.tocoo().tocsr())
+            else:
+                # Handle non-sparse objects (like integers or other types)
+                copied_sparse_layers.append(layer)
         
         return SparseLayerAccessor(
             sparse_layers=copied_sparse_layers,
