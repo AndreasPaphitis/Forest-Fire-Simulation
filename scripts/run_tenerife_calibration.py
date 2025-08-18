@@ -616,7 +616,6 @@ Examples:
             print(f"🎯 Using specified grid size: {grid_size[0]} × {grid_size[1]}")
         else:
             # Use Day 4 grid size calculation to match the calibrator's default method
-            from src.core.calibration.fire_perimeter_calibration import TenerifeFirePerimeterCalibrator
             temp_calibrator = TenerifeFirePerimeterCalibrator(
                 memory_gb=args.memory,
                 workers=args.workers,
@@ -631,7 +630,6 @@ Examples:
         print(f"=" * 50)
         
         # Discover all fire perimeters
-        from src.core.calibration.fire_perimeter_calibration import FirePerimeterDiscovery
         discovery = FirePerimeterDiscovery(args.emsr_dir)
         fire_dataset = discovery.discover_fire_perimeters()
         
