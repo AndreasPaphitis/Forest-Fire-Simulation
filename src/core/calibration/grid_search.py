@@ -1022,7 +1022,7 @@ class GridSearchCalibrator:
             for i in range(0, len(combinations_list), batch_size):
                 batch = combinations_list[i:i + batch_size]
                 batch_futures = {
-                executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
+                    executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
                     for combo in batch
                 }
                 all_futures.extend(batch_futures.keys())
