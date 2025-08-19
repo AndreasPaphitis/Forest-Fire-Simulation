@@ -641,7 +641,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
                 else:
-                        worker_logger.debug("🔍 DEBUG: Shared terrain loading completed successfully")
+                    worker_logger.debug("🔍 DEBUG: No shared terrain info - will load individually")
                 
                 # Create forest model with proper parameters and timeout protection
                 worker_logger.debug("🌲 Creating forest model...")
