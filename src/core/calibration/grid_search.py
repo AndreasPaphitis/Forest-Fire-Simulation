@@ -826,6 +826,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     }
                 
                 # Run simulation with timeout protection
+                print(f"🔍 DIAGNOSTIC: About to start simulation execution...")
                 worker_logger.debug("🔍 DEBUG: Starting simulation run...")
                 
                 simulation_result = None
@@ -835,19 +836,27 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def run_simulation_with_timeout():
                     nonlocal simulation_result, simulation_error
                     try:
+                        print(f"🔍 DIAGNOSTIC: Simulation execution thread started")
                         worker_logger.debug("🔍 DEBUG: Running simulation...")
+                        print(f"🔍 DIAGNOSTIC: About to call engine.run_simulation()...")
+                        
                         simulation_result = engine.run_simulation()
+                        
+                        print(f"🔍 DIAGNOSTIC: Simulation execution completed successfully")
                         worker_logger.debug("🔍 DEBUG: Simulation completed successfully")
                         simulation_ready.set()
                     except Exception as e:
+                        print(f"🔍 DIAGNOSTIC: Simulation execution FAILED with error: {e}")
                         simulation_error = e
                         worker_logger.error(f"🔍 DEBUG: Simulation failed: {e}")
                         simulation_ready.set()
                 
                 # Start simulation in a separate thread
+                print(f"🔍 DIAGNOSTIC: Creating simulation execution thread...")
                 simulation_thread = threading.Thread(target=run_simulation_with_timeout)
                 simulation_thread.daemon = True
                 simulation_thread.start()
+                print(f"🔍 DIAGNOSTIC: Simulation execution thread started")
                 
                 # Calculate dynamic timeout based on grid size and configuration
                 grid_size = model_config.grid_size
@@ -875,7 +884,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     worker_logger.debug(f"⏱️  Using default timeout: {timeout_seconds} seconds")
                 
                 # Wait for simulation with dynamic timeout
+                print(f"🔍 DIAGNOSTIC: Waiting for simulation execution with timeout {timeout_seconds} seconds...")
                 if not simulation_ready.wait(timeout=timeout_seconds):
+                    print(f"🔍 DIAGNOSTIC: Simulation execution TIMED OUT after {timeout_seconds} seconds!")
                     worker_logger.error(f"❌ Simulation timed out after {timeout_seconds} seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -886,6 +897,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Simulation timed out after {timeout_seconds} seconds"
                     }
+                else:
+                    print(f"🔍 DIAGNOSTIC: Simulation execution completed within timeout")
                 
                 if simulation_error:
                     worker_logger.error(f"❌ Simulation failed: {simulation_error}")
