@@ -818,7 +818,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
-                objective_value, objective_components = objective_function(simulation_result, target_data)
+                objective_result = objective_function(simulation_result, target_data)
+                
+                # Extract values from ObjectiveResult object
+                objective_value = objective_result.value if objective_result.is_valid else 0.0
+                objective_components = objective_result.components if objective_result.is_valid else {}
                 
                 worker_result = {
                     'parameter_values': parameter_values,
