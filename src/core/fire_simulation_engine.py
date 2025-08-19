@@ -509,13 +509,18 @@ class FireSimulationEngine:
         }
         
         # Run simulation steps
+        print(f"🔍 DIAGNOSTIC: Starting simulation loop for {sim_max_steps} steps")
+        print(f"🔍 DIAGNOSTIC: Initial active cells: {len(self.active_cells)}")
+        
         for step in range(sim_max_steps):
             self.current_step = step
             
             # Process single simulation step with timing
             step_start = time.time()
+            print(f"🔍 DIAGNOSTIC: Starting step {step + 1}/{sim_max_steps}")
             self._process_step()
             step_time = time.time() - step_start
+            print(f"🔍 DIAGNOSTIC: Completed step {step + 1} in {step_time:.3f}s, active cells: {len(self.active_cells)}")
             
             # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
@@ -662,12 +667,16 @@ class FireSimulationEngine:
     
     def _process_step(self):
         """Process a single simulation step."""
+        print(f"🔍 DIAGNOSTIC: _process_step() started with {len(self.active_cells)} active cells")
+        
         # Copy active cells to avoid modification during iteration
         current_active_cells = list(self.active_cells)
+        print(f"🔍 DIAGNOSTIC: Copied {len(current_active_cells)} active cells for processing")
 
         # EMERGENCY FIX: Handle empty active cells to prevent segfaults
         if not current_active_cells:
             logger.warning("⚠️  No active cells to process - simulation may have ended")
+            print(f"🔍 DIAGNOSTIC: No active cells to process - returning early")
             return
 
         # Track cells that will become active or inactive in the next step
@@ -675,7 +684,10 @@ class FireSimulationEngine:
         new_inactive_cells = set()
         
         # Process each active cell
-        for x, y, z in current_active_cells:
+        print(f"🔍 DIAGNOSTIC: Processing {len(current_active_cells)} active cells")
+        for i, (x, y, z) in enumerate(current_active_cells):
+            print(f"🔍 DIAGNOSTIC: Processing cell {i+1}/{len(current_active_cells)}: ({x}, {y}, {z})")
+            
             # CRITICAL FIX: Add emergency protection around burnout check
             try:
                 # Check if cell has burned out
@@ -686,6 +698,7 @@ class FireSimulationEngine:
                         logger.warning(f"⚠️  Failed to set burned state for cell ({x}, {y}, {z})")
                     # Don't remove from active_cells here - let the batch update handle it
                     self.burned_cells.add((x, y, z))
+                    print(f"🔍 DIAGNOSTIC: Cell ({x}, {y}, {z}) burned out")
                     continue
             except Exception as burnout_error:
                 logger.error(f"❌ CRITICAL: Burnout check failed at ({x}, {y}, {z}): {burnout_error}")
@@ -694,12 +707,15 @@ class FireSimulationEngine:
             
             # Spread fire to neighbors
             try:
+                print(f"🔍 DIAGNOSTIC: Getting neighbors for cell ({x}, {y}, {z})")
                 neighbors = self._get_neighbors(x, y, z)
+                print(f"🔍 DIAGNOSTIC: Found {len(neighbors)} neighbors for cell ({x}, {y}, {z})")
                 logger.debug(f"DEBUG: Processing {len(neighbors)} neighbors for cell ({x}, {y}, {z})")
                 
                 # CRITICAL FIX: Validate neighbor list before iteration
                 if not isinstance(neighbors, list):
                     logger.error(f"❌ CRITICAL: Neighbors is not a list: {type(neighbors)}")
+                    print(f"🔍 DIAGNOSTIC: Neighbors is not a list: {type(neighbors)}")
                     continue
                 
                 # CRITICAL FIX: Validate each neighbor tuple before processing
@@ -808,8 +824,10 @@ class FireSimulationEngine:
                             break
         
         # Update active cells
+        print(f"🔍 DIAGNOSTIC: Updating active cells - adding {len(new_active_cells)}, removing {len(new_inactive_cells)}")
         self.active_cells.update(new_active_cells)
         self.active_cells.difference_update(new_inactive_cells)
+        print(f"🔍 DIAGNOSTIC: Active cells after update: {len(self.active_cells)}")
         
         # Update forest model statistics for visualization
         if hasattr(self.forest_model, 'update_stats'):
@@ -818,6 +836,8 @@ class FireSimulationEngine:
                 burned_cells=len(self.burned_cells),
                 step=self.current_step
             )
+        
+        print(f"🔍 DIAGNOSTIC: _process_step() completed successfully")
     
     # MEMORY-SAFE SPARSE MATRIX ACCESS METHODS
     # ===========================================
