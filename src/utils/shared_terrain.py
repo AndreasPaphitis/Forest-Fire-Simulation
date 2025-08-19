@@ -75,6 +75,9 @@ class SharedTerrainManager:
             logger.warning(f"⚠️  Shared memory not available on Python {python_version}. Requires Python 3.8+.")
             logger.warning("   Falling back to individual terrain loading (higher memory usage)")
             return False
+        
+        # CRITICAL FIX: Clean up any existing shared memory files first
+        self._cleanup_existing_shared_memory()
             
         try:
             preprocessed_path = Path(preprocessed_dir)
@@ -272,6 +275,35 @@ class SharedTerrainManager:
         self.terrain_shapes.clear()
         self.terrain_dtypes.clear()
         self.is_loaded = False
+    
+    def _cleanup_existing_shared_memory(self):
+        """Clean up any existing shared memory files that might conflict."""
+        if not HAS_SHARED_MEMORY:
+            return
+            
+        # List of terrain names that might have existing shared memory
+        terrain_names = [
+            'elevation', 'slope', 'aspect', 'barranco_mask', 
+            'barranco_directions', 'depression_mask', 
+            'wind_channeling_mask', 'wind_amplification', 
+            'wind_direction_modification'
+        ]
+        
+        for terrain_name in terrain_names:
+            try:
+                # Try to access existing shared memory
+                existing_shm = shared_memory.SharedMemory(name=f"terrain_{terrain_name}")
+                logger.info(f"🧹 Found existing shared memory for {terrain_name}, cleaning up...")
+                existing_shm.close()
+                existing_shm.unlink()
+                logger.info(f"✅ Cleaned up existing shared memory for {terrain_name}")
+            except FileNotFoundError:
+                # No existing shared memory, which is fine
+                pass
+            except Exception as e:
+                logger.warning(f"⚠️  Error cleaning up existing shared memory for {terrain_name}: {e}")
+                # Continue with other files
+                pass
 
 
 def load_shared_terrain_data(shared_info: Dict[str, Any]) -> Dict[str, np.ndarray]:
