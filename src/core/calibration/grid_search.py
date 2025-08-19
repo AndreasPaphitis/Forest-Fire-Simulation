@@ -545,6 +545,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         
         def run_worker_with_timeout():
             nonlocal worker_error, worker_result
+            # Import threading at the top of the function
+            import threading
+            import time
             try:
                 # CRITICAL FIX: Extract simulation_type from config_dict instead of passing entire dict
                 simulation_type = config_dict.get('simulation_type', 'memory_optimized')
@@ -593,8 +596,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
                     worker_logger.debug("🔍 DEBUG: Shared terrain info detected, adding timeout protection")
                     # Set a timeout for shared terrain loading in the forest model
-                    import threading
-                    import time
                     
                     terrain_loaded = threading.Event()
                     terrain_error = None
