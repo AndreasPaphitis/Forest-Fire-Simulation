@@ -691,14 +691,13 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                                 arafo_x = max(0, min(arafo_x, grid_size[0] - 1))
                                 arafo_y = max(0, min(arafo_y, grid_size[1] - 1))
                                 
-                                print(f"🔍 DIAGNOSTIC: Setting ignition point to Arafa highlands: ({arafo_x}, {arafo_y})")
+                                logger.info(f"🔥 Setting ignition point to Arafa highlands: ({arafo_x}, {arafo_y})")
                                 forest_model.set_ignition(arafo_x, arafo_y, 0)
-                                print(f"🔍 DIAGNOSTIC: Ignition point set successfully")
+                                logger.info(f"✅ Ignition point set successfully")
                             else:
-                                print(f"🔍 DIAGNOSTIC: Invalid grid size for ignition point setting: {grid_size}")
+                                logger.warning(f"⚠️  Invalid grid size for ignition point setting: {grid_size}")
                         except Exception as ignition_error:
-                            print(f"🔍 DIAGNOSTIC: Failed to set ignition point: {ignition_error}")
-                            worker_logger.warning(f"Failed to set ignition point: {ignition_error}")
+                            logger.warning(f"⚠️  Failed to set ignition point: {ignition_error}")
                         
                         forest_ready.set()
                     except Exception as e:
@@ -1461,8 +1460,12 @@ class GridSearchCalibrator:
         """
         Run parallel calibration with optimized serialization.
         """
-        print(f"🔍 DIAGNOSTIC: Starting parallel calibration with {self.total_combinations} combinations")
-        logger.debug(f"🚀 Starting parallel calibration with {self.total_combinations} combinations")
+        logger.info(f"🚀 Starting parallel calibration with {self.total_combinations} combinations using {self.max_workers} workers")
+        
+        # Add progress tracking
+        completed_combinations = 0
+        total_combinations = self.total_combinations
+        progress_interval = max(1, total_combinations // 20)  # Progress update every 5%
         
         # Calculate optimal worker count
         if not self.bypass_worker_limit:
@@ -1702,7 +1705,7 @@ class GridSearchCalibrator:
                 except Exception as e:
                     logger.warning(f"⚠️  Shared terrain reset warning: {e}")
                 
-                # Process results
+                # Process results with progress updates
                 completed = 0
                 for future in as_completed(all_futures):
                     try:
@@ -1713,10 +1716,15 @@ class GridSearchCalibrator:
                         results.add_result(result)
                         completed += 1
                         
+                        # Progress updates every 5% or every 10 evaluations
+                        if completed % progress_interval == 0 or completed % 10 == 0:
+                            progress_percent = (completed / total_combinations) * 100
+                            best_value = results.get_best_objective_value()
+                            best_value_str = f"{best_value:.4f}" if best_value is not None else "None"
+                            logger.info(f"📊 Progress: {progress_percent:.1f}% ({completed}/{total_combinations}) - Best: {best_value_str}")
+                        
                         if progress_callback:
                             progress_callback(completed, len(combinations_list), result)
-                        
-                        logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
                         
                         # CRITICAL FIX: Periodic memory cleanup to prevent accumulation
                         if completed % 5 == 0:  # Every 5 evaluations
