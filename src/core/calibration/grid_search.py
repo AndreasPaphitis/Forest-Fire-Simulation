@@ -561,13 +561,18 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
                     total_cells = grid_size[0] * grid_size[1]
                     if total_cells > 10_000_000:  # 10M+ cells
-                        worker_logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying aggressive optimizations")
+                        worker_logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying smart optimizations")
                         
-                        # Reduce max_steps for faster evaluation
-                        if hasattr(model_config, 'max_steps') and model_config.max_steps > 100:
+                        # Scale max_steps based on grid size (less aggressive for better accuracy)
+                        if hasattr(model_config, 'max_steps') and model_config.max_steps > 150:
                             original_steps = model_config.max_steps
-                            model_config.max_steps = min(100, model_config.max_steps // 2)
-                            worker_logger.warning(f"🚨 Reduced max_steps from {original_steps} to {model_config.max_steps}")
+                            if total_cells > 50_000_000:  # 50M+ cells - very aggressive
+                                model_config.max_steps = min(100, model_config.max_steps // 3)
+                            elif total_cells > 20_000_000:  # 20M+ cells - moderate
+                                model_config.max_steps = min(150, model_config.max_steps // 2)
+                            else:  # 10-20M cells - conservative
+                                model_config.max_steps = min(200, int(model_config.max_steps * 0.75))
+                            worker_logger.warning(f"🚨 Scaled max_steps from {original_steps} to {model_config.max_steps} based on grid size")
                         
                         # Enable early termination
                         if hasattr(model_config, 'stop_when_fire_extinguished'):
@@ -1102,14 +1107,33 @@ class GridSearchCalibrator:
         if not self.bypass_worker_limit:
             optimal_workers = self._calculate_hpc_optimal_workers()
             
-            # CRITICAL FIX: Reduce workers for massive grids to prevent resource contention
+            # CRITICAL FIX: Adjust workers for massive grids based on system capacity
             grid_size = self._get_grid_size_from_config(self.config)
             if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
                 total_cells = grid_size[0] * grid_size[1]
                 if total_cells > 10_000_000:  # 10M+ cells
-                    logger.warning(f"🚨 MASSIVE GRID: {total_cells:,} cells - reducing workers for better performance")
-                    optimal_workers = min(optimal_workers, 8)  # Max 8 workers for massive grids
-                    logger.warning(f"🚨 Reduced optimal workers to {optimal_workers} for massive grid")
+                    logger.warning(f"🚨 MASSIVE GRID: {total_cells:,} cells - optimizing workers for performance")
+                    
+                    # Scale workers based on grid size and available memory
+                    try:
+                        import psutil
+                        memory_gb = psutil.virtual_memory().total / (1024**3)
+                        
+                        if memory_gb >= 200:  # High-memory HPC (200GB+)
+                            max_workers_for_grid = 64  # Allow up to 64 workers
+                        elif memory_gb >= 100:  # Medium-high memory HPC (100-200GB)
+                            max_workers_for_grid = 48  # Allow up to 48 workers
+                        elif memory_gb >= 60:   # Medium memory HPC (60-100GB)
+                            max_workers_for_grid = 32  # Allow up to 32 workers
+                        else:  # Lower memory systems
+                            max_workers_for_grid = 16  # Conservative limit
+                        
+                        optimal_workers = min(optimal_workers, max_workers_for_grid)
+                        logger.warning(f"🚨 Adjusted workers to {optimal_workers} for massive grid (max allowed: {max_workers_for_grid} for {memory_gb:.1f}GB system)")
+                    except Exception as e:
+                        # Fallback if psutil fails
+                        optimal_workers = min(optimal_workers, 32)  # Conservative default
+                        logger.warning(f"🚨 Using conservative worker limit: {optimal_workers} (psutil error: {e})")
             
             if self.max_workers > optimal_workers:
                 logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
