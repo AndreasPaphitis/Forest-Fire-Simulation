@@ -627,24 +627,193 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     else:
                         worker_logger.debug("🔍 DEBUG: Shared terrain loading completed successfully")
                 
-                # Create forest model with proper parameters
+                # Create forest model with proper parameters and timeout protection
                 worker_logger.debug("🔍 DEBUG: About to create forest model")
-                forest_model = create_forest_model(
-                    model_type=simulation_type,
-                    config=model_config
-                )
-                worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+                
+                # Add timeout for forest model creation
+                forest_model = None
+                forest_ready = threading.Event()
+                forest_error = None
+                
+                def create_forest_with_timeout():
+                    nonlocal forest_model, forest_error
+                    try:
+                        worker_logger.debug("🔍 DEBUG: Creating forest model...")
+                        forest_model = create_forest_model(
+                            model_type=simulation_type,
+                            config=model_config
+                        )
+                        worker_logger.debug(f"🔍 DEBUG: Forest model created successfully: {type(forest_model)}")
+                        forest_ready.set()
+                    except Exception as e:
+                        forest_error = e
+                        worker_logger.error(f"🔍 DEBUG: Forest model creation failed: {e}")
+                        forest_ready.set()
+                
+                # Start forest model creation in a separate thread
+                forest_thread = threading.Thread(target=create_forest_with_timeout)
+                forest_thread.daemon = True
+                forest_thread.start()
+                
+                # Wait for forest model creation with timeout (60 seconds)
+                if not forest_ready.wait(timeout=60.0):
+                    worker_logger.error("❌ Forest model creation timed out after 60 seconds")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Forest model creation timed out after 60 seconds"
+                    }
+                
+                if forest_error:
+                    worker_logger.error(f"❌ Forest model creation failed: {forest_error}")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': f"Forest model creation failed: {forest_error}"
+                    }
+                
+                if forest_model is None:
+                    worker_logger.error("❌ Forest model is None after creation")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Forest model is None after creation"
+                    }
                 
                 # Create simulation engine with timeout protection
                 worker_logger.debug("🔍 DEBUG: About to create FireSimulationEngine with config_dict type: " + str(type(config_dict)))
-                engine = FireSimulationEngine(forest_model=forest_model, config=model_config)
-                worker_logger.debug(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
-                worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+                
+                # Add timeout for engine creation
+                engine = None
+                engine_ready = threading.Event()
+                engine_error = None
+                
+                def create_engine_with_timeout():
+                    nonlocal engine, engine_error
+                    try:
+                        worker_logger.debug("🔍 DEBUG: Creating FireSimulationEngine...")
+                        engine = FireSimulationEngine(forest_model=forest_model, config=model_config)
+                        worker_logger.debug(f"🔍 DEBUG: FireSimulationEngine created successfully: {type(engine)}")
+                        engine_ready.set()
+                    except Exception as e:
+                        engine_error = e
+                        worker_logger.error(f"🔍 DEBUG: Engine creation failed: {e}")
+                        engine_ready.set()
+                
+                # Start engine creation in a separate thread
+                engine_thread = threading.Thread(target=create_engine_with_timeout)
+                engine_thread.daemon = True
+                engine_thread.start()
+                
+                # Wait for engine creation with timeout (30 seconds)
+                if not engine_ready.wait(timeout=30.0):
+                    worker_logger.error("❌ Engine creation timed out after 30 seconds")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Engine creation timed out after 30 seconds"
+                    }
+                
+                if engine_error:
+                    worker_logger.error(f"❌ Engine creation failed: {engine_error}")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': f"Engine creation failed: {engine_error}"
+                    }
+                
+                if engine is None:
+                    worker_logger.error("❌ Engine is None after creation")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Engine is None after creation"
+                    }
                 
                 # Run simulation with timeout protection
                 worker_logger.debug("🔍 DEBUG: Starting simulation run...")
-                simulation_result = engine.run_simulation()
-                worker_logger.debug("🔍 DEBUG: Simulation completed successfully")
+                
+                simulation_result = None
+                simulation_ready = threading.Event()
+                simulation_error = None
+                
+                def run_simulation_with_timeout():
+                    nonlocal simulation_result, simulation_error
+                    try:
+                        worker_logger.debug("🔍 DEBUG: Running simulation...")
+                        simulation_result = engine.run_simulation()
+                        worker_logger.debug("🔍 DEBUG: Simulation completed successfully")
+                        simulation_ready.set()
+                    except Exception as e:
+                        simulation_error = e
+                        worker_logger.error(f"🔍 DEBUG: Simulation failed: {e}")
+                        simulation_ready.set()
+                
+                # Start simulation in a separate thread
+                simulation_thread = threading.Thread(target=run_simulation_with_timeout)
+                simulation_thread.daemon = True
+                simulation_thread.start()
+                
+                # Wait for simulation with timeout (180 seconds for massive grids)
+                if not simulation_ready.wait(timeout=180.0):
+                    worker_logger.error("❌ Simulation timed out after 180 seconds")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Simulation timed out after 180 seconds"
+                    }
+                
+                if simulation_error:
+                    worker_logger.error(f"❌ Simulation failed: {simulation_error}")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': f"Simulation failed: {simulation_error}"
+                    }
+                
+                if simulation_result is None:
+                    worker_logger.error("❌ Simulation result is None")
+                    return {
+                        'parameter_values': parameter_values,
+                        'objective_value': 0.0,
+                        'objective_components': {},
+                        'simulation_stats': {},
+                        'evaluation_time': time.time(),
+                        'is_valid': False,
+                        'error_message': "Simulation result is None"
+                    }
                 
                 # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
@@ -702,6 +871,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         # Wait for worker completion with timeout (300 seconds for massive grids)
         if not worker_ready.wait(timeout=300.0):
             worker_logger.error("❌ Worker execution timed out after 300 seconds")
+            worker_logger.error("🚨 EMERGENCY: Worker completely stuck - returning error result")
             return {
                 'parameter_values': parameter_values,
                 'objective_value': 0.0,
@@ -709,7 +879,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 'simulation_stats': {},
                 'evaluation_time': time.time(),
                 'is_valid': False,
-                'error_message': "Worker execution timed out after 300 seconds"
+                'error_message': "Worker execution timed out after 300 seconds - EMERGENCY TIMEOUT"
             }
         
         if worker_error:
