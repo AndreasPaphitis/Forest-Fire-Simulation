@@ -381,14 +381,19 @@ class FireSimulationEngine:
                 logger.info(f"Used sparse model active cell detection: {len(self.active_cells)} initial cells")
             else:
                 # Check for tracked ignition points first
+                print(f"🔍 DIAGNOSTIC: Checking for tracked ignition points...")
                 if hasattr(self.forest_model, '_ignition_points') and self.forest_model._ignition_points:
+                    print(f"🔍 DIAGNOSTIC: Found {len(self.forest_model._ignition_points)} tracked ignition points")
                     for x, y, z in self.forest_model._ignition_points:
                         if (0 <= x < self.forest_model.width and 
                             0 <= y < self.forest_model.height and 
                             0 <= z < self.forest_model.num_layers):
                             if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                 self.active_cells.add((x, y, z))
+                    print(f"🔍 DIAGNOSTIC: Using tracked ignition points: {len(self.active_cells)} initial cells")
                     logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
+                else:
+                    print(f"🔍 DIAGNOSTIC: No tracked ignition points found")
                 
                 # If no active cells found from ignition points, scan for any burning cells
                 if not self.active_cells:
@@ -396,11 +401,34 @@ class FireSimulationEngine:
                     logger.info("No active cells from ignition points - scanning for burning cells...")
                     print(f"🔍 DIAGNOSTIC: This will scan {self.forest_model.width} × {self.forest_model.height} × {self.forest_model.num_layers} = {self.forest_model.width * self.forest_model.height * self.forest_model.num_layers:,} cells")
                     
+                    # CRITICAL FIX: Add timeout to prevent infinite hang
+                    scan_start_time = time.time()
+                    scan_timeout = 60.0  # 60 seconds timeout for full scan
+                    cells_scanned = 0
+                    
                     for x in range(self.forest_model.width):
                         for y in range(self.forest_model.height):
                             for z in range(self.forest_model.num_layers):
+                                cells_scanned += 1
+                                
+                                # Check timeout every 1000 cells
+                                if cells_scanned % 1000 == 0:
+                                    elapsed = time.time() - scan_start_time
+                                    if elapsed > scan_timeout:
+                                        print(f"🔍 DIAGNOSTIC: Full scan TIMED OUT after {elapsed:.1f} seconds - scanned {cells_scanned:,} cells")
+                                        logger.warning(f"Full scan timed out after {elapsed:.1f} seconds - scanned {cells_scanned:,} cells")
+                                        # Use center region as fallback
+                                        center_x, center_y = self.forest_model.width // 2, self.forest_model.height // 2
+                                        self.active_cells.add((center_x, center_y, 0))
+                                        print(f"🔍 DIAGNOSTIC: Using center point ({center_x}, {center_y}, 0) as fallback ignition")
+                                        break
+                                
                                 if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                     self.active_cells.add((x, y, z))
+                            
+                            # Check for timeout break
+                            if cells_scanned % 1000 == 0 and time.time() - scan_start_time > scan_timeout:
+                                break
                     
                     print(f"🔍 DIAGNOSTIC: Full scan completed - found {len(self.active_cells)} burning cells")
                     logger.info(f"Scan found {len(self.active_cells)} burning cells")
