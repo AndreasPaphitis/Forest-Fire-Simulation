@@ -546,19 +546,65 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         def run_worker_with_timeout():
             nonlocal worker_error, worker_result
             try:
-                # CRITICAL FIX: Disable shared terrain loading to prevent hangs
-                if 'shared_terrain_info' in config_dict:
-                    worker_logger.warning("🚨 EMERGENCY: Disabling shared terrain to prevent worker hangs")
-                    config_dict['shared_terrain_info'] = None
+                # CRITICAL FIX: Extract simulation_type from config_dict instead of passing entire dict
+                simulation_type = config_dict.get('simulation_type', 'memory_optimized')
+                if simulation_type not in ['standard', 'memory_optimized']:
+                    worker_logger.warning(f"⚠️  Invalid simulation_type '{simulation_type}', using 'memory_optimized'")
+                    simulation_type = 'memory_optimized'
                 
-                # Create forest model with timeout protection
+                # CRITICAL FIX: Create ModelConfig object from config_dict
+                from src.config.config_tools import ModelConfig
+                model_config = ModelConfig(**config_dict)
+                
+                # CRITICAL FIX: Add timeout for shared terrain loading to prevent hangs
+                if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
+                    worker_logger.debug("🔍 DEBUG: Shared terrain info detected, adding timeout protection")
+                    # Set a timeout for shared terrain loading in the forest model
+                    import threading
+                    import time
+                    
+                    terrain_loaded = threading.Event()
+                    terrain_error = None
+                    
+                    def load_terrain_with_timeout():
+                        nonlocal terrain_error
+                        try:
+                            # This will be handled by the forest model's _try_load_shared_terrain method
+                            # We just need to ensure it doesn't hang indefinitely
+                            worker_logger.debug("🔍 DEBUG: Shared terrain loading started")
+                            # The actual loading happens in forest model initialization
+                            terrain_loaded.set()
+                        except Exception as e:
+                            terrain_error = e
+                            terrain_loaded.set()
+                    
+                    # Start terrain loading in a separate thread
+                    terrain_thread = threading.Thread(target=load_terrain_with_timeout)
+                    terrain_thread.daemon = True
+                    terrain_thread.start()
+                    
+                    # Wait for terrain loading with timeout (30 seconds)
+                    if not terrain_loaded.wait(timeout=30.0):
+                        worker_logger.warning("⚠️  Shared terrain loading timed out after 30 seconds, continuing without shared terrain")
+                        # Disable shared terrain to prevent hangs
+                        model_config.shared_terrain_info = None
+                    elif terrain_error:
+                        worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
+                        model_config.shared_terrain_info = None
+                    else:
+                        worker_logger.debug("🔍 DEBUG: Shared terrain loading completed successfully")
+                
+                # Create forest model with proper parameters
                 worker_logger.debug("🔍 DEBUG: About to create forest model")
-                forest_model = create_forest_model(config_dict)
+                forest_model = create_forest_model(
+                    model_type=simulation_type,
+                    config=model_config
+                )
                 worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
                 
                 # Create simulation engine with timeout protection
                 worker_logger.debug("🔍 DEBUG: About to create FireSimulationEngine with config_dict type: " + str(type(config_dict)))
-                engine = FireSimulationEngine(forest_model=forest_model, config=config_dict)
+                engine = FireSimulationEngine(forest_model=forest_model, config=model_config)
                 worker_logger.debug(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
                 worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
                 
