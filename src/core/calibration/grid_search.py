@@ -1229,6 +1229,8 @@ class GridSearchCalibrator:
                     create_optimized_forest_model
                 )
                 
+                print(f"🔍 DIAGNOSTIC: Using OPTIMIZED components")
+                
                 # Create optimized forest model
                 forest_model = create_optimized_forest_model(
                     grid_size=config.grid_size,
@@ -1244,7 +1246,15 @@ class GridSearchCalibrator:
                     force_optimization=True
                 )
                 
-            except ImportError:
+                print(f"🔍 DIAGNOSTIC: Created optimized engine: {type(engine)}")
+                
+            except ImportError as e:
+                print(f"🔍 DIAGNOSTIC: ImportError - falling back to standard components: {e}")
+                # Fallback to standard components
+                forest_model = self._create_forest_model_with_optimized_config(parameter_values)
+                engine = FireSimulationEngine(forest_model=forest_model, config=config)
+            except Exception as e:
+                print(f"🔍 DIAGNOSTIC: Exception creating optimized components: {e}")
                 # Fallback to standard components
                 forest_model = self._create_forest_model_with_optimized_config(parameter_values)
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
