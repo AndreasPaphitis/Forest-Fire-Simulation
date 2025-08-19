@@ -556,8 +556,18 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     simulation_type = 'memory_optimized'
         
                 # CRITICAL FIX: Create ModelConfig object from config_dict
+                worker_logger.debug("🔧 Creating ModelConfig...")
                 from src.config.config_tools import ModelConfig
+                
+                # Extract timeout before creating ModelConfig (ModelConfig doesn't accept this parameter)
+                timeout_minutes = config_dict.pop('simulation_timeout_minutes', None)
+                
                 model_config = ModelConfig(**config_dict)
+                worker_logger.debug("✅ ModelConfig created successfully")
+                
+                # Store timeout for later use
+                if timeout_minutes is not None:
+                    model_config._simulation_timeout_minutes = timeout_minutes
                 
                 # CRITICAL FIX: Add aggressive optimizations for massive grids
                 grid_size = model_config.grid_size
@@ -566,15 +576,15 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     if total_cells > 10_000_000:  # 10M+ cells
                         worker_logger.debug(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying smart optimizations")
                         
-                        # Scale max_steps based on grid size (less aggressive for better accuracy)
+                        # Scale max_steps based on grid size (conservative scaling for accuracy)
                         if hasattr(model_config, 'max_steps') and model_config.max_steps > 150:
                             original_steps = model_config.max_steps
-                            if total_cells > 50_000_000:  # 50M+ cells - very aggressive
-                                model_config.max_steps = min(100, model_config.max_steps // 3)
-                            elif total_cells > 20_000_000:  # 20M+ cells - moderate
-                                model_config.max_steps = min(150, model_config.max_steps // 2)
-                            else:  # 10-20M cells - conservative
-                                model_config.max_steps = min(200, int(model_config.max_steps * 0.75))
+                            if total_cells > 50_000_000:  # 50M+ cells - moderate scaling
+                                model_config.max_steps = min(200, int(model_config.max_steps * 0.8))
+                            elif total_cells > 20_000_000:  # 20M+ cells - light scaling
+                                model_config.max_steps = min(250, int(model_config.max_steps * 0.9))
+                            else:  # 10-20M cells - minimal scaling
+                                model_config.max_steps = min(280, int(model_config.max_steps * 0.95))
                             worker_logger.debug(f"🚨 Scaled max_steps from {original_steps} to {model_config.max_steps} based on grid size")
                         
                         # Enable early termination
@@ -629,7 +639,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         worker_logger.debug("🔍 DEBUG: Shared terrain loading completed successfully")
                 
                 # Create forest model with proper parameters and timeout protection
-                worker_logger.debug("🔍 DEBUG: About to create forest model")
+                worker_logger.debug("🌲 Creating forest model...")
                 
                 # Add timeout for forest model creation
                 forest_model = None
@@ -656,9 +666,24 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 forest_thread.daemon = True
                 forest_thread.start()
                 
-                # Wait for forest model creation with timeout (60 seconds)
-                if not forest_ready.wait(timeout=60.0):
-                    worker_logger.error("❌ Forest model creation timed out after 60 seconds")
+                # Calculate forest model creation timeout based on grid size
+                grid_size = model_config.grid_size
+                if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+                    total_cells = grid_size[0] * grid_size[1]
+                    if total_cells > 20_000_000:  # 20M+ cells
+                        forest_timeout = 300.0  # 5 minutes for massive grids
+                    elif total_cells > 10_000_000:  # 10M+ cells
+                        forest_timeout = 180.0  # 3 minutes for large grids
+                    else:
+                        forest_timeout = 60.0   # 1 minute for smaller grids
+                else:
+                    forest_timeout = 60.0  # Default 1 minute
+                
+                worker_logger.debug(f"⏱️  Forest model creation timeout: {forest_timeout} seconds")
+                
+                # Wait for forest model creation with dynamic timeout
+                if not forest_ready.wait(timeout=forest_timeout):
+                    worker_logger.error(f"❌ Forest model creation timed out after {forest_timeout} seconds")
                     return {
                         'parameter_values': parameter_values,
                         'objective_value': 0.0,
@@ -666,7 +691,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'simulation_stats': {},
                         'evaluation_time': time.time(),
                         'is_valid': False,
-                        'error_message': "Forest model creation timed out after 60 seconds"
+                        'error_message': f"Forest model creation timed out after {forest_timeout} seconds"
                     }
                 
                 if forest_error:
@@ -779,9 +804,34 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 simulation_thread.daemon = True
                 simulation_thread.start()
                 
-                # Wait for simulation with timeout (180 seconds for massive grids)
-                if not simulation_ready.wait(timeout=180.0):
-                    worker_logger.error("❌ Simulation timed out after 180 seconds")
+                # Calculate dynamic timeout based on grid size and configuration
+                grid_size = model_config.grid_size
+                if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+                    total_cells = grid_size[0] * grid_size[1]
+                    
+                    # Check if timeout is specified in model_config (from calibration config)
+                    config_timeout_minutes = getattr(model_config, '_simulation_timeout_minutes', None)
+                    if config_timeout_minutes is not None:
+                        timeout_seconds = config_timeout_minutes * 60.0  # Convert minutes to seconds
+                        worker_logger.debug(f"⏱️  Using configured timeout: {config_timeout_minutes} minutes ({timeout_seconds} seconds)")
+                    else:
+                        # Fallback to grid-size based timeout
+                        if total_cells > 50_000_000:  # 50M+ cells
+                            timeout_seconds = 1800.0  # 30 minutes for massive grids
+                        elif total_cells > 20_000_000:  # 20M+ cells
+                            timeout_seconds = 900.0   # 15 minutes for large grids
+                        elif total_cells > 10_000_000:  # 10M+ cells
+                            timeout_seconds = 600.0   # 10 minutes for medium grids
+                        else:
+                            timeout_seconds = 300.0   # 5 minutes for smaller grids
+                        worker_logger.debug(f"⏱️  Using grid-size based timeout: {timeout_seconds} seconds for {total_cells:,} cells")
+                else:
+                    timeout_seconds = 300.0  # Default 5 minutes
+                    worker_logger.debug(f"⏱️  Using default timeout: {timeout_seconds} seconds")
+                
+                # Wait for simulation with dynamic timeout
+                if not simulation_ready.wait(timeout=timeout_seconds):
+                    worker_logger.error(f"❌ Simulation timed out after {timeout_seconds} seconds")
                     return {
                         'parameter_values': parameter_values,
                         'objective_value': 0.0,
@@ -789,7 +839,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'simulation_stats': {},
                         'evaluation_time': time.time(),
                         'is_valid': False,
-                        'error_message': "Simulation timed out after 180 seconds"
+                        'error_message': f"Simulation timed out after {timeout_seconds} seconds"
                     }
                 
                 if simulation_error:
@@ -873,9 +923,26 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         worker_thread.daemon = True
         worker_thread.start()
         
-        # Wait for worker completion with timeout (300 seconds for massive grids)
-        if not worker_ready.wait(timeout=300.0):
-            worker_logger.error("❌ Worker execution timed out after 300 seconds")
+        # Calculate worker execution timeout based on grid size
+        grid_size = config_dict.get('grid_size', (100, 100))
+        if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+            total_cells = grid_size[0] * grid_size[1]
+            if total_cells > 50_000_000:  # 50M+ cells
+                worker_timeout = 1800.0  # 30 minutes for massive grids
+            elif total_cells > 20_000_000:  # 20M+ cells
+                worker_timeout = 1200.0  # 20 minutes for large grids
+            elif total_cells > 10_000_000:  # 10M+ cells
+                worker_timeout = 900.0   # 15 minutes for medium grids
+            else:
+                worker_timeout = 600.0   # 10 minutes for smaller grids
+        else:
+            worker_timeout = 600.0  # Default 10 minutes
+        
+        worker_logger.debug(f"⏱️  Setting worker execution timeout to {worker_timeout} seconds for {total_cells:,} cells")
+        
+        # Wait for worker completion with dynamic timeout
+        if not worker_ready.wait(timeout=worker_timeout):
+            worker_logger.error(f"❌ Worker execution timed out after {worker_timeout} seconds")
             worker_logger.error("🚨 EMERGENCY: Worker completely stuck - returning error result")
             return {
                 'parameter_values': parameter_values,
@@ -884,7 +951,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 'simulation_stats': {},
                 'evaluation_time': time.time(),
                 'is_valid': False,
-                'error_message': "Worker execution timed out after 300 seconds - EMERGENCY TIMEOUT"
+                'error_message': f"Worker execution timed out after {worker_timeout} seconds - EMERGENCY TIMEOUT"
             }
         
         if worker_error:
@@ -1062,7 +1129,7 @@ class GridSearchCalibrator:
     def _evaluate_single_combination(self, parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
         """
-        Evaluate a single parameter combination with optimized serialization.
+        Evaluate a single parameter combination with optimized serialization and performance optimizations.
         """
         start_time = time.time()
         
@@ -1070,12 +1137,35 @@ class GridSearchCalibrator:
             import gc
             gc.disable()  # Disable GC during critical evaluation
             
-            # Use optimized configuration for model creation
-            forest_model = self._create_forest_model_with_optimized_config(parameter_values)
-            
-            # Create simulation engine
+            # Create config variant with parameters
             config = self.config.create_config_variant(parameter_values)
-            engine = FireSimulationEngine(forest_model=forest_model, config=config)
+            
+            # Try to use optimized components if available
+            try:
+                from src.core.optimization_factory import (
+                    create_optimized_fire_simulation_engine,
+                    create_optimized_forest_model
+                )
+                
+                # Create optimized forest model
+                forest_model = create_optimized_forest_model(
+                    grid_size=config.grid_size,
+                    num_layers=config.num_layers,
+                    config=config,
+                    force_optimization=True
+                )
+                
+                # Create optimized simulation engine
+                engine = create_optimized_fire_simulation_engine(
+                    forest_model=forest_model,
+                    config=config,
+                    force_optimization=True
+                )
+                
+            except ImportError:
+                # Fallback to standard components
+                forest_model = self._create_forest_model_with_optimized_config(parameter_values)
+                engine = FireSimulationEngine(forest_model=forest_model, config=config)
             
             # Run simulation
             simulation_result = engine.run_simulation()
@@ -1408,6 +1498,13 @@ class GridSearchCalibrator:
                         config_dict[key] = defaults[key]
                         logger.debug(f"Added default value for {key}: {defaults[key]}")
             
+            # CRITICAL FIX: Add timeout from calibration config to config_dict
+            if hasattr(self.config, 'simulation_timeout_minutes'):
+                config_dict['simulation_timeout_minutes'] = self.config.simulation_timeout_minutes
+                logger.debug(f"Added simulation_timeout_minutes to config_dict: {self.config.simulation_timeout_minutes} minutes")
+            else:
+                logger.warning("No simulation_timeout_minutes found in calibration config, using grid-size based timeout")
+            
         except Exception as e:
             logger.error(f"Error creating config_dict: {e}")
             import traceback
@@ -1421,7 +1518,8 @@ class GridSearchCalibrator:
                 'spread_probability': 0.8,
                 'fuel_consumption_rate': 0.01,
                 'ignition_threshold': 0.1,
-                'stop_when_fire_extinguished': False
+                'stop_when_fire_extinguished': False,
+                'simulation_timeout_minutes': 30.0  # Default 30 minutes
             }
             logger.debug(f"Using fallback config_dict with {len(config_dict)} keys")
         

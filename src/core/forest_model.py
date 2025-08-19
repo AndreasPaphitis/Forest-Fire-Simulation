@@ -535,13 +535,20 @@ class BaseForestModel(ABC):
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
             
-            # Get terrain dimensions from metadata
+            # Get terrain dimensions from metadata (handle both 'width'/'height' and 'grid_size' formats)
             terrain_width = metadata.get('width', None)
             terrain_height = metadata.get('height', None)
             
+            # If width/height not found, try grid_size format
             if terrain_width is None or terrain_height is None:
-                logger.warning("Terrain dimensions not found in metadata")
-                return False
+                grid_size = metadata.get('grid_size', None)
+                if grid_size and isinstance(grid_size, (list, tuple)) and len(grid_size) >= 2:
+                    terrain_width = grid_size[0]
+                    terrain_height = grid_size[1]
+                    logger.info(f"📊 Using grid_size format: {terrain_width} × {terrain_height}")
+                else:
+                    logger.warning("Terrain dimensions not found in metadata (neither width/height nor grid_size)")
+                    return False
             
             logger.info(f"📊 Preprocessed terrain size: {terrain_width} × {terrain_height} cells")
             logger.info(f"📊 Target simulation size: {self.width} × {self.height} cells")
@@ -576,9 +583,78 @@ class BaseForestModel(ABC):
                         # Handle size mismatch by subsetting if needed
                         if terrain_data.shape != (self.width, self.height):
                             if terrain_data.shape[0] >= self.width and terrain_data.shape[1] >= self.height:
-                                # Subset to match simulation grid
-                                terrain_data = terrain_data[:self.width, :self.height]
-                                logger.info(f"🔄 Subset {filename} to match simulation grid: {terrain_data.shape}")
+                                # Check if we have fire area bounds for proper geographic subsetting
+                                if hasattr(self, 'fire_area_bounds') and self.fire_area_bounds is not None:
+                                    # Use fire area bounds for proper geographic subsetting
+                                    fire_bounds = self.fire_area_bounds
+                                    
+                                    # Get terrain transform from metadata
+                                    terrain_dir = Path(self.config.preprocessed_terrain_dir)
+                                    metadata_file = terrain_dir / "metadata.json"
+                                    
+                                    if metadata_file.exists():
+                                        with open(metadata_file, 'r') as f:
+                                            metadata = json.load(f)
+                                        
+                                        transform_str = metadata.get('transform', '')
+                                        
+                                        # Parse transform matrix
+                                        if transform_str:
+                                            lines = transform_str.strip().split('\n')
+                                            line1 = lines[0].replace('|', '').strip().split(',')
+                                            line2 = lines[1].replace('|', '').strip().split(',')
+                                            
+                                            pixel_size_x = float(line1[0].strip())
+                                            pixel_size_y = float(line2[1].strip())
+                                            origin_x = float(line1[2].strip())
+                                            origin_y = float(line2[2].strip())
+                                            
+                                            # Map fire bounds to terrain grid coordinates
+                                            fire_min_x, fire_min_y, fire_max_x, fire_max_y = fire_bounds
+                                            
+                                            # Add 10% buffer to match Day 4 grid size calculation
+                                            width_m = fire_max_x - fire_min_x
+                                            height_m = fire_max_y - fire_min_y
+                                            buffer_factor = 1.1  # 10% buffer
+                                            buffered_width_m = width_m * buffer_factor
+                                            buffered_height_m = height_m * buffer_factor
+                                            
+                                            # Calculate buffered bounds (centered on original fire area)
+                                            center_x = (fire_min_x + fire_max_x) / 2
+                                            center_y = (fire_min_y + fire_max_y) / 2
+                                            buffered_min_x = center_x - buffered_width_m / 2
+                                            buffered_max_x = center_x + buffered_width_m / 2
+                                            buffered_min_y = center_y - buffered_height_m / 2
+                                            buffered_max_y = center_y + buffered_height_m / 2
+                                            
+                                            # Convert to grid coordinates (note: Y-axis is inverted in raster)
+                                            grid_min_x = int((buffered_min_x - origin_x) / pixel_size_x)
+                                            grid_max_x = int((buffered_max_x - origin_x) / pixel_size_x)
+                                            grid_min_y = int((origin_y - buffered_max_y) / abs(pixel_size_y))
+                                            grid_max_y = int((origin_y - buffered_min_y) / abs(pixel_size_y))
+                                            
+                                            # Ensure bounds are within terrain
+                                            grid_min_x = max(0, grid_min_x)
+                                            grid_min_y = max(0, grid_min_y)
+                                            grid_max_x = min(terrain_data.shape[1], grid_max_x)
+                                            grid_max_y = min(terrain_data.shape[0], grid_max_y)
+                                            
+                                            # Extract the correct geographic region
+                                            terrain_data = terrain_data[grid_min_y:grid_max_y, grid_min_x:grid_max_x]
+                                            
+                                            logger.info(f"🎯 Using buffered fire area subset for {filename}: ({grid_min_x}, {grid_min_y}) to ({grid_max_x}, {grid_max_y})")
+                                        else:
+                                            # Fallback to simple subsetting
+                                            terrain_data = terrain_data[:self.width, :self.height]
+                                            logger.info(f"🔄 Subset {filename} to match simulation grid: {terrain_data.shape}")
+                                    else:
+                                        # Fallback to simple subsetting
+                                        terrain_data = terrain_data[:self.width, :self.height]
+                                        logger.info(f"🔄 Subset {filename} to match simulation grid: {terrain_data.shape}")
+                                else:
+                                    # Fallback to simple subsetting from top-left corner
+                                    terrain_data = terrain_data[:self.width, :self.height]
+                                    logger.info(f"🔄 Subset {filename} to match simulation grid: {terrain_data.shape}")
                             else:
                                 logger.warning(f"⚠️  Terrain file {filename} too small: {terrain_data.shape} vs required {self.width}×{self.height}")
                                 continue
