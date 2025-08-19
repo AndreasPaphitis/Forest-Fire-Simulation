@@ -650,10 +650,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
                     else:
-                        print(f"🔍 DIAGNOSTIC: Shared terrain loading completed successfully")
+                        worker_logger.debug("Shared terrain loading completed successfully")
                 else:
-                    print(f"🔍 DIAGNOSTIC: Worker has NO shared terrain info")
-                    worker_logger.debug("🔍 DEBUG: No shared terrain info - will load individually")
+                    worker_logger.debug("No shared terrain info - will load individually")
                 
                 # Create forest model with proper parameters and timeout protection
                 worker_logger.debug("🌲 Creating forest model...")
@@ -666,18 +665,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def create_forest_with_timeout():
                     nonlocal forest_model, forest_error
                     try:
-                        print(f"🔍 DIAGNOSTIC: Forest model creation thread started")
-                        worker_logger.debug("🔍 DEBUG: Creating forest model...")
-                        print(f"🔍 DIAGNOSTIC: About to call create_forest_model with simulation_type={simulation_type}")
-                        print(f"🔍 DIAGNOSTIC: Model config has shared_terrain_info: {hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info is not None}")
+                        worker_logger.debug("Creating forest model...")
                         
                         forest_model = create_forest_model(
                             model_type=simulation_type,
                             config=model_config
                         )
                         
-                        print(f"🔍 DIAGNOSTIC: Forest model created successfully: {type(forest_model)}")
-                        worker_logger.debug(f"🔍 DEBUG: Forest model created successfully: {type(forest_model)}")
+                        worker_logger.debug(f"Forest model created successfully: {type(forest_model)}")
                         
                         # CRITICAL FIX: Set ignition point to Arafa highlands (2023 Tenerife fire location)
                         try:
@@ -701,9 +696,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         
                         forest_ready.set()
                     except Exception as e:
-                        print(f"🔍 DIAGNOSTIC: Forest model creation FAILED with error: {e}")
                         forest_error = e
-                        worker_logger.error(f"🔍 DEBUG: Forest model creation failed: {e}")
+                        worker_logger.error(f"Forest model creation failed: {e}")
                         forest_ready.set()
                 
                 # Start forest model creation in a separate thread
@@ -727,9 +721,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_logger.debug(f"⏱️  Forest model creation timeout: {forest_timeout} seconds")
                 
                 # Wait for forest model creation with dynamic timeout
-                print(f"🔍 DIAGNOSTIC: Waiting for forest model creation with timeout {forest_timeout} seconds...")
                 if not forest_ready.wait(timeout=forest_timeout):
-                    print(f"🔍 DIAGNOSTIC: Forest model creation TIMED OUT after {forest_timeout} seconds!")
                     worker_logger.error(f"❌ Forest model creation timed out after {forest_timeout} seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -740,11 +732,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Forest model creation timed out after {forest_timeout} seconds"
                     }
-                else:
-                    print(f"🔍 DIAGNOSTIC: Forest model creation completed within timeout")
-                
                 if forest_error:
-                    print(f"🔍 DIAGNOSTIC: Forest model creation FAILED with error: {forest_error}")
                     worker_logger.error(f"❌ Forest model creation failed: {forest_error}")
                     return {
                         'parameter_values': parameter_values,
@@ -759,7 +747,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     print(f"🔍 DIAGNOSTIC: Forest model creation completed without errors")
                 
                 if forest_model is None:
-                    print(f"🔍 DIAGNOSTIC: Forest model is None after creation!")
                     worker_logger.error("❌ Forest model is None after creation")
                     return {
                         'parameter_values': parameter_values,
@@ -770,12 +757,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': "Forest model is None after creation"
                     }
-                else:
-                    print(f"🔍 DIAGNOSTIC: Forest model is not None, proceeding to engine creation")
                 
                 # Create simulation engine with timeout protection
-                print(f"🔍 DIAGNOSTIC: About to create FireSimulationEngine...")
-                worker_logger.debug("🔍 DEBUG: About to create FireSimulationEngine with config_dict type: " + str(type(config_dict)))
+                worker_logger.debug("Creating FireSimulationEngine...")
                 
                 # Add timeout for engine creation
                 engine = None
@@ -785,19 +769,15 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def create_engine_with_timeout():
                     nonlocal engine, engine_error
                     try:
-                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation thread started")
-                        worker_logger.debug("🔍 DEBUG: Creating FireSimulationEngine...")
-                        print(f"🔍 DIAGNOSTIC: About to create FireSimulationEngine with forest_model type: {type(forest_model)}")
+                        worker_logger.debug("Creating FireSimulationEngine...")
                         
                         engine = FireSimulationEngine(forest_model=forest_model, config=model_config)
                         
-                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine created successfully: {type(engine)}")
-                        worker_logger.debug(f"🔍 DEBUG: FireSimulationEngine created successfully: {type(engine)}")
+                        worker_logger.debug(f"FireSimulationEngine created successfully: {type(engine)}")
                         engine_ready.set()
                     except Exception as e:
-                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation FAILED with error: {e}")
                         engine_error = e
-                        worker_logger.error(f"🔍 DEBUG: Engine creation failed: {e}")
+                        worker_logger.error(f"Engine creation failed: {e}")
                         engine_ready.set()
                 
                 # Start engine creation in a separate thread
@@ -806,9 +786,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 engine_thread.start()
                 
                 # Wait for engine creation with timeout (30 seconds)
-                print(f"🔍 DIAGNOSTIC: Waiting for FireSimulationEngine creation with timeout 30 seconds...")
                 if not engine_ready.wait(timeout=30.0):
-                    print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation TIMED OUT after 30 seconds!")
                     worker_logger.error("❌ Engine creation timed out after 30 seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -819,9 +797,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': "Engine creation timed out after 30 seconds"
                     }
-                else:
-                    print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation completed within timeout")
-                
                 if engine_error:
                     worker_logger.error(f"❌ Engine creation failed: {engine_error}")
                     return {
@@ -847,8 +822,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     }
                 
                 # Run simulation with timeout protection
-                print(f"🔍 DIAGNOSTIC: About to start simulation execution...")
-                worker_logger.debug("🔍 DEBUG: Starting simulation run...")
+                worker_logger.debug("Starting simulation run...")
                 
                 simulation_result = None
                 simulation_ready = threading.Event()
@@ -857,27 +831,21 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def run_simulation_with_timeout():
                     nonlocal simulation_result, simulation_error
                     try:
-                        print(f"🔍 DIAGNOSTIC: Simulation execution thread started")
-                        worker_logger.debug("🔍 DEBUG: Running simulation...")
-                        print(f"🔍 DIAGNOSTIC: About to call engine.run_simulation()...")
+                        worker_logger.debug("Running simulation...")
                         
                         simulation_result = engine.run_simulation()
                         
-                        print(f"🔍 DIAGNOSTIC: Simulation execution completed successfully")
-                        worker_logger.debug("🔍 DEBUG: Simulation completed successfully")
+                        worker_logger.debug("Simulation completed successfully")
                         simulation_ready.set()
                     except Exception as e:
-                        print(f"🔍 DIAGNOSTIC: Simulation execution FAILED with error: {e}")
                         simulation_error = e
-                        worker_logger.error(f"🔍 DEBUG: Simulation failed: {e}")
+                        worker_logger.error(f"Simulation failed: {e}")
                         simulation_ready.set()
                 
                 # Start simulation in a separate thread
-                print(f"🔍 DIAGNOSTIC: Creating simulation execution thread...")
                 simulation_thread = threading.Thread(target=run_simulation_with_timeout)
                 simulation_thread.daemon = True
                 simulation_thread.start()
-                print(f"🔍 DIAGNOSTIC: Simulation execution thread started")
                 
                 # Calculate dynamic timeout based on grid size and configuration
                 grid_size = model_config.grid_size
@@ -905,9 +873,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     worker_logger.debug(f"⏱️  Using default timeout: {timeout_seconds} seconds")
                 
                 # Wait for simulation with dynamic timeout
-                print(f"🔍 DIAGNOSTIC: Waiting for simulation execution with timeout {timeout_seconds} seconds...")
                 if not simulation_ready.wait(timeout=timeout_seconds):
-                    print(f"🔍 DIAGNOSTIC: Simulation execution TIMED OUT after {timeout_seconds} seconds!")
                     worker_logger.error(f"❌ Simulation timed out after {timeout_seconds} seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -918,9 +884,6 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Simulation timed out after {timeout_seconds} seconds"
                     }
-                else:
-                    print(f"🔍 DIAGNOSTIC: Simulation execution completed within timeout")
-                
                 if simulation_error:
                     worker_logger.error(f"❌ Simulation failed: {simulation_error}")
                     return {
@@ -1229,8 +1192,6 @@ class GridSearchCalibrator:
                     create_optimized_forest_model
                 )
                 
-                print(f"🔍 DIAGNOSTIC: Using OPTIMIZED components")
-                
                 # Create optimized forest model
                 forest_model = create_optimized_forest_model(
                     grid_size=config.grid_size,
@@ -1246,15 +1207,11 @@ class GridSearchCalibrator:
                     force_optimization=True
                 )
                 
-                print(f"🔍 DIAGNOSTIC: Created optimized engine: {type(engine)}")
-                
             except ImportError as e:
-                print(f"🔍 DIAGNOSTIC: ImportError - falling back to standard components: {e}")
                 # Fallback to standard components
                 forest_model = self._create_forest_model_with_optimized_config(parameter_values)
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
             except Exception as e:
-                print(f"🔍 DIAGNOSTIC: Exception creating optimized components: {e}")
                 # Fallback to standard components
                 forest_model = self._create_forest_model_with_optimized_config(parameter_values)
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
@@ -1532,16 +1489,13 @@ class GridSearchCalibrator:
             logger.info("   ThreadPoolExecutor was causing GIL deadlocks with many workers")
         
         # Pre-optimize configurations for workers
-        logger.debug("📦 Pre-optimizing configurations for worker processes...")
-        print("🔍 DIAGNOSTIC: Starting pre-optimization for workers...")
+        logger.info("📦 Pre-optimizing configurations for worker processes...")
         self._pre_optimize_for_workers()
-        print("✅ DIAGNOSTIC: Pre-optimization completed")
         
         # Convert generator to list for parallel processing
         # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
-        print("🔍 DIAGNOSTIC: Converting parameter combinations to list...")
         combinations_list = list(self._generate_parameter_combinations())
-        print(f"✅ DIAGNOSTIC: Generated {len(combinations_list)} parameter combinations")
+        logger.info(f"Generated {len(combinations_list)} parameter combinations")
         
         # CRITICAL DEBUG: Validate combinations_list
         logger.debug(f"combinations_list type: {type(combinations_list)}")
@@ -1552,10 +1506,8 @@ class GridSearchCalibrator:
         
         # Prepare configuration and objective function name for workers
         # CRITICAL FIX: Ensure config_dict is properly created
-        print("🔍 DIAGNOSTIC: Creating base config variant...")
         try:
             base_config_variant = self.config.create_config_variant({})
-            print("✅ DIAGNOSTIC: Base config variant created")
             
             # CRITICAL FIX: Handle different return types from create_config_variant
             if isinstance(base_config_variant, dict):
@@ -1588,7 +1540,6 @@ class GridSearchCalibrator:
             
             logger.debug(f"config_dict type: {type(config_dict)}")
             logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
-            print(f"🔍 DIAGNOSTIC: Config dict created with {len(config_dict.keys()) if isinstance(config_dict, dict) else 0} keys")
             
             # CRITICAL FIX: Ensure essential keys are present
             essential_keys = ['grid_size', 'num_layers', 'max_steps', 'simulation_type']
