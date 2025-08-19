@@ -353,6 +353,9 @@ class FireSimulationEngine:
                                      else getattr(self.config, 'stop_when_fire_extinguished', True)
 
         logger.info(f"Starting fire simulation for {sim_max_steps} steps. Stop if extinguished: {sim_stop_when_extinguished}")
+        print(f"🔍 DIAGNOSTIC: FireSimulationEngine.run_simulation() started")
+        print(f"🔍 DIAGNOSTIC: Grid size: {self.forest_model.width} × {self.forest_model.height} × {self.forest_model.num_layers}")
+        print(f"🔍 DIAGNOSTIC: Total cells: {self.forest_model.width * self.forest_model.height * self.forest_model.num_layers:,}")
         
         # Get initial state
         if not hasattr(self.forest_model, 'state'):
@@ -361,16 +364,20 @@ class FireSimulationEngine:
         
         # Find initial burning cells efficiently for large grids
         total_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
+        print(f"🔍 DIAGNOSTIC: About to find initial burning cells for {total_cells:,} cells")
         
         if total_cells > 100_000_000:  # 100M+ cells - use memory-efficient scanning
+            print(f"🔍 DIAGNOSTIC: Large grid detected - using efficient active cell detection")
             logger.info(f"🔍 Large grid detected ({total_cells:,} cells) - using efficient active cell detection")
             
             # For memory-optimized sparse models, check if they track active cells
             if (hasattr(self.forest_model, 'use_sparse_storage') and 
                 self.forest_model.use_sparse_storage and
                 hasattr(self.forest_model, '_get_burning_cells')):
+                print(f"🔍 DIAGNOSTIC: Using sparse model active cell detection")
                 # Use sparse model's efficient method
                 self.active_cells = set(self.forest_model._get_burning_cells())
+                print(f"🔍 DIAGNOSTIC: Sparse model found {len(self.active_cells)} initial burning cells")
                 logger.info(f"Used sparse model active cell detection: {len(self.active_cells)} initial cells")
             else:
                 # Check for tracked ignition points first
@@ -385,12 +392,17 @@ class FireSimulationEngine:
                 
                 # If no active cells found from ignition points, scan for any burning cells
                 if not self.active_cells:
+                    print(f"🔍 DIAGNOSTIC: No active cells from ignition points - starting full scan...")
                     logger.info("No active cells from ignition points - scanning for burning cells...")
+                    print(f"🔍 DIAGNOSTIC: This will scan {self.forest_model.width} × {self.forest_model.height} × {self.forest_model.num_layers} = {self.forest_model.width * self.forest_model.height * self.forest_model.num_layers:,} cells")
+                    
                     for x in range(self.forest_model.width):
                         for y in range(self.forest_model.height):
                             for z in range(self.forest_model.num_layers):
                                 if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                     self.active_cells.add((x, y, z))
+                    
+                    print(f"🔍 DIAGNOSTIC: Full scan completed - found {len(self.active_cells)} burning cells")
                     logger.info(f"Scan found {len(self.active_cells)} burning cells")
                 
                 # If still no active cells, fall back to center region scan
