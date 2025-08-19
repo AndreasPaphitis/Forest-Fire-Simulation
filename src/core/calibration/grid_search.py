@@ -604,14 +604,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # CRITICAL FIX: Add timeout for shared terrain loading to prevent hangs
                 if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
-                    worker_logger.debug("🔍 DEBUG: Shared terrain info detected, adding timeout protection")
-                    print(f"🔍 DIAGNOSTIC: Worker has shared terrain info: {type(model_config.shared_terrain_info)}")
-                    if isinstance(model_config.shared_terrain_info, dict):
-                        print(f"🔍 DIAGNOSTIC: Shared terrain keys: {list(model_config.shared_terrain_info.keys())}")
-                        print(f"🔍 DIAGNOSTIC: Shared terrain is_loaded: {model_config.shared_terrain_info.get('is_loaded', 'NOT_FOUND')}")
-                        print(f"🔍 DIAGNOSTIC: Shared terrain shared_names count: {len(model_config.shared_terrain_info.get('shared_names', {}))}")
-                    
-                    print(f"🔍 DIAGNOSTIC: About to start shared terrain loading process...")
+                    worker_logger.debug("Shared terrain info detected, adding timeout protection")
                     
                     # Set a timeout for shared terrain loading in the forest model
                     terrain_loaded = threading.Event()
@@ -620,33 +613,26 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     def load_terrain_with_timeout():
                         nonlocal terrain_error
                         try:
-                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread started")
                             # This will be handled by the forest model's _try_load_shared_terrain method
                             # We just need to ensure it doesn't hang indefinitely
-                            worker_logger.debug("🔍 DEBUG: Shared terrain loading started")
-                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread completing normally")
+                            worker_logger.debug("Shared terrain loading started")
                             # The actual loading happens in forest model initialization
                             terrain_loaded.set()
                         except Exception as e:
-                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread failed with error: {e}")
                             terrain_error = e
                             terrain_loaded.set()
                     
-                    print(f"🔍 DIAGNOSTIC: Creating shared terrain loading thread...")
                     # Start terrain loading in a separate thread
                     terrain_thread = threading.Thread(target=load_terrain_with_timeout)
                     terrain_thread.daemon = True
                     terrain_thread.start()
-                    print(f"🔍 DIAGNOSTIC: Shared terrain loading thread started, waiting for completion...")
                     
                     # Wait for terrain loading with timeout (30 seconds)
                     if not terrain_loaded.wait(timeout=30.0):
-                        print(f"🔍 DIAGNOSTIC: Shared terrain loading TIMED OUT after 30 seconds!")
                         worker_logger.warning("⚠️  Shared terrain loading timed out after 30 seconds, continuing without shared terrain")
                         # Disable shared terrain to prevent hangs
                         model_config.shared_terrain_info = None
                     elif terrain_error:
-                        print(f"🔍 DIAGNOSTIC: Shared terrain loading FAILED with error: {terrain_error}")
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
                     else:
@@ -743,8 +729,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Forest model creation failed: {forest_error}"
                     }
-                else:
-                    print(f"🔍 DIAGNOSTIC: Forest model creation completed without errors")
+
                 
                 if forest_model is None:
                     worker_logger.error("❌ Forest model is None after creation")
@@ -1569,14 +1554,11 @@ class GridSearchCalibrator:
             if hasattr(self.config, 'shared_terrain_info') and self.config.shared_terrain_info:
                 config_dict['shared_terrain_info'] = self.config.shared_terrain_info
                 logger.info(f"✅ Added shared terrain info to config_dict for {self.max_workers} workers")
-                print(f"🔍 DIAGNOSTIC: Added shared terrain info to config_dict")
             elif hasattr(self.config, 'base_config') and hasattr(self.config.base_config, 'shared_terrain_info') and self.config.base_config.shared_terrain_info:
                 config_dict['shared_terrain_info'] = self.config.base_config.shared_terrain_info
                 logger.info(f"✅ Added shared terrain info from base_config to config_dict for {self.max_workers} workers")
-                print(f"🔍 DIAGNOSTIC: Added shared terrain info from base_config to config_dict")
             else:
                 logger.warning("⚠️  No shared terrain info found - workers will load terrain individually!")
-                print(f"🔍 DIAGNOSTIC: No shared terrain info - individual loading")
             
         except Exception as e:
             logger.error(f"Error creating config_dict: {e}")
@@ -1609,10 +1591,8 @@ class GridSearchCalibrator:
         def create_executor_with_timeout():
             nonlocal executor, executor_error
             try:
-                print(f"🔍 DIAGNOSTIC: Creating ProcessPoolExecutor with {self.max_workers} workers...")
                 logger.info(f"🚀 Creating ProcessPoolExecutor with {self.max_workers} workers...")
                 executor = ProcessPoolExecutor(max_workers=self.max_workers)
-                print(f"✅ DIAGNOSTIC: ProcessPoolExecutor created successfully")
                 logger.info(f"✅ ProcessPoolExecutor created successfully")
                 executor_ready.set()
             except Exception as e:
