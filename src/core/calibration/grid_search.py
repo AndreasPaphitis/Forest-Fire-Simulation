@@ -556,6 +556,34 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 from src.config.config_tools import ModelConfig
                 model_config = ModelConfig(**config_dict)
                 
+                # CRITICAL FIX: Add aggressive optimizations for massive grids
+                grid_size = model_config.grid_size
+                if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+                    total_cells = grid_size[0] * grid_size[1]
+                    if total_cells > 10_000_000:  # 10M+ cells
+                        worker_logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying aggressive optimizations")
+                        
+                        # Reduce max_steps for faster evaluation
+                        if hasattr(model_config, 'max_steps') and model_config.max_steps > 100:
+                            original_steps = model_config.max_steps
+                            model_config.max_steps = min(100, model_config.max_steps // 2)
+                            worker_logger.warning(f"🚨 Reduced max_steps from {original_steps} to {model_config.max_steps}")
+                        
+                        # Enable early termination
+                        if hasattr(model_config, 'stop_when_fire_extinguished'):
+                            model_config.stop_when_fire_extinguished = True
+                            worker_logger.warning("🚨 Enabled early termination for massive grid")
+                        
+                        # Reduce memory usage
+                        if hasattr(model_config, 'memory_optimization_level'):
+                            model_config.memory_optimization_level = 3  # Maximum optimization
+                            worker_logger.warning("🚨 Set maximum memory optimization level")
+                        
+                        # Force sparse storage
+                        if hasattr(model_config, 'use_sparse_storage'):
+                            model_config.use_sparse_storage = True
+                            worker_logger.warning("🚨 Forced sparse storage for massive grid")
+                
                 # CRITICAL FIX: Add timeout for shared terrain loading to prevent hangs
                 if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
                     worker_logger.debug("🔍 DEBUG: Shared terrain info detected, adding timeout protection")
@@ -666,9 +694,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         worker_thread.daemon = True
         worker_thread.start()
         
-        # Wait for worker completion with timeout (120 seconds)
-        if not worker_ready.wait(timeout=120.0):
-            worker_logger.error("❌ Worker execution timed out after 120 seconds")
+        # Wait for worker completion with timeout (300 seconds for massive grids)
+        if not worker_ready.wait(timeout=300.0):
+            worker_logger.error("❌ Worker execution timed out after 300 seconds")
             return {
                 'parameter_values': parameter_values,
                 'objective_value': 0.0,
@@ -676,7 +704,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 'simulation_stats': {},
                 'evaluation_time': time.time(),
                 'is_valid': False,
-                'error_message': "Worker execution timed out after 120 seconds"
+                'error_message': "Worker execution timed out after 300 seconds"
             }
         
         if worker_error:
@@ -1073,6 +1101,16 @@ class GridSearchCalibrator:
         # Calculate optimal worker count
         if not self.bypass_worker_limit:
             optimal_workers = self._calculate_hpc_optimal_workers()
+            
+            # CRITICAL FIX: Reduce workers for massive grids to prevent resource contention
+            grid_size = self._get_grid_size_from_config(self.config)
+            if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+                total_cells = grid_size[0] * grid_size[1]
+                if total_cells > 10_000_000:  # 10M+ cells
+                    logger.warning(f"🚨 MASSIVE GRID: {total_cells:,} cells - reducing workers for better performance")
+                    optimal_workers = min(optimal_workers, 8)  # Max 8 workers for massive grids
+                    logger.warning(f"🚨 Reduced optimal workers to {optimal_workers} for massive grid")
+            
             if self.max_workers > optimal_workers:
                 logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
                 self.max_workers = optimal_workers
