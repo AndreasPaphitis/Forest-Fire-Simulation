@@ -1031,6 +1031,9 @@ class GridSearchCalibrator:
         self.max_workers = max_workers or min(70, mp.cpu_count() or 1)
         self.bypass_worker_limit = bypass_worker_limit
         
+        # Track if user explicitly specified workers (for respecting user choice)
+        self._user_specified_workers = max_workers is not None
+        
         # Create parameter space
         self.parameter_space = self._create_parameter_space()
         
@@ -1378,6 +1381,7 @@ class GridSearchCalibrator:
         """
         Run parallel calibration with optimized serialization.
         """
+        print(f"🔍 DIAGNOSTIC: Starting parallel calibration with {self.total_combinations} combinations")
         logger.debug(f"🚀 Starting parallel calibration with {self.total_combinations} combinations")
         
         # Calculate optimal worker count
@@ -1405,8 +1409,13 @@ class GridSearchCalibrator:
                         else:  # Lower memory systems
                             max_workers_for_grid = 16  # Conservative limit
                         
-                        optimal_workers = min(optimal_workers, max_workers_for_grid)
-                        logger.warning(f"🚨 Adjusted workers to {optimal_workers} for massive grid (max allowed: {max_workers_for_grid} for {memory_gb:.1f}GB system)")
+                        # RESPECT USER CHOICE: Only adjust if user didn't explicitly specify workers
+                        if hasattr(self, '_user_specified_workers') and self._user_specified_workers:
+                            logger.info(f"🎛️  RESPECTING USER CHOICE: Keeping {self.max_workers} workers (user-specified)")
+                            optimal_workers = self.max_workers
+                        else:
+                            optimal_workers = min(optimal_workers, max_workers_for_grid)
+                            logger.warning(f"🚨 Adjusted workers to {optimal_workers} for massive grid (max allowed: {max_workers_for_grid} for {memory_gb:.1f}GB system)")
                     except Exception as e:
                         # Fallback if psutil fails
                         optimal_workers = min(optimal_workers, 32)  # Conservative default
@@ -1431,11 +1440,15 @@ class GridSearchCalibrator:
         
         # Pre-optimize configurations for workers
         logger.debug("📦 Pre-optimizing configurations for worker processes...")
+        print("🔍 DIAGNOSTIC: Starting pre-optimization for workers...")
         self._pre_optimize_for_workers()
+        print("✅ DIAGNOSTIC: Pre-optimization completed")
         
         # Convert generator to list for parallel processing
         # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
+        print("🔍 DIAGNOSTIC: Converting parameter combinations to list...")
         combinations_list = list(self._generate_parameter_combinations())
+        print(f"✅ DIAGNOSTIC: Generated {len(combinations_list)} parameter combinations")
         
         # CRITICAL DEBUG: Validate combinations_list
         logger.debug(f"combinations_list type: {type(combinations_list)}")
@@ -1446,8 +1459,10 @@ class GridSearchCalibrator:
         
         # Prepare configuration and objective function name for workers
         # CRITICAL FIX: Ensure config_dict is properly created
+        print("🔍 DIAGNOSTIC: Creating base config variant...")
         try:
             base_config_variant = self.config.create_config_variant({})
+            print("✅ DIAGNOSTIC: Base config variant created")
             
             # CRITICAL FIX: Handle different return types from create_config_variant
             if isinstance(base_config_variant, dict):
@@ -1480,6 +1495,7 @@ class GridSearchCalibrator:
             
             logger.debug(f"config_dict type: {type(config_dict)}")
             logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+            print(f"🔍 DIAGNOSTIC: Config dict created with {len(config_dict.keys()) if isinstance(config_dict, dict) else 0} keys")
             
             # CRITICAL FIX: Ensure essential keys are present
             essential_keys = ['grid_size', 'num_layers', 'max_steps', 'simulation_type']
@@ -1536,8 +1552,10 @@ class GridSearchCalibrator:
         def create_executor_with_timeout():
             nonlocal executor, executor_error
             try:
+                print(f"🔍 DIAGNOSTIC: Creating ProcessPoolExecutor with {self.max_workers} workers...")
                 logger.info(f"🚀 Creating ProcessPoolExecutor with {self.max_workers} workers...")
                 executor = ProcessPoolExecutor(max_workers=self.max_workers)
+                print(f"✅ DIAGNOSTIC: ProcessPoolExecutor created successfully")
                 logger.info(f"✅ ProcessPoolExecutor created successfully")
                 executor_ready.set()
             except Exception as e:
