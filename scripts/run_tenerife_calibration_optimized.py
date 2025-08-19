@@ -653,7 +653,8 @@ Examples:
         
         # Run calibration with optimizations
         results = calibrator.run_calibration(
-            target_data=training_data,
+            calibration_config=calib_config,
+            test_data=validation_data,  # Use validation data for testing
             progress_callback=progress_callback
         )
         
