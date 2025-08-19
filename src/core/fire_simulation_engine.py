@@ -385,7 +385,6 @@ class FireSimulationEngine:
                             if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                 self.active_cells.add((x, y, z))
                     logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
-                else:
                 
                 # If no active cells found from ignition points, scan for any burning cells
                 if not self.active_cells:
@@ -405,7 +404,6 @@ class FireSimulationEngine:
                                 if cells_scanned % 1000 == 0:
                                     elapsed = time.time() - scan_start_time
                                     if elapsed > scan_timeout:
-                                        print(f"🔍 DIAGNOSTIC: Full scan TIMED OUT after {elapsed:.1f} seconds - scanned {cells_scanned:,} cells")
                                         logger.warning(f"Full scan timed out after {elapsed:.1f} seconds - scanned {cells_scanned:,} cells")
                                         # Use center region as fallback
                                         center_x, center_y = self.forest_model.width // 2, self.forest_model.height // 2
