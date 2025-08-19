@@ -1195,8 +1195,9 @@ class TenerifeFirePerimeterCalibrator:
             print(f"⚠️  Adding simulation_type='memory_optimized' to base_config")
             calibration_config.base_config.simulation_type = "memory_optimized"
         
-        # Create parameter bounds
-        parameter_bounds = get_default_calibration_bounds()
+        # Create parameter bounds ONLY for the specified calibration parameters
+        from src.core.calibration.parameter_bounds import get_parameter_bounds_for_calibration
+        parameter_bounds = get_parameter_bounds_for_calibration(calibration_config.calibration_parameters)
         
         # Create spatial similarity objective function
         from src.core.calibration.objective_functions import create_default_spatial_objective

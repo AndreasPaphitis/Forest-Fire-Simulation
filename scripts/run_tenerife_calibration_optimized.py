@@ -89,6 +89,44 @@ except ImportError as e:
     sys.exit(1)
 
 # Configure logging to be quiet by default
+def setup_hpc_optimizations():
+    """Set up HPC optimizations and environment configuration."""
+    print("🔧 Setting up HPC optimizations...")
+    
+    # Configure NumExpr for vectorized operations
+    cpu_count = os.cpu_count() or 1
+    numexpr_threads = max(1, int(cpu_count * 0.75))
+    os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr_threads)
+    os.environ['NUMEXPR_NUM_THREADS'] = str(numexpr_threads)
+    
+    # Configure NumPy/BLAS threads
+    numpy_threads = max(1, int(cpu_count * 0.5))
+    os.environ['OPENBLAS_NUM_THREADS'] = str(numpy_threads)
+    os.environ['MKL_NUM_THREADS'] = str(numpy_threads)
+    os.environ['OMP_NUM_THREADS'] = str(numpy_threads)
+    
+    # Configure optimization factory for HPC
+    try:
+        from src.core.optimization_factory import set_optimization_config, OptimizationConfig
+        
+        hpc_config = OptimizationConfig()
+        hpc_config.auto_optimize_threshold = 500_000  # 500K cells
+        hpc_config.force_optimize_threshold = 5_000_000  # 5M cells
+        hpc_config.enable_vectorized_processing = True
+        hpc_config.enable_batch_updates = True
+        hpc_config.enable_neighbor_caching = True
+        hpc_config.enable_optimized_sparse_ops = True
+        hpc_config.enable_performance_logging = True
+        hpc_config.log_optimization_decisions = True
+        hpc_config.graceful_fallback = True
+        hpc_config.fallback_on_error = True
+        
+        set_optimization_config(hpc_config)
+        print(f"   ✅ HPC optimizations configured (thresholds: {hpc_config.auto_optimize_threshold:,}, {hpc_config.force_optimize_threshold:,})")
+        
+    except ImportError as e:
+        print(f"   ⚠️  Failed to configure optimization factory: {e}")
+
 def setup_quiet_logging():
     """Set up quiet logging configuration to reduce verbosity."""
     # Set root logger to WARNING level
@@ -123,8 +161,9 @@ def setup_quiet_logging():
     # Suppress memory monitoring spam
     logging.getLogger('src.utils.memory_monitor').setLevel(logging.ERROR)
 
-# Set up quiet logging by default
-setup_quiet_logging()
+    # Set up HPC optimizations and quiet logging
+    setup_hpc_optimizations()
+    setup_quiet_logging()
 
 logger = get_logger(__name__)
 

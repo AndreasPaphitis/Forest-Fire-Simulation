@@ -474,6 +474,29 @@ def create_calibration_parameters(parameter_names: List[str],
     return parameters
 
 
+def get_parameter_bounds_for_calibration(parameter_names: List[str]) -> Dict[str, ParameterBounds]:
+    """
+    Get parameter bounds ONLY for the specified calibration parameters.
+    
+    Args:
+        parameter_names: List of parameter names to get bounds for
+        
+    Returns:
+        Dictionary mapping parameter names to ParameterBounds objects
+    """
+    all_bounds = get_default_calibration_bounds()
+    parameter_bounds = {}
+    
+    for param_name in parameter_names:
+        if param_name in all_bounds:
+            parameter_bounds[param_name] = all_bounds[param_name]
+        else:
+            logger.warning(f"⚠️  No bounds defined for parameter: {param_name}")
+    
+    logger.info(f"Created bounds for {len(parameter_bounds)} specified parameters: {list(parameter_bounds.keys())}")
+    return parameter_bounds
+
+
 def get_tier_description(tier: CalibrationTier) -> str:
     """Get a human-readable description of a calibration tier."""
     descriptions = {

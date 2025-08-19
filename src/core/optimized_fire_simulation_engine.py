@@ -66,6 +66,11 @@ class OptimizedFireSimulationEngine(FireSimulationEngine):
             'optimization_time_saved': 0.0
         }
         
+        print("🚀 OPTIMIZED Fire Simulation Engine initialized!")
+        print(f"   🎯 Vectorized processing: {self.use_vectorized_processing}")
+        print(f"   🎯 Batch updates: {self.use_batch_updates}")
+        print(f"   🎯 Neighbor caching: {self.use_neighbor_caching}")
+        print(f"   🎯 Optimized sparse ops: {self.use_optimized_sparse_ops}")
         logger.info("🚀 Optimized Fire Simulation Engine initialized")
         logger.info(f"   Vectorized processing: {self.use_vectorized_processing}")
         logger.info(f"   Batch updates: {self.use_batch_updates}")
@@ -102,7 +107,7 @@ class OptimizedFireSimulationEngine(FireSimulationEngine):
         new_inactive_cells = set()
         
         # OPTIMIZATION 1: Vectorized burnout checking
-        if self.use_vectorized_processing and len(current_active_cells) > 10:
+        if self.use_vectorized_processing and len(current_active_cells) > 2:
             burned_out_cells = self._vectorized_burnout_check(current_active_cells)
             new_inactive_cells.update(burned_out_cells)
             
@@ -111,11 +116,15 @@ class OptimizedFireSimulationEngine(FireSimulationEngine):
             self.perf_metrics['vectorized_ops'] += 1
         
         # OPTIMIZATION 2: Batch neighbor processing
-        if self.use_vectorized_processing and len(current_active_cells) > 5:
+        if self.use_vectorized_processing and len(current_active_cells) > 1:
+            print(f"🚀 OPTIMIZATION: Using BATCH neighbor processing for {len(current_active_cells)} active cells")
+            logger.debug(f"🚀 Using BATCH neighbor processing for {len(current_active_cells)} active cells")
             new_ignitions = self._batch_neighbor_processing(current_active_cells)
             new_active_cells.update(new_ignitions)
             self.perf_metrics['vectorized_ops'] += 1
         else:
+            print(f"⚠️  OPTIMIZATION: Using INDIVIDUAL neighbor processing for {len(current_active_cells)} active cells")
+            logger.debug(f"⚠️  Using INDIVIDUAL neighbor processing for {len(current_active_cells)} active cells")
             # Fall back to individual processing for small batches
             new_ignitions = self._individual_neighbor_processing(current_active_cells)
             new_active_cells.update(new_ignitions)

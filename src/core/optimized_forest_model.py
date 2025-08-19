@@ -254,6 +254,7 @@ class OptimizedMemoryOptimizedForestModel(MemoryOptimizedForestModel):
         self.use_optimized_sparse_accessor = True
         self.use_batch_operations = True
         self.use_adaptive_matrix_formats = True
+        self.use_optimized_sparse_ops = True  # Add this attribute for consistency
         
         # Performance metrics
         self.optimization_metrics = {
@@ -263,10 +264,16 @@ class OptimizedMemoryOptimizedForestModel(MemoryOptimizedForestModel):
             'csr_warnings_avoided': 0
         }
         
+        print("🚀 OPTIMIZED Memory Optimized Forest Model initialized!")
+        print(f"   🎯 Optimized sparse accessor: {self.use_optimized_sparse_accessor}")
+        print(f"   🎯 Batch operations: {self.use_batch_operations}")
+        print(f"   🎯 Adaptive matrix formats: {self.use_adaptive_matrix_formats}")
+        print(f"   🎯 Optimized sparse ops: {self.use_optimized_sparse_ops}")
         logger.info("🚀 OptimizedMemoryOptimizedForestModel initialized")
         logger.info(f"   Optimized sparse accessor: {self.use_optimized_sparse_accessor}")
         logger.info(f"   Batch operations: {self.use_batch_operations}")
         logger.info(f"   Adaptive matrix formats: {self.use_adaptive_matrix_formats}")
+        logger.info(f"   Optimized sparse ops: {self.use_optimized_sparse_ops}")
     
     def _initialize_sparse_storage(self):
         """
