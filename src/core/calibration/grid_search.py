@@ -608,6 +608,10 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     print(f"🔍 DIAGNOSTIC: Worker has shared terrain info: {type(model_config.shared_terrain_info)}")
                     if isinstance(model_config.shared_terrain_info, dict):
                         print(f"🔍 DIAGNOSTIC: Shared terrain keys: {list(model_config.shared_terrain_info.keys())}")
+                        print(f"🔍 DIAGNOSTIC: Shared terrain is_loaded: {model_config.shared_terrain_info.get('is_loaded', 'NOT_FOUND')}")
+                        print(f"🔍 DIAGNOSTIC: Shared terrain shared_names count: {len(model_config.shared_terrain_info.get('shared_names', {}))}")
+                    
+                    print(f"🔍 DIAGNOSTIC: About to start shared terrain loading process...")
                     
                     # Set a timeout for shared terrain loading in the forest model
                     terrain_loaded = threading.Event()
@@ -616,28 +620,37 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     def load_terrain_with_timeout():
                         nonlocal terrain_error
                         try:
+                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread started")
                             # This will be handled by the forest model's _try_load_shared_terrain method
                             # We just need to ensure it doesn't hang indefinitely
                             worker_logger.debug("🔍 DEBUG: Shared terrain loading started")
+                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread completing normally")
                             # The actual loading happens in forest model initialization
                             terrain_loaded.set()
                         except Exception as e:
+                            print(f"🔍 DIAGNOSTIC: Shared terrain loading thread failed with error: {e}")
                             terrain_error = e
                             terrain_loaded.set()
                     
+                    print(f"🔍 DIAGNOSTIC: Creating shared terrain loading thread...")
                     # Start terrain loading in a separate thread
                     terrain_thread = threading.Thread(target=load_terrain_with_timeout)
                     terrain_thread.daemon = True
                     terrain_thread.start()
+                    print(f"🔍 DIAGNOSTIC: Shared terrain loading thread started, waiting for completion...")
                     
                     # Wait for terrain loading with timeout (30 seconds)
                     if not terrain_loaded.wait(timeout=30.0):
+                        print(f"🔍 DIAGNOSTIC: Shared terrain loading TIMED OUT after 30 seconds!")
                         worker_logger.warning("⚠️  Shared terrain loading timed out after 30 seconds, continuing without shared terrain")
                         # Disable shared terrain to prevent hangs
                         model_config.shared_terrain_info = None
                     elif terrain_error:
+                        print(f"🔍 DIAGNOSTIC: Shared terrain loading FAILED with error: {terrain_error}")
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
+                    else:
+                        print(f"🔍 DIAGNOSTIC: Shared terrain loading completed successfully")
                 else:
                     print(f"🔍 DIAGNOSTIC: Worker has NO shared terrain info")
                     worker_logger.debug("🔍 DEBUG: No shared terrain info - will load individually")
@@ -653,14 +666,21 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def create_forest_with_timeout():
                     nonlocal forest_model, forest_error
                     try:
+                        print(f"🔍 DIAGNOSTIC: Forest model creation thread started")
                         worker_logger.debug("🔍 DEBUG: Creating forest model...")
+                        print(f"🔍 DIAGNOSTIC: About to call create_forest_model with simulation_type={simulation_type}")
+                        print(f"🔍 DIAGNOSTIC: Model config has shared_terrain_info: {hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info is not None}")
+                        
                         forest_model = create_forest_model(
                             model_type=simulation_type,
                             config=model_config
                         )
+                        
+                        print(f"🔍 DIAGNOSTIC: Forest model created successfully: {type(forest_model)}")
                         worker_logger.debug(f"🔍 DEBUG: Forest model created successfully: {type(forest_model)}")
                         forest_ready.set()
                     except Exception as e:
+                        print(f"🔍 DIAGNOSTIC: Forest model creation FAILED with error: {e}")
                         forest_error = e
                         worker_logger.error(f"🔍 DEBUG: Forest model creation failed: {e}")
                         forest_ready.set()
@@ -686,7 +706,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_logger.debug(f"⏱️  Forest model creation timeout: {forest_timeout} seconds")
                 
                 # Wait for forest model creation with dynamic timeout
+                print(f"🔍 DIAGNOSTIC: Waiting for forest model creation with timeout {forest_timeout} seconds...")
                 if not forest_ready.wait(timeout=forest_timeout):
+                    print(f"🔍 DIAGNOSTIC: Forest model creation TIMED OUT after {forest_timeout} seconds!")
                     worker_logger.error(f"❌ Forest model creation timed out after {forest_timeout} seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -697,8 +719,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Forest model creation timed out after {forest_timeout} seconds"
                     }
+                else:
+                    print(f"🔍 DIAGNOSTIC: Forest model creation completed within timeout")
                 
                 if forest_error:
+                    print(f"🔍 DIAGNOSTIC: Forest model creation FAILED with error: {forest_error}")
                     worker_logger.error(f"❌ Forest model creation failed: {forest_error}")
                     return {
                         'parameter_values': parameter_values,
@@ -709,8 +734,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': f"Forest model creation failed: {forest_error}"
                     }
+                else:
+                    print(f"🔍 DIAGNOSTIC: Forest model creation completed without errors")
                 
                 if forest_model is None:
+                    print(f"🔍 DIAGNOSTIC: Forest model is None after creation!")
                     worker_logger.error("❌ Forest model is None after creation")
                     return {
                         'parameter_values': parameter_values,
@@ -721,8 +749,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': "Forest model is None after creation"
                     }
+                else:
+                    print(f"🔍 DIAGNOSTIC: Forest model is not None, proceeding to engine creation")
                 
                 # Create simulation engine with timeout protection
+                print(f"🔍 DIAGNOSTIC: About to create FireSimulationEngine...")
                 worker_logger.debug("🔍 DEBUG: About to create FireSimulationEngine with config_dict type: " + str(type(config_dict)))
                 
                 # Add timeout for engine creation
@@ -733,11 +764,17 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def create_engine_with_timeout():
                     nonlocal engine, engine_error
                     try:
+                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation thread started")
                         worker_logger.debug("🔍 DEBUG: Creating FireSimulationEngine...")
+                        print(f"🔍 DIAGNOSTIC: About to create FireSimulationEngine with forest_model type: {type(forest_model)}")
+                        
                         engine = FireSimulationEngine(forest_model=forest_model, config=model_config)
+                        
+                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine created successfully: {type(engine)}")
                         worker_logger.debug(f"🔍 DEBUG: FireSimulationEngine created successfully: {type(engine)}")
                         engine_ready.set()
                     except Exception as e:
+                        print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation FAILED with error: {e}")
                         engine_error = e
                         worker_logger.error(f"🔍 DEBUG: Engine creation failed: {e}")
                         engine_ready.set()
@@ -748,7 +785,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 engine_thread.start()
                 
                 # Wait for engine creation with timeout (30 seconds)
+                print(f"🔍 DIAGNOSTIC: Waiting for FireSimulationEngine creation with timeout 30 seconds...")
                 if not engine_ready.wait(timeout=30.0):
+                    print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation TIMED OUT after 30 seconds!")
                     worker_logger.error("❌ Engine creation timed out after 30 seconds")
                     return {
                         'parameter_values': parameter_values,
@@ -759,6 +798,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': "Engine creation timed out after 30 seconds"
                     }
+                else:
+                    print(f"🔍 DIAGNOSTIC: FireSimulationEngine creation completed within timeout")
                 
                 if engine_error:
                     worker_logger.error(f"❌ Engine creation failed: {engine_error}")
