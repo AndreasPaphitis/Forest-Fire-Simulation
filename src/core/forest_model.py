@@ -2827,7 +2827,7 @@ class MemoryOptimizedForestModel(ForestModel):
         if self._force_sparse_only:
             # Only log this warning once per process to avoid spam
             if not hasattr(MemoryOptimizedForestModel, '_massive_grid_warning_logged'):
-                logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells ({total_cells/1e9:.1f}B)")
+                logger.debug(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells ({total_cells/1e9:.1f}B)")
                 logger.warning("   ENFORCING SPARSE-ONLY MODE - Dense arrays FORBIDDEN")
                 logger.warning("   Any attempt to create dense arrays will be blocked")
                 MemoryOptimizedForestModel._massive_grid_warning_logged = True

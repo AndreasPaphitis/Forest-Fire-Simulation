@@ -90,6 +90,23 @@ def setup_quiet_logging():
     logging.getLogger('src.core.core_simulation_framework').setLevel(logging.ERROR)
     logging.getLogger('src.core.fire_simulation_engine').setLevel(logging.ERROR)
     logging.getLogger('src.core.calibration.fire_perimeter_calibration').setLevel(logging.WARNING)
+    
+    # ADDITIONAL SUPPRESSION FOR HPC RUNS
+    # Suppress DEBUG level output that can overwhelm during parallel execution
+    logging.getLogger('src.core.calibration.grid_search').setLevel(logging.WARNING)
+    logging.getLogger('src.utils.hpc_optimizer').setLevel(logging.WARNING)
+    logging.getLogger('src.utils.shared_terrain').setLevel(logging.WARNING)
+    logging.getLogger('src.utils.memory_manager').setLevel(logging.WARNING)
+    logging.getLogger('src.utils.production_memory_manager').setLevel(logging.WARNING)
+    
+    # Suppress worker process debug output
+    logging.getLogger('src.core.calibration.worker').setLevel(logging.ERROR)
+    
+    # Suppress serialization debug spam
+    logging.getLogger('src.core.calibration.serialization').setLevel(logging.ERROR)
+    
+    # Suppress memory monitoring spam
+    logging.getLogger('src.utils.memory_monitor').setLevel(logging.ERROR)
 
 # Set up quiet logging by default
 setup_quiet_logging()

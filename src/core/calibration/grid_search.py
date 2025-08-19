@@ -564,7 +564,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
                     total_cells = grid_size[0] * grid_size[1]
                     if total_cells > 10_000_000:  # 10M+ cells
-                        worker_logger.warning(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying smart optimizations")
+                        worker_logger.debug(f"🚨 MASSIVE GRID DETECTED: {total_cells:,} cells - applying smart optimizations")
                         
                         # Scale max_steps based on grid size (less aggressive for better accuracy)
                         if hasattr(model_config, 'max_steps') and model_config.max_steps > 150:
@@ -575,22 +575,22 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                                 model_config.max_steps = min(150, model_config.max_steps // 2)
                             else:  # 10-20M cells - conservative
                                 model_config.max_steps = min(200, int(model_config.max_steps * 0.75))
-                            worker_logger.warning(f"🚨 Scaled max_steps from {original_steps} to {model_config.max_steps} based on grid size")
+                            worker_logger.debug(f"🚨 Scaled max_steps from {original_steps} to {model_config.max_steps} based on grid size")
                         
                         # Enable early termination
                         if hasattr(model_config, 'stop_when_fire_extinguished'):
                             model_config.stop_when_fire_extinguished = True
-                            worker_logger.warning("🚨 Enabled early termination for massive grid")
+                            worker_logger.debug("🚨 Enabled early termination for massive grid")
                         
                         # Reduce memory usage
                         if hasattr(model_config, 'memory_optimization_level'):
                             model_config.memory_optimization_level = 3  # Maximum optimization
-                            worker_logger.warning("🚨 Set maximum memory optimization level")
+                            worker_logger.debug("🚨 Set maximum memory optimization level")
                         
                         # Force sparse storage
                         if hasattr(model_config, 'use_sparse_storage'):
                             model_config.use_sparse_storage = True
-                            worker_logger.warning("🚨 Forced sparse storage for massive grid")
+                            worker_logger.debug("🚨 Forced sparse storage for massive grid")
                 
                 # CRITICAL FIX: Add timeout for shared terrain loading to prevent hangs
                 if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
