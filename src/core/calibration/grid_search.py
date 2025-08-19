@@ -608,10 +608,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     print(f"🔍 DIAGNOSTIC: Worker has shared terrain info: {type(model_config.shared_terrain_info)}")
                     if isinstance(model_config.shared_terrain_info, dict):
                         print(f"🔍 DIAGNOSTIC: Shared terrain keys: {list(model_config.shared_terrain_info.keys())}")
-                else:
-                    print(f"🔍 DIAGNOSTIC: Worker has NO shared terrain info")
-                    # Set a timeout for shared terrain loading in the forest model
                     
+                    # Set a timeout for shared terrain loading in the forest model
                     terrain_loaded = threading.Event()
                     terrain_error = None
                     
@@ -641,6 +639,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
                 else:
+                    print(f"🔍 DIAGNOSTIC: Worker has NO shared terrain info")
                     worker_logger.debug("🔍 DEBUG: No shared terrain info - will load individually")
                 
                 # Create forest model with proper parameters and timeout protection
