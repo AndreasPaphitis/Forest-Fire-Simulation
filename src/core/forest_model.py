@@ -3040,22 +3040,29 @@ class MemoryOptimizedForestModel(ForestModel):
     def optimize_sparse_storage(self):
         """Optimize sparse storage for large grids."""
         if hasattr(self, 'fuel_load_layers'):
-            # CRITICAL DEBUG: Ensure expected dict type before using .items()
-            if not isinstance(self.fuel_load_layers, dict):
-                logger.error(f"CRITICAL ERROR: fuel_load_layers is not a dict: {type(self.fuel_load_layers)}")
-                return
-            # Compact sparse matrices
-            for layer_idx, sparse_matrix in self.fuel_load_layers.items():
-                if hasattr(sparse_matrix, 'eliminate_zeros'):
-                    sparse_matrix.eliminate_zeros()
-            
-            # Remove empty layers
-            empty_layers = [idx for idx, matrix in self.fuel_load_layers.items() 
-                           if hasattr(matrix, 'nnz') and matrix.nnz == 0]
-            for idx in empty_layers:
-                del self.fuel_load_layers[idx]
-            
-            logger.debug(f"🧹 Sparse storage optimized: removed {len(empty_layers)} empty layers")
+            # CRITICAL FIX: Handle both dict and list storage types
+            if isinstance(self.fuel_load_layers, dict):
+                # Dictionary-based storage (legacy)
+                for layer_idx, sparse_matrix in self.fuel_load_layers.items():
+                    if hasattr(sparse_matrix, 'eliminate_zeros'):
+                        sparse_matrix.eliminate_zeros()
+                
+                # Remove empty layers
+                empty_layers = [idx for idx, matrix in self.fuel_load_layers.items() 
+                               if hasattr(matrix, 'nnz') and matrix.nnz == 0]
+                for idx in empty_layers:
+                    del self.fuel_load_layers[idx]
+                
+                logger.debug(f"🧹 Sparse storage optimized: removed {len(empty_layers)} empty layers")
+            elif isinstance(self.fuel_load_layers, list):
+                # List-based storage (new implementation)
+                for sparse_matrix in self.fuel_load_layers:
+                    if hasattr(sparse_matrix, 'eliminate_zeros'):
+                        sparse_matrix.eliminate_zeros()
+                
+                logger.debug(f"🧹 Sparse storage optimized: compacted {len(self.fuel_load_layers)} layers")
+            else:
+                logger.warning(f"⚠️  Unknown fuel_load_layers type: {type(self.fuel_load_layers)}")
     
     def compact_sparse_storage(self):
         """Compact sparse storage to free memory."""
@@ -3217,10 +3224,22 @@ class MemoryOptimizedForestModel(ForestModel):
         # Calculate and log memory savings
         try:
             total_sparse_bytes = 0
-            for layer_idx, layer in self.fuel_load_layers.items():
-                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
-            for layer_idx, layer in self.state_layers.items():
-                total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            
+            # Handle fuel_load_layers (can be dict or list)
+            if isinstance(self.fuel_load_layers, dict):
+                for layer_idx, layer in self.fuel_load_layers.items():
+                    total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            elif isinstance(self.fuel_load_layers, list):
+                for layer in self.fuel_load_layers:
+                    total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            
+            # Handle state_layers (can be dict or list)
+            if isinstance(self.state_layers, dict):
+                for layer_idx, layer in self.state_layers.items():
+                    total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
+            elif isinstance(self.state_layers, list):
+                for layer in self.state_layers:
+                    total_sparse_bytes += layer.data.nbytes + sum(len(row) * 4 for row in layer.rows)  # Approximate
 
             sparse_size_mb = total_sparse_bytes / (1024**2)
             
