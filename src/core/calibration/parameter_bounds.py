@@ -286,17 +286,17 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'ember_probability': ParameterBounds(
-            min_value=0.2, max_value=0.6, default_value=0.4,  # Optimized for better long-range spread
+            min_value=0.05, max_value=0.8, default_value=0.4,  # Expanded range for high sensitivity (15.02)
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Probability of ember generation during fire spread",
             literature_range=(0.02, 0.15),
             units="probability",
-            suggested_points=5
+            suggested_points=6  # More points for high sensitivity parameter
         ),
         
         'spread_probability': ParameterBounds(
-            min_value=0.4, max_value=0.95, default_value=0.8,  # Increased range for better spreading
+            min_value=0.1, max_value=0.9, default_value=0.8,  # Expanded range for better variation
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Base probability of fire spreading between adjacent cells",
@@ -306,23 +306,23 @@ def get_default_calibration_bounds() -> Dict[str, ParameterBounds]:
         ),
         
         'ember_ignition': ParameterBounds(
-            min_value=0.1, max_value=0.6, default_value=0.3,
+            min_value=0.05, max_value=0.8, default_value=0.3,  # Expanded range for high sensitivity (7.12)
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Probability of ember successfully igniting fuel",
             literature_range=(0.05, 0.5),
             units="probability",
-            suggested_points=5
+            suggested_points=6  # More points for high sensitivity parameter
         ),
         
         'ignition_threshold': ParameterBounds(
-            min_value=0.02, max_value=0.2, default_value=0.1,  # Lowered range for easier ignition
+            min_value=0.01, max_value=0.5, default_value=0.1,  # Expanded range for high sensitivity (134.80)
             parameter_type=ParameterType.PROBABILITY,
             calibration_tier=CalibrationTier.CRITICAL,
             physical_interpretation="Threshold for ignition probability (deterministic)",
             literature_range=(0.05, 0.3),
             units="probability",
-            suggested_points=5
+            suggested_points=7  # More points for high sensitivity parameter
         ),
         
         # ===== ADDITIONAL IMPLEMENTED PARAMETERS =====

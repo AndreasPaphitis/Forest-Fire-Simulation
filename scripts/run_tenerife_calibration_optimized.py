@@ -482,9 +482,9 @@ Examples:
     
     # Parameter configuration
     parser.add_argument('--parameters', nargs='+', 
-                       default=['spread_probability', 'fuel_consumption_rate', 'ember_probability', 
-                               'ember_ignition', 'fuel_moisture_baseline'],
-                       help='Parameters to calibrate (default: top 5 sensitive parameters)')
+                       default=['ignition_threshold', 'ember_probability', 'ember_ignition', 
+                               'spread_probability', 'slope_influence'],
+                       help='Parameters to calibrate (default: top 5 sensitive parameters from HPC analysis)')
     
     # Data configuration
     parser.add_argument('--emsr-dir', type=str, default='EMSR Delineations',
