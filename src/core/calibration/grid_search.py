@@ -444,6 +444,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     from src.config.config_tools import ModelConfig
     from src.core.fire_simulation_engine import FireSimulationEngine
     
+    # CRITICAL FIX: Add function to get objective function by name
+    def get_objective_function_by_name(name):
+        if name == "SpatialSimilarityObjective":
+            from src.core.calibration.objective_functions import SpatialSimilarityObjective
+            return SpatialSimilarityObjective()
+        else:
+            raise ValueError(f"Unknown objective function: {name}")
+    
     # CRITICAL FIX: Add global KeyError 7 handler to catch ALL instances
     original_excepthook = sys.excepthook
     
@@ -527,250 +535,120 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             for child_handler in child_logger.handlers[:]:
                 child_logger.removeHandler(child_handler)
         
-        start_time = time.time()
+        # EMERGENCY FIX: Add timeout for worker initialization
+        import threading
+        import time
         
-        # Extract simulation type from config to ensure memory optimized model
-        simulation_type = config_dict.get('simulation_type', 'memory_optimized')
-        if simulation_type != 'memory_optimized':
-            worker_logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
-            simulation_type = 'memory_optimized'
+        worker_ready = threading.Event()
+        worker_error = None
+        worker_result = None
         
-        # CRITICAL DEBUG: Log config_dict before creating forest model
-        worker_logger.debug(f"About to create forest model with config_dict type: {type(config_dict)}")
-        worker_logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
-        
-        # CRITICAL FIX: Ensure config_dict is a dictionary
-        if not isinstance(config_dict, dict):
-            worker_logger.error(f"CRITICAL ERROR: config_dict is not a dictionary: {type(config_dict)} = {config_dict}")
-            # Try to convert if it's a list/tuple
-            if isinstance(config_dict, (list, tuple)) and len(config_dict) > 0:
-                if isinstance(config_dict[0], dict):
-                    config_dict = config_dict[0]
-                    worker_logger.warning(f"Using first item from config_dict list: {type(config_dict)}")
-                else:
-                    worker_logger.error("config_dict is a list but first item is not a dictionary")
-                    config_dict = {}
-            else:
-                config_dict = {}
-                worker_logger.warning("Using empty dict as config_dict fallback")
-        
-        # Create forest model using factory function to ensure correct type
-        forest_model = create_forest_model(
-            model_type=simulation_type,
-            config=ModelConfig(**config_dict)
-        )
-        
-        # CRITICAL DEBUG: Log before creating simulation engine
-        worker_logger.debug(f"About to create FireSimulationEngine with config_dict type: {type(config_dict)}")
-        
-        # Create simulation engine
-        engine = FireSimulationEngine(forest_model=forest_model, config=ModelConfig(**config_dict))
-        
-        # Ensure ignition points are set; many early terminations are caused by zero active cells
-        try:
-            # Prefer explicit ignition points from config if provided
-            ignition_points = config_dict.get('ignition_points')
-            if ignition_points and isinstance(ignition_points, (list, tuple)):
-                for pt in ignition_points:
-                    try:
-                        x, y, z = (pt + [0])[:3] if isinstance(pt, list) else (pt[0], pt[1], pt[2] if len(pt) > 2 else 0)
-                        forest_model.set_ignition(int(x), int(y), int(z))
-                    except Exception:
-                        # Skip invalid entries
-                        continue
-            
-            # If no tracked ignition points, set safe defaults at grid center
-            if not getattr(forest_model, '_ignition_points', []):
-                grid_w = getattr(forest_model, 'width', None) or (config_dict.get('grid_size')[0] if isinstance(config_dict.get('grid_size'), (list, tuple)) else config_dict.get('grid_size'))
-                grid_h = getattr(forest_model, 'height', None) or (config_dict.get('grid_size')[1] if isinstance(config_dict.get('grid_size'), (list, tuple)) else config_dict.get('grid_size'))
-                num_layers = getattr(forest_model, 'num_layers', config_dict.get('num_layers', 1))
-                cx = max(0, int(grid_w) // 2)
-                cy = max(0, int(grid_h) // 2)
-                # Set 3 close-by ignition points in ground layer for robust start
-                default_points = [(cx, cy, 0), (min(cx+1, grid_w-1), cy, 0), (cx, min(cy+1, grid_h-1), 0)]
-                for x, y, z in default_points:
-                    forest_model.set_ignition(x, y, min(z, num_layers-1))
-        except Exception:
-            # Non-fatal: proceed; engine will stop if no active cells
-            pass
-        
-        # CRITICAL DEBUG: Log before running simulation
-        worker_logger.debug(f"About to run simulation with engine type: {type(engine)}")
-        worker_logger.debug(f"Forest model type: {type(forest_model)}")
-        
-        # Run simulation with detailed error tracking
-        try:
-            worker_logger.debug(f"Starting simulation run...")
-            simulation_result = engine.run_simulation()
-            worker_logger.debug(f"Simulation completed successfully")
-        except AttributeError as attr_error:
-            if "'list' object has no attribute 'items'" in str(attr_error):
-                worker_logger.debug(f"List object error in simulation: {attr_error}")
-                worker_logger.debug(f"This indicates a parameter passing issue in the simulation engine")
-                worker_logger.debug(f"parameter_values: {parameter_values}")
-                worker_logger.debug(f"config_dict type: {type(config_dict)}")
-                worker_logger.debug(f"config_dict keys: {list(config_dict.keys()) if isinstance(config_dict, dict) else 'not a dict'}")
+        def run_worker_with_timeout():
+            nonlocal worker_error, worker_result
+            try:
+                # CRITICAL FIX: Disable shared terrain loading to prevent hangs
+                if 'shared_terrain_info' in config_dict:
+                    worker_logger.warning("🚨 EMERGENCY: Disabling shared terrain to prevent worker hangs")
+                    config_dict['shared_terrain_info'] = None
                 
-                # Log full traceback for precise origin
+                # Create forest model with timeout protection
+                worker_logger.debug("🔍 DEBUG: About to create forest model")
+                forest_model = create_forest_model(config_dict)
+                worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+                
+                # Create simulation engine with timeout protection
+                worker_logger.debug("🔍 DEBUG: About to create FireSimulationEngine with config_dict type: " + str(type(config_dict)))
+                engine = FireSimulationEngine(forest_model=forest_model, config=config_dict)
+                worker_logger.debug(f"🔍 DEBUG: About to run simulation with engine type: {type(engine)}")
+                worker_logger.debug(f"🔍 DEBUG: Forest model type: {type(forest_model)}")
+                
+                # Run simulation with timeout protection
+                worker_logger.debug("🔍 DEBUG: Starting simulation run...")
+                simulation_result = engine.run_simulation()
+                worker_logger.debug("🔍 DEBUG: Simulation completed successfully")
+                
+                # Calculate objective value
+                objective_function = get_objective_function_by_name(objective_function_name)
+                objective_value, objective_components = objective_function(simulation_result, target_data)
+                
+                worker_result = {
+                    'parameter_values': parameter_values,
+                    'objective_value': objective_value,
+                    'objective_components': objective_components,
+                    'simulation_stats': simulation_result.get('stats', {}),
+                    'evaluation_time': time.time(),
+                    'is_valid': True,
+                    'error_message': None
+                }
+                
+            except Exception as e:
+                worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(e)} = {e}")
+                worker_logger.error("🔍 DEBUG: Error occurred in simulation run")
+                worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
+                worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
+                
+                # CRITICAL FIX: Add specific KeyError 7 handling
+                if isinstance(e, KeyError) and e.args[0] == 7:
+                    worker_logger.error("🔍 CRITICAL: KeyError 7 detected - likely fuel type/category mapping issue")
+                    worker_logger.error("🔍 This suggests a fuel type dictionary is missing key 7")
+                    worker_logger.error("🔍 Checking for fuel type mappings in forest model...")
+                    
+                    if forest_model:
+                        worker_logger.error(f"🔍 Fuel load shape: {forest_model.fuel_load.shape if hasattr(forest_model, 'fuel_load') else 'No fuel_load'}")
+                        worker_logger.error(f"🔍 State shape: {forest_model.state.shape if hasattr(forest_model, 'state') else 'No state'}")
+                        worker_logger.error(f"🔍 Fuel-related attributes: {[attr for attr in dir(forest_model) if 'fuel' in attr.lower()]}")
+                
                 import traceback
-                worker_logger.debug(f"Traceback for list.items error:\n{traceback.format_exc()}")
+                worker_logger.error("🔍 DEBUG: Simulation traceback: " + traceback.format_exc())
                 
-                # CRITICAL FIX: Try to identify which parameter is causing the issue
-                worker_logger.debug(f"Checking parameter_values for list/tuple values:")
-                for key, value in parameter_values.items():
-                    if isinstance(value, (list, tuple)):
-                        worker_logger.debug(f"Parameter {key} is a {type(value)}: {value}")
-                
-                # Return error result for this evaluation
-                return {
-                    'parameter_values': parameter_values.copy(),
+                worker_error = e
+                worker_result = {
+                    'parameter_values': parameter_values,
                     'objective_value': 0.0,
                     'objective_components': {},
                     'simulation_stats': {},
-                    'evaluation_time': time.time() - start_time,
+                    'evaluation_time': time.time(),
                     'is_valid': False,
-                    'error_message': f"List object error in simulation: {attr_error}. Check parameter_values for list/tuple values."
-                }
-            else:
-                worker_logger.debug(f"AttributeError in simulation: {attr_error}")
-                raise attr_error
-        except Exception as sim_error:
-            worker_logger.debug(f"Simulation failed with error: {type(sim_error)} = {sim_error}")
-            worker_logger.debug(f"Error occurred in simulation run")
-            worker_logger.debug(f"parameter_values: {parameter_values}")
-            worker_logger.debug(f"config_dict type: {type(config_dict)}")
-            
-            # CRITICAL FIX: Handle KeyError 7 specifically
-            if isinstance(sim_error, KeyError) and sim_error.args[0] == 7:
-                worker_logger.error(f"🔍 CRITICAL: KeyError 7 detected - likely fuel type/category mapping issue")
-                worker_logger.error(f"🔍 This suggests a fuel type dictionary is missing key 7")
-                worker_logger.error(f"🔍 Checking for fuel type mappings in forest model...")
-                
-                # Try to identify the source of the KeyError 7
-                try:
-                    if hasattr(forest_model, 'fuel_load'):
-                        fuel_shape = forest_model.fuel_load.shape if hasattr(forest_model.fuel_load, 'shape') else 'unknown'
-                        worker_logger.error(f"🔍 Fuel load shape: {fuel_shape}")
-                    
-                    if hasattr(forest_model, 'state'):
-                        state_shape = forest_model.state.shape if hasattr(forest_model.state, 'shape') else 'unknown'
-                        worker_logger.error(f"🔍 State shape: {state_shape}")
-                    
-                    # Check if there are any fuel type mappings
-                    fuel_attrs = [attr for attr in dir(forest_model) if 'fuel' in attr.lower()]
-                    worker_logger.error(f"🔍 Fuel-related attributes: {fuel_attrs}")
-                    
-                except Exception as debug_error:
-                    worker_logger.error(f"🔍 Debug info collection failed: {debug_error}")
-                
-                # Return a specific error result for KeyError 7
-                return {
-                    'parameter_values': parameter_values.copy(),
-                    'objective_value': 0.0,
-                    'objective_components': {},
-                    'simulation_stats': {},
-                    'evaluation_time': time.time() - start_time,
-                    'is_valid': False,
-                    'error_message': f"KeyError 7 - Fuel type mapping issue. This may indicate missing fuel type definitions or incorrect fuel data structure."
+                    'error_message': str(e)
                 }
             
-            import traceback
-            worker_logger.debug(f"Simulation traceback: {traceback.format_exc()}")
-            raise sim_error
+            finally:
+                worker_ready.set()
         
-        # Import and create objective function
-        if objective_function_name == "SpatialSimilarityObjective":
-            from src.core.calibration.objective_functions import SpatialSimilarityObjective
-            objective_function = SpatialSimilarityObjective()
-        else:
-            raise ValueError(f"Unknown objective function: {objective_function_name}")
+        # Start worker execution in a separate thread with timeout
+        worker_thread = threading.Thread(target=run_worker_with_timeout)
+        worker_thread.daemon = True
+        worker_thread.start()
         
-        # Calculate objective value
-        objective_result = objective_function.evaluate(simulation_result, target_data or {})
+        # Wait for worker completion with timeout (120 seconds)
+        if not worker_ready.wait(timeout=120.0):
+            worker_logger.error("❌ Worker execution timed out after 120 seconds")
+            return {
+                'parameter_values': parameter_values,
+                'objective_value': 0.0,
+                'objective_components': {},
+                'simulation_stats': {},
+                'evaluation_time': time.time(),
+                'is_valid': False,
+                'error_message': "Worker execution timed out after 120 seconds"
+            }
         
-        evaluation_time = time.time() - start_time
+        if worker_error:
+            worker_logger.error(f"❌ Worker execution failed: {worker_error}")
+            return worker_result
         
-        # CRITICAL FIX: Extract results before cleanup
-        result_dict = {
-            'parameter_values': parameter_values.copy(),
-            'objective_value': objective_result.value if objective_result.is_valid else 0.0,
-            'objective_components': objective_result.components,
-            'simulation_stats': simulation_result.get('stats', {}),
-            'evaluation_time': evaluation_time,
-            'is_valid': objective_result.is_valid,
-            'error_message': objective_result.error_message
-        }
-        
-        # CRITICAL FIX: Explicit cleanup to prevent memory leaks
-        if engine is not None:
-            try:
-                # Clean up simulation engine
-                if hasattr(engine, 'cleanup'):
-                    engine.cleanup()
-                elif hasattr(engine, 'close'):
-                    engine.close()
-            except Exception as e:
-                worker_logger.debug(f"Engine cleanup warning: {e}")
-        
-        if forest_model is not None:
-            try:
-                # Clean up forest model
-                if hasattr(forest_model, 'cleanup'):
-                    forest_model.cleanup()
-                elif hasattr(forest_model, 'close'):
-                    forest_model.close()
-                
-                # CRITICAL FIX: Preserve terrain effects for realistic fire simulation
-                # Terrain effects (barranco, wind channeling, etc.) are essential for proper fire behavior
-                # and should NOT be disabled during calibration as this causes fires to not spread properly
-                # Only clear shared terrain references to free memory, but preserve the actual terrain data
-                if hasattr(forest_model, '_shared_terrain_refs'):
-                    forest_model._shared_terrain_refs.clear()
-                # DO NOT clear terrain data - it's essential for realistic fire simulation
-                worker_logger.debug("Preserving terrain effects for realistic fire simulation")
-            except Exception as e:
-                worker_logger.debug(f"Forest model cleanup warning: {e}")
-        
-        # Force garbage collection to free memory
-        collected = gc.collect()
-        if collected > 0:
-            worker_logger.debug(f"🧹 Garbage collection freed {collected} objects")
-        
-        return result_dict
+        return worker_result
         
     except Exception as e:
-        evaluation_time = time.time() - start_time
-        
-        # CRITICAL FIX: Cleanup even on exception
-        if engine is not None:
-            try:
-                if hasattr(engine, 'cleanup'):
-                    engine.cleanup()
-                elif hasattr(engine, 'close'):
-                    engine.close()
-            except Exception:
-                pass
-        
-        if forest_model is not None:
-            try:
-                if hasattr(forest_model, 'cleanup'):
-                    forest_model.cleanup()
-                elif hasattr(forest_model, 'close'):
-                    forest_model.close()
-            except Exception:
-                pass
-        
-        # Force garbage collection
-        gc.collect()
-        
+        worker_logger.error(f"❌ Critical error in worker function: {e}")
         return {
-            'parameter_values': parameter_values.copy(),
+            'parameter_values': parameter_values,
             'objective_value': 0.0,
             'objective_components': {},
             'simulation_stats': {},
-            'evaluation_time': evaluation_time,
+            'evaluation_time': time.time(),
             'is_valid': False,
-            'error_message': str(e)
+            'error_message': f"Critical error: {str(e)}"
         }
 
 class GridSearchCalibrator:
@@ -1254,59 +1132,106 @@ class GridSearchCalibrator:
         
         objective_function_name = self.objective_function.__class__.__name__
         
-        with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit jobs in batches to prevent resource contention
-            batch_size = min(10, self.max_workers)
-            all_futures = []
-            
-            for i in range(0, len(combinations_list), batch_size):
-                batch = combinations_list[i:i + batch_size]
-                batch_futures = {
-                    executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
-                    for combo in batch
-                }
-                all_futures.extend(batch_futures.keys())
-                
-                if i + batch_size < len(combinations_list):
-                    time.sleep(0.1)  # Small delay between batches
-            
-            # CRITICAL FIX: Ensure shared terrain cleanup after all workers complete
+        # EMERGENCY FIX: Add timeout for ProcessPoolExecutor initialization
+        import threading
+        import time
+        
+        executor = None
+        executor_ready = threading.Event()
+        executor_error = None
+        
+        def create_executor_with_timeout():
+            nonlocal executor, executor_error
             try:
-                from src.utils.shared_terrain import reset_shared_terrain_logging
-                reset_shared_terrain_logging()
-                logger.debug("🧹 Reset shared terrain logging for fresh worker processes")
+                logger.info(f"🚀 Creating ProcessPoolExecutor with {self.max_workers} workers...")
+                executor = ProcessPoolExecutor(max_workers=self.max_workers)
+                logger.info(f"✅ ProcessPoolExecutor created successfully")
+                executor_ready.set()
             except Exception as e:
-                logger.warning(f"⚠️  Shared terrain reset warning: {e}")
-            
-            # Process results
-            completed = 0
-            for future in as_completed(all_futures):
+                logger.error(f"❌ Failed to create ProcessPoolExecutor: {e}")
+                executor_error = e
+                executor_ready.set()
+        
+        # Start executor creation in a separate thread with timeout
+        executor_thread = threading.Thread(target=create_executor_with_timeout)
+        executor_thread.daemon = True
+        executor_thread.start()
+        
+        # Wait for executor creation with timeout (60 seconds)
+        if not executor_ready.wait(timeout=60.0):
+            logger.error("❌ ProcessPoolExecutor creation timed out after 60 seconds")
+            logger.error("🚨 EMERGENCY: Falling back to sequential execution")
+            return self._run_sequential_calibration(target_data, progress_callback, results)
+        
+        if executor_error:
+            logger.error(f"❌ ProcessPoolExecutor creation failed: {executor_error}")
+            logger.error("🚨 EMERGENCY: Falling back to sequential execution")
+            return self._run_sequential_calibration(target_data, progress_callback, results)
+        
+        if executor is None:
+            logger.error("❌ ProcessPoolExecutor is None after creation")
+            logger.error("🚨 EMERGENCY: Falling back to sequential execution")
+            return self._run_sequential_calibration(target_data, progress_callback, results)
+        
+        try:
+            with executor:
+                # Submit jobs in batches to prevent resource contention
+                batch_size = min(10, self.max_workers)
+                all_futures = []
+                
+                for i in range(0, len(combinations_list), batch_size):
+                    batch = combinations_list[i:i + batch_size]
+                    batch_futures = {
+                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
+                        for combo in batch
+                    }
+                    all_futures.extend(batch_futures.keys())
+                    
+                    if i + batch_size < len(combinations_list):
+                        time.sleep(0.1)  # Small delay between batches
+                
+                # CRITICAL FIX: Ensure shared terrain cleanup after all workers complete
                 try:
-                    result_dict = future.result(timeout=300)  # 5 minute timeout per evaluation
-                    
-                    # Convert dictionary result to GridSearchResult
-                    result = GridSearchResult(**result_dict)
-                    results.add_result(result)
-                    completed += 1
-                    
-                    if progress_callback:
-                        progress_callback(completed, len(combinations_list), result)
-                    
-                    logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
-                    
-                    # CRITICAL FIX: Periodic memory cleanup to prevent accumulation
-                    if completed % 5 == 0:  # Every 5 evaluations
-                        import gc
-                        collected = gc.collect()
-                        if collected > 0:
-                            logger.debug(f"🧹 Periodic cleanup freed {collected} objects after {completed} evaluations")
-                    
-                except TimeoutError:
-                    logger.error("❌ Evaluation timed out")
-                    results.add_timeout()
+                    from src.utils.shared_terrain import reset_shared_terrain_logging
+                    reset_shared_terrain_logging()
+                    logger.debug("🧹 Reset shared terrain logging for fresh worker processes")
                 except Exception as e:
-                    logger.error(f"❌ Evaluation failed: {e}")
-                    results.add_error()
+                    logger.warning(f"⚠️  Shared terrain reset warning: {e}")
+                
+                # Process results
+                completed = 0
+                for future in as_completed(all_futures):
+                    try:
+                        result_dict = future.result(timeout=300)  # 5 minute timeout per evaluation
+                        
+                        # Convert dictionary result to GridSearchResult
+                        result = GridSearchResult(**result_dict)
+                        results.add_result(result)
+                        completed += 1
+                        
+                        if progress_callback:
+                            progress_callback(completed, len(combinations_list), result)
+                        
+                        logger.info(f"✅ Completed {completed}/{len(combinations_list)} evaluations")
+                        
+                        # CRITICAL FIX: Periodic memory cleanup to prevent accumulation
+                        if completed % 5 == 0:  # Every 5 evaluations
+                            import gc
+                            collected = gc.collect()
+                            if collected > 0:
+                                logger.debug(f"🧹 Periodic cleanup freed {collected} objects after {completed} evaluations")
+                        
+                    except TimeoutError:
+                        logger.error("❌ Evaluation timed out")
+                        results.add_timeout()
+                    except Exception as e:
+                        logger.error(f"❌ Evaluation failed: {e}")
+                        results.add_error()
+        
+        except Exception as e:
+            logger.error(f"❌ ProcessPoolExecutor execution failed: {e}")
+            logger.error("🚨 EMERGENCY: Falling back to sequential execution")
+            return self._run_sequential_calibration(target_data, progress_callback, results)
         
         return results
     
