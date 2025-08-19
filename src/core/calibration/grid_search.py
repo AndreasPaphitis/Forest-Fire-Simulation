@@ -678,6 +678,28 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         
                         print(f"🔍 DIAGNOSTIC: Forest model created successfully: {type(forest_model)}")
                         worker_logger.debug(f"🔍 DEBUG: Forest model created successfully: {type(forest_model)}")
+                        
+                        # CRITICAL FIX: Set ignition point to Arafa highlands (2023 Tenerife fire location)
+                        try:
+                            grid_size = model_config.grid_size
+                            if isinstance(grid_size, (tuple, list)) and len(grid_size) >= 2:
+                                # Get Arafa highlands coordinates
+                                arafo_x = int(grid_size[0] * 0.65)   # 65% across (southeastern)
+                                arafo_y = int(grid_size[1] * 0.62)   # 62% down (southeastern highlands)
+                                
+                                # Ensure coordinates are within bounds
+                                arafo_x = max(0, min(arafo_x, grid_size[0] - 1))
+                                arafo_y = max(0, min(arafo_y, grid_size[1] - 1))
+                                
+                                print(f"🔍 DIAGNOSTIC: Setting ignition point to Arafa highlands: ({arafo_x}, {arafo_y})")
+                                forest_model.set_ignition(arafo_x, arafo_y, 0)
+                                print(f"🔍 DIAGNOSTIC: Ignition point set successfully")
+                            else:
+                                print(f"🔍 DIAGNOSTIC: Invalid grid size for ignition point setting: {grid_size}")
+                        except Exception as ignition_error:
+                            print(f"🔍 DIAGNOSTIC: Failed to set ignition point: {ignition_error}")
+                            worker_logger.warning(f"Failed to set ignition point: {ignition_error}")
+                        
                         forest_ready.set()
                     except Exception as e:
                         print(f"🔍 DIAGNOSTIC: Forest model creation FAILED with error: {e}")
