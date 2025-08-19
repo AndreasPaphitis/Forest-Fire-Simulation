@@ -554,7 +554,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 if simulation_type not in ['standard', 'memory_optimized']:
                     worker_logger.warning(f"⚠️  Invalid simulation_type '{simulation_type}', using 'memory_optimized'")
                     simulation_type = 'memory_optimized'
-                
+        
                 # CRITICAL FIX: Create ModelConfig object from config_dict
                 from src.config.config_tools import ModelConfig
                 model_config = ModelConfig(**config_dict)
@@ -625,7 +625,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     elif terrain_error:
                         worker_logger.warning(f"⚠️  Shared terrain loading failed: {terrain_error}, continuing without shared terrain")
                         model_config.shared_terrain_info = None
-                    else:
+                else:
                         worker_logger.debug("🔍 DEBUG: Shared terrain loading completed successfully")
                 
                 # Create forest model with proper parameters and timeout protection
@@ -815,8 +815,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'is_valid': False,
                         'error_message': "Simulation result is None"
                     }
-                
-                # Calculate objective value
+        
+        # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
                 objective_result = objective_function(simulation_result, target_data)
                 
@@ -828,7 +828,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     'parameter_values': parameter_values,
                     'objective_value': objective_value,
                     'objective_components': objective_components,
-                    'simulation_stats': simulation_result.get('stats', {}),
+            'simulation_stats': simulation_result.get('stats', {}),
                     'evaluation_time': time.time(),
                     'is_valid': True,
                     'error_message': None
@@ -890,6 +890,18 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         if worker_error:
             worker_logger.error(f"❌ Worker execution failed: {worker_error}")
             return worker_result
+        
+        if worker_result is None:
+            worker_logger.error("❌ Worker result is None - returning error result")
+            return {
+                'parameter_values': parameter_values,
+                'objective_value': 0.0,
+                'objective_components': {},
+                'simulation_stats': {},
+                'evaluation_time': time.time(),
+                'is_valid': False,
+                'error_message': "Worker result is None"
+            }
         
         return worker_result
         
@@ -1358,7 +1370,7 @@ class GridSearchCalibrator:
                     logger.debug(f"Converted ModelConfig to dictionary using asdict()")
                 except Exception as asdict_error:
                     logger.warning(f"asdict() failed, using __dict__: {asdict_error}")
-                    config_dict = base_config_variant.__dict__
+                config_dict = base_config_variant.__dict__
             elif isinstance(base_config_variant, (list, tuple)) and len(base_config_variant) > 0:
                 # If it's a list/tuple, take the first item if it's a dict
                 if isinstance(base_config_variant[0], dict):

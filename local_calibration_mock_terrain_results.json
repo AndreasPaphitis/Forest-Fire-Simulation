@@ -1,0 +1,963 @@
+{
+  "parameter_space": {
+    "spread_probability": [
+      0.6,
+      0.75,
+      0.9
+    ],
+    "fuel_consumption_rate": [
+      0.1,
+      0.30000000000000004,
+      0.5
+    ],
+    "fuel_moisture_baseline": [
+      0.1,
+      0.30000000000000004,
+      0.5
+    ],
+    "ember_probability": [
+      0.1,
+      0.30000000000000004,
+      0.5
+    ],
+    "ember_ignition": [
+      0.01,
+      0.05500000000000001,
+      0.1
+    ]
+  },
+  "total_evaluations": 24,
+  "successful_evaluations": 24,
+  "total_time": 42135016469.43761,
+  "convergence_info": {
+    "converged": true,
+    "total_time": 5.251997709274292,
+    "evaluations_per_second": 4.569689731132091,
+    "success_rate": 1.0
+  },
+  "results": [
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12385439872741699,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625684.308174,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11633086204528809,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625684.4703686,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11826825141906738,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625684.6413007,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11574292182922363,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625684.7810943,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12024736404418945,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625684.9252958,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11328315734863281,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.0611484,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.1180577278137207,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.2228925,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12543511390686035,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.473245,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.1,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12506484985351562,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.6608343,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11641740798950195,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.7955616,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12055540084838867,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625685.9400716,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11908531188964844,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.0856574,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.1196901798248291,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.2532566,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11580920219421387,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.5031447,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11893415451049805,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.7050364,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11421036720275879,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.8510041,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11869454383850098,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625686.9992454,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.30000000000000004,
+        "ember_probability": 0.5,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11443209648132324,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625687.145715,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11722397804260254,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625687.308444,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11590075492858887,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625687.5510414,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.1,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.11816167831420898,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625687.7283716,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.01
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.1127469539642334,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625687.8677552,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.05500000000000001
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.12140274047851562,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625688.0189655,
+      "is_valid": true,
+      "error_message": null
+    },
+    {
+      "parameter_values": {
+        "spread_probability": 0.6,
+        "fuel_consumption_rate": 0.1,
+        "fuel_moisture_baseline": 0.5,
+        "ember_probability": 0.30000000000000004,
+        "ember_ignition": 0.1
+      },
+      "objective_value": 0.0,
+      "objective_components": {},
+      "simulation_stats": {
+        "steps": 2,
+        "runtime_seconds": 0.1105031967163086,
+        "max_active_cells": 1,
+        "total_burned_cells": 1,
+        "final_active_cells": 0,
+        "total_steps": 2,
+        "ember_statistics": {
+          "total_generated": 0,
+          "successful_ignitions": 0,
+          "failed_attempts": 0,
+          "by_step": {},
+          "distance_stats": [],
+          "height_changes": []
+        },
+        "terrain_info": {
+          "terrain_loaded": true,
+          "elevation_range": "0.0m to 0.0m",
+          "slope_effects_enabled": true
+        },
+        "wind_info": {
+          "wind_initialized": false
+        }
+      },
+      "evaluation_time": 1755625688.1399803,
+      "is_valid": true,
+      "error_message": null
+    }
+  ],
+  "best_result": {
+    "parameter_values": {
+      "spread_probability": 0.6,
+      "fuel_consumption_rate": 0.1,
+      "fuel_moisture_baseline": 0.1,
+      "ember_probability": 0.1,
+      "ember_ignition": 0.01
+    },
+    "objective_value": 0.0,
+    "objective_components": {}
+  }
+}
