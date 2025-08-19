@@ -605,6 +605,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 # CRITICAL FIX: Add timeout for shared terrain loading to prevent hangs
                 if hasattr(model_config, 'shared_terrain_info') and model_config.shared_terrain_info:
                     worker_logger.debug("🔍 DEBUG: Shared terrain info detected, adding timeout protection")
+                    print(f"🔍 DIAGNOSTIC: Worker has shared terrain info: {type(model_config.shared_terrain_info)}")
+                    if isinstance(model_config.shared_terrain_info, dict):
+                        print(f"🔍 DIAGNOSTIC: Shared terrain keys: {list(model_config.shared_terrain_info.keys())}")
+                else:
+                    print(f"🔍 DIAGNOSTIC: Worker has NO shared terrain info")
                     # Set a timeout for shared terrain loading in the forest model
                     
                     terrain_loaded = threading.Event()
@@ -1520,6 +1525,19 @@ class GridSearchCalibrator:
                 logger.debug(f"Added simulation_timeout_minutes to config_dict: {self.config.simulation_timeout_minutes} minutes")
             else:
                 logger.warning("No simulation_timeout_minutes found in calibration config, using grid-size based timeout")
+            
+            # CRITICAL FIX: Add shared terrain info to config_dict for worker processes
+            if hasattr(self.config, 'shared_terrain_info') and self.config.shared_terrain_info:
+                config_dict['shared_terrain_info'] = self.config.shared_terrain_info
+                logger.info(f"✅ Added shared terrain info to config_dict for {self.max_workers} workers")
+                print(f"🔍 DIAGNOSTIC: Added shared terrain info to config_dict")
+            elif hasattr(self.config, 'base_config') and hasattr(self.config.base_config, 'shared_terrain_info') and self.config.base_config.shared_terrain_info:
+                config_dict['shared_terrain_info'] = self.config.base_config.shared_terrain_info
+                logger.info(f"✅ Added shared terrain info from base_config to config_dict for {self.max_workers} workers")
+                print(f"🔍 DIAGNOSTIC: Added shared terrain info from base_config to config_dict")
+            else:
+                logger.warning("⚠️  No shared terrain info found - workers will load terrain individually!")
+                print(f"🔍 DIAGNOSTIC: No shared terrain info - individual loading")
             
         except Exception as e:
             logger.error(f"Error creating config_dict: {e}")
