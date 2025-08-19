@@ -177,7 +177,7 @@ def verify_optimizations():
 
 def main():
     """Main configuration function."""
-    print("🚀 HPC OPTIMIZATION CONFIGURATION")
+    print("HPC OPTIMIZATION CONFIGURATION")
     print("=" * 60)
     
     # Configure all components
@@ -195,11 +195,11 @@ def main():
     print("=" * 60)
     
     if optimizations_available:
-        print("🎉 HPC OPTIMIZATIONS CONFIGURED SUCCESSFULLY!")
+        print("HPC OPTIMIZATIONS CONFIGURED SUCCESSFULLY!")
         print("   The calibration will use optimized components on HPC.")
         print("   Performance improvements should be significant for large grids.")
     else:
-        print("❌ HPC OPTIMIZATIONS NOT FULLY CONFIGURED!")
+        print("HPC OPTIMIZATIONS NOT FULLY CONFIGURED!")
         print("   Some optimizations may not be available.")
         print("   Check the configuration output above.")
     
