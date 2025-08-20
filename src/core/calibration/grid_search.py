@@ -478,11 +478,17 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     original_excepthook = sys.excepthook
     
     def keyerror_7_handler(exctype, value, traceback):
-        if exctype == KeyError and hasattr(value, 'args') and len(value.args) > 0 and value.args[0] == 7:
-            print(f"🔍 GLOBAL KeyError 7 caught: {value}")
-            print(f"🔍 This KeyError 7 is happening outside the simulation engine")
-            import traceback as tb
-            tb.print_exception(exctype, value, traceback)
+        if exctype == KeyError and hasattr(value, 'args') and len(value.args) > 0:
+            if value.args[0] == 7:
+                print(f"🔍 GLOBAL KeyError 7 caught: {value}")
+                print(f"🔍 This KeyError 7 is happening outside the simulation engine")
+                import traceback as tb
+                tb.print_exception(exctype, value, traceback)
+            elif value.args[0] == 11:
+                print(f"🔍 GLOBAL KeyError 11 caught: {value}")
+                print(f"🔍 This KeyError 11 is happening outside the simulation engine")
+                import traceback as tb
+                tb.print_exception(exctype, value, traceback)
         original_excepthook(exctype, value, traceback)
     
     sys.excepthook = keyerror_7_handler
@@ -984,9 +990,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_logger.error(f"🔍 DEBUG: parameter_values: {parameter_values}")
                 worker_logger.error(f"🔍 DEBUG: config_dict type: {type(config_dict)}")
                 
-                # CRITICAL FIX: Add specific KeyError 7 handling
+                # CRITICAL FIX: Add specific KeyError 7 and 11 handling
                 if isinstance(e, KeyError) and e.args[0] == 7:
                     worker_logger.error("🔍 CRITICAL: KeyError 7 detected - likely fuel type/category mapping issue")
+                elif isinstance(e, KeyError) and e.args[0] == 11:
+                    worker_logger.error("🔍 CRITICAL: KeyError 11 detected - likely fuel type/category mapping issue")
                     worker_logger.error("🔍 This suggests a fuel type dictionary is missing key 7")
                     worker_logger.error("🔍 Checking for fuel type mappings in forest model...")
                     

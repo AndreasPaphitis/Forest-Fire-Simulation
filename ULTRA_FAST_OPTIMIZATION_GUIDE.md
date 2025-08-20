@@ -207,3 +207,4 @@ python scripts/run_tenerife_calibration_ultra_fast.py --mode fast --dry-run
 **You can now run calibration in 2-8 hours instead of 2-3 days!**
 
 The ultra-fast runner provides **12-36x speedup** while maintaining reasonable calibration quality. Choose the mode that fits your time constraints and quality requirements.
+

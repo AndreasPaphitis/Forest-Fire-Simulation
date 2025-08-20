@@ -382,8 +382,8 @@ def _initialize_optimized_sparse_storage(self):
     
     for layer in range(self.num_layers):
         shape = (self.width, self.height)
-        self.fuel_load_layers[layer] = csr_matrix(shape, dtype=np.float32)
-        self.state_layers[layer] = csr_matrix(shape, dtype=np.int8)
+        self.fuel_load_layers[layer] = lil_matrix(shape, dtype=np.float32)
+        self.state_layers[layer] = lil_matrix(shape, dtype=np.int8)
 
 # Add to ForestModel.__init__()
 if self.use_sparse_storage:

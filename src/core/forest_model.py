@@ -245,7 +245,7 @@ class BaseForestModel(ABC):
         self.temperature = np.full((self.width, self.height, self.num_layers), 25.0, dtype=np.float32)
         self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
         
-        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
+        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7 and 11
         # This ensures that any fuel type dictionary access will have proper defaults
         self.fuel_types = {
             0: 'bare_ground',
@@ -257,7 +257,9 @@ class BaseForestModel(ABC):
             6: 'canopy',
             7: 'dense_canopy',  # This was likely missing, causing KeyError 7
             8: 'very_dense_canopy',
-            9: 'maximum_vegetation'
+            9: 'maximum_vegetation',
+            10: 'extreme_vegetation',  # Additional fuel type to prevent KeyError 10
+            11: 'maximum_density'      # Additional fuel type to prevent KeyError 11
         }
         
         # Initialize fuel type properties for each type
@@ -271,7 +273,9 @@ class BaseForestModel(ABC):
             'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
             'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
             'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
-            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
+            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05},
+            'extreme_vegetation': {'load': 1.0, 'moisture': 0.65, 'ignition': 0.02},  # Additional fuel type
+            'maximum_density': {'load': 1.0, 'moisture': 0.7, 'ignition': 0.01}       # Additional fuel type
         }
         
         # Minimal initialization of other attributes that both modules may expect
@@ -3106,21 +3110,18 @@ class MemoryOptimizedForestModel(ForestModel):
     def _initialize_optimized_sparse_storage(self):
         """Initialize sparse storage with optimization."""
         try:
-            from scipy.sparse import csr_matrix
+            from scipy.sparse import lil_matrix
             
-            # Use CSR format for better memory efficiency
+            # Use LIL format for efficient modifications (fire simulation frequently modifies cells)
             self.fuel_load_layers = {}
             self.state_layers = {}
             
-            # Pre-allocate with estimated non-zero elements
-            estimated_nnz = max(1000, self.width * self.height * self.num_layers // 1000)
-            
             for layer in range(self.num_layers):
                 shape = (self.width, self.height)
-                self.fuel_load_layers[layer] = csr_matrix(shape, dtype=np.float32)
-                self.state_layers[layer] = csr_matrix(shape, dtype=np.int8)
+                self.fuel_load_layers[layer] = lil_matrix(shape, dtype=np.float32)
+                self.state_layers[layer] = lil_matrix(shape, dtype=np.int8)
             
-            logger.debug(f"🧹 Optimized sparse storage initialized for {self.num_layers} layers")
+            logger.debug(f"🧹 Optimized sparse storage (LIL format) initialized for {self.num_layers} layers")
             
         except ImportError:
             logger.warning("⚠️  scipy.sparse not available - using basic sparse storage")
