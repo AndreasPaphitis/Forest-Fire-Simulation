@@ -1886,7 +1886,7 @@ class GridSearchCalibrator:
             optimal_workers = min(memory_based_workers, cpu_based_workers, numa_workers)
             
             # Cap at reasonable maximum
-                                    optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
+            optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
             
             logger.debug(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
             
