@@ -1540,6 +1540,32 @@ class GridSearchCalibrator:
         combinations_list = list(self._generate_parameter_combinations())
         logger.info(f"Generated {len(combinations_list)} parameter combinations")
         
+        # CRITICAL FIX: Validate parameter space BEFORE starting workers
+        if len(combinations_list) == 0:
+            logger.error("❌ CRITICAL ERROR: No parameter combinations generated!")
+            logger.error(f"   Parameter space: {self.parameter_space}")
+            logger.error(f"   Parameter bounds: {self.parameter_bounds}")
+            raise ValueError("No parameter combinations generated - cannot proceed")
+        
+        if len(combinations_list) == 1:
+            logger.error("❌ CRITICAL ERROR: Only one parameter combination generated!")
+            logger.error(f"   Combination: {combinations_list[0]}")
+            logger.error(f"   Parameter space: {self.parameter_space}")
+            raise ValueError("Only one parameter combination generated - grid search will fail")
+        
+        # CRITICAL FIX: Check first few combinations are different
+        first_combo = combinations_list[0]
+        for i, combo in enumerate(combinations_list[1:4]):  # Check first 4 combinations
+            if combo == first_combo:
+                logger.error(f"❌ CRITICAL ERROR: Combination {i+1} is identical to first combination!")
+                logger.error(f"   First: {first_combo}")
+                logger.error(f"   {i+1}th: {combo}")
+                logger.error(f"   Parameter space: {self.parameter_space}")
+                raise ValueError(f"Combination {i+1} is identical to first - parameter space is wrong")
+        
+        logger.info(f"✅ Parameter validation passed: {len(combinations_list)} unique combinations")
+        logger.info(f"✅ First 3 combinations are different: {[combinations_list[i] for i in range(3)]}")
+        
         # CRITICAL DEBUG: Validate combinations_list
         logger.debug(f"combinations_list type: {type(combinations_list)}")
         logger.debug(f"combinations_list length: {len(combinations_list)}")
@@ -1685,10 +1711,15 @@ class GridSearchCalibrator:
                 batch_size = min(10, self.max_workers)
                 all_futures = []
                 
-                # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
-                worker_counter = 0
-                logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
-                logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
+                        # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
+        worker_counter = 0
+        logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
+        logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
+        
+        # CRITICAL FIX: Ensure combinations are properly distributed
+        logger.info(f"🔍 DEBUG: First 5 combinations for distribution check:")
+        for i, combo in enumerate(combinations_list[:5]):
+            logger.info(f"   Worker {i}: {combo}")
                 
                 # CRITICAL FIX: Validate combinations are different
                 if len(combinations_list) > 1:
