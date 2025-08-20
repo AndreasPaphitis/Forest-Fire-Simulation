@@ -1590,12 +1590,15 @@ class GridSearchCalibrator:
         
         # Pre-optimize configurations for workers
         logger.info("📦 Pre-optimizing configurations for worker processes...")
-        self._pre_optimize_for_workers()
         
         # Convert generator to list for parallel processing
         # CRITICAL FIX: Convert generator to list before parallel processing to avoid pickling errors
         combinations_list = list(self._generate_parameter_combinations())
         logger.info(f"Generated {len(combinations_list)} parameter combinations")
+        
+        # CRITICAL FIX: Move pre-optimization AFTER generating combinations list
+        # This prevents the generator from being consumed before the main processing
+        self._pre_optimize_for_workers_from_list(combinations_list[:10])  # Only pre-optimize first 10
         
         # CRITICAL FIX: Validate parameter space BEFORE starting workers
         if len(combinations_list) == 0:
@@ -1921,8 +1924,30 @@ class GridSearchCalibrator:
             # Fallback to base optimized config
             return self.optimized_config
     
+    def _pre_optimize_for_workers_from_list(self, combinations_list: List[Dict[str, float]]):
+        """Pre-optimize configurations for worker processes using a list of combinations."""
+        try:
+            # Cache frequently used configurations using unified method
+            common_configs = {}
+            
+            # Take first 10 combinations from the provided list
+            for i, combo in enumerate(combinations_list[:10]):
+                config_key = f"config_{hash(str(combo))}"
+                
+                # Use unified optimization method
+                optimized_config = self._optimize_config_for_worker(combo, cache_key=config_key)
+                common_configs[config_key] = optimized_config
+            
+            logger.debug(f"📦 Pre-cached {len(common_configs)} configurations for workers")
+                    
+        except Exception as e:
+            logger.warning(f"⚠️  Pre-optimization failed: {e}")
+    
     def _pre_optimize_for_workers(self):
         """Pre-optimize configurations and data for worker processes."""
+        # DEPRECATED: This method consumes the generator and causes parameter combination issues
+        # Use _pre_optimize_for_workers_from_list instead
+        logger.warning("⚠️  _pre_optimize_for_workers is deprecated - use _pre_optimize_for_workers_from_list")
         try:
             # Cache frequently used configurations using unified method
             common_configs = {}
