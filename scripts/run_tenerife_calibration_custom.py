@@ -210,6 +210,99 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             from src.core.fire_simulation_engine import FireSimulationEngine
             return FireSimulationEngine(forest_model=forest_model, config=config)
     
+    def _calculate_optimal_grid_size_from_day4(self, buffer_percent: float = 10.0) -> Tuple[int, int]:
+        """
+        Override to use 10m resolution instead of 5m for custom calibration.
+        """
+        try:
+            # Import geopandas for shapefile reading
+            if not hasattr(self, '_spatial_libs_available'):
+                try:
+                    import geopandas as gpd
+                    self._spatial_libs_available = True
+                except ImportError:
+                    self._spatial_libs_available = False
+            
+            if not self._spatial_libs_available:
+                logger.warning("⚠️  Spatial libraries not available, using fallback grid size")
+                return (500, 500)  # Smaller fallback for 10m resolution
+            
+            import geopandas as gpd
+            
+            # Find Day 4 GeoJSON file (prioritize JSON over shapefiles)
+            day4_file = None
+            for day_dir in sorted(self.base_directory.iterdir()):
+                if not day_dir.is_dir():
+                    continue
+                
+                day_info = self._parse_day_directory(day_dir.name)
+                if day_info and day_info[0] == 4:  # Day 4
+                    file_path = self._find_shapefile(day_dir)
+                    if file_path:
+                        day4_file = file_path
+                        break
+            
+            if not day4_file:
+                logger.warning("⚠️  Day 4 file not found, using fallback grid size")
+                return (500, 500)  # Smaller fallback for 10m resolution
+            
+            logger.info(f"📍 Using Day 4 file for grid size calculation: {day4_file.name}")
+            
+            # Load Day 4 GeoJSON file
+            gdf = gpd.read_file(day4_file)
+            
+            # Log the original CRS
+            logger.info(f"🗺️  Original CRS: {gdf.crs}")
+            
+            # Convert from CRS84 (degrees) to EPSG:25828 (meters) for Tenerife
+            if gdf.crs != "EPSG:25828":
+                logger.info(f"🔄 Converting from {gdf.crs} to EPSG:25828")
+                gdf = gdf.to_crs("EPSG:25828")
+            
+            # Get bounds of ALL fire polygons (entire fire complex)
+            bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
+            
+            # Move northern side 10% up for additional buffer
+            height_m_original = bounds[3] - bounds[1]  # maxy - miny
+            north_expansion = height_m_original * 0.10
+            bounds = (bounds[0], bounds[1], bounds[2], bounds[3] + north_expansion)
+            
+            # Calculate dimensions in meters
+            width_m = bounds[2] - bounds[0]  # maxx - minx
+            height_m = bounds[3] - bounds[1]  # maxy - miny
+            
+            # Add buffer
+            buffer_factor = 1.0 + (buffer_percent / 100.0)
+            buffered_width_m = width_m * buffer_factor
+            buffered_height_m = height_m * buffer_factor
+            
+            # CRITICAL FIX: Use 10m resolution instead of 5m for custom calibration
+            cell_size_m = self.custom_config['model_resolution']  # 10.0m
+            grid_width = int(buffered_width_m / cell_size_m)
+            grid_height = int(buffered_height_m / cell_size_m)
+            
+            # Ensure minimum size but much smaller than before
+            grid_width = max(grid_width, 250)  # Minimum 250x250 cells for 10m resolution
+            grid_height = max(grid_height, 250)
+            
+            # Calculate total cells
+            total_cells = grid_width * grid_height * 25  # 25 layers
+            
+            # Calculate area for reference
+            grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
+            
+            logger.info(f"🗺️  Day 4 fire bounds (EPSG:25828): {bounds}")
+            logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
+            logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
+            logger.info(f"🎯 Using {cell_size_m}m resolution for custom calibration")
+            
+            return (grid_width, grid_height)
+            
+        except Exception as e:
+            logger.error(f"❌ Error calculating optimal grid size: {e}")
+            logger.warning("⚠️  Using fallback grid size")
+            return (500, 500)  # Smaller fallback for 10m resolution
+    
     def create_calibration_config(self, training_data, top_5_parameters=None, grid_size=None):
         """Create custom calibration configuration."""
         
