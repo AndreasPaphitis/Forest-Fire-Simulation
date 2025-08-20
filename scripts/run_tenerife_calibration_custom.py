@@ -317,6 +317,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             grid_size=grid_size
         )
         
+        # CRITICAL FIX: Override base_config max_steps to use 100 instead of 300
+        if hasattr(calib_config, 'base_config') and calib_config.base_config:
+            calib_config.base_config.max_steps = self.max_steps
+            logger.info(f"🔧 Overrode base_config.max_steps from 300 to {self.max_steps}")
+        
         # Override with custom settings
         calib_config.grid_search_points = self.custom_config['grid_search_points']
         calib_config.max_steps = self.max_steps
