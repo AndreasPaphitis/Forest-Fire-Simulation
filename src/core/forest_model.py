@@ -2412,14 +2412,23 @@ class SparseLayerAccessor:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    # CRITICAL FIX: Add debug logging for all KeyErrors (7, 11, 12, etc.)
+                    # CRITICAL FIX: Handle both list and dictionary access patterns
                     try:
-                        # Handle both lil_matrix and dok_matrix formats
-                        sparse_matrix = self.sparse_layers[z]
-                    except KeyError as e:
-                        # Handle all KeyError cases (7, 11, 12, etc.)
-                        key_value = e.args[0] if e.args else 'unknown'
-                        print(f"🔍 KeyError {key_value} in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
+                        # Try list access first (most common case)
+                        if isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
+                            sparse_matrix = self.sparse_layers[z]
+                        else:
+                            # Fallback to dictionary access
+                            sparse_matrix = self.sparse_layers[z]
+                    except (KeyError, IndexError) as e:
+                        # Handle both KeyError and IndexError cases
+                        if isinstance(e, KeyError):
+                            key_value = e.args[0] if e.args else 'unknown'
+                            error_type = f"KeyError {key_value}"
+                        else:
+                            error_type = f"IndexError {e}"
+                        
+                        print(f"🔍 {error_type} in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
                         print(f"🔍 sparse_layers keys/indices: {list(range(len(self.sparse_layers))) if hasattr(self.sparse_layers, '__len__') else 'no length'}")
                         print(f"🔍 Requested layer {z} is out of range [0, {len(self.sparse_layers)-1}]")
                         # Return default value instead of raising
@@ -2474,13 +2483,21 @@ class SparseLayerAccessor:
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
                     try:
-                        # CRITICAL FIX: Safe assignment for both DOK and LIL matrices
-                        sparse_matrix = self.sparse_layers[z]
+                        # CRITICAL FIX: Handle both list and dictionary access patterns
+                        if isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
+                            sparse_matrix = self.sparse_layers[z]
+                        else:
+                            # Fallback to dictionary access
+                            sparse_matrix = self.sparse_layers[z]
                         sparse_matrix[x, y] = value
-                    except KeyError as e:
-                        # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-                        key_value = e.args[0] if e.args else 'unknown'
-                        logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+                    except (KeyError, IndexError) as e:
+                        # Handle both KeyError and IndexError cases
+                        if isinstance(e, KeyError):
+                            key_value = e.args[0] if e.args else 'unknown'
+                            error_type = f"KeyError {key_value}"
+                        else:
+                            error_type = f"IndexError {e}"
+                        logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
                         logger.warning(f"⚠️  Layer {z} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
                         return  # Silently fail instead of raising exception
                     except Exception as e:
@@ -2579,11 +2596,20 @@ class SparseLayerAccessor:
     def _get_full_layer(self, layer_idx):
         """Extract a complete layer as a dense 2D array."""
         try:
-            sparse_matrix = self.sparse_layers[layer_idx]
-        except KeyError as e:
-            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-            key_value = e.args[0] if e.args else 'unknown'
-            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            # CRITICAL FIX: Handle both list and dictionary access patterns
+            if isinstance(self.sparse_layers, list) and 0 <= layer_idx < len(self.sparse_layers):
+                sparse_matrix = self.sparse_layers[layer_idx]
+            else:
+                # Fallback to dictionary access
+                sparse_matrix = self.sparse_layers[layer_idx]
+        except (KeyError, IndexError) as e:
+            # Handle both KeyError and IndexError cases
+            if isinstance(e, KeyError):
+                key_value = e.args[0] if e.args else 'unknown'
+                error_type = f"KeyError {key_value}"
+            else:
+                error_type = f"IndexError {e}"
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
             logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
             # Return default layer
             return np.full((self.width, self.height), self.default_value, dtype=np.float32)
@@ -2634,11 +2660,20 @@ class SparseLayerAccessor:
         
         # Fill with actual values from sparse matrix
         try:
-            sparse_matrix = self.sparse_layers[layer_idx]
-        except KeyError as e:
-            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-            key_value = e.args[0] if e.args else 'unknown'
-            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            # CRITICAL FIX: Handle both list and dictionary access patterns
+            if isinstance(self.sparse_layers, list) and 0 <= layer_idx < len(self.sparse_layers):
+                sparse_matrix = self.sparse_layers[layer_idx]
+            else:
+                # Fallback to dictionary access
+                sparse_matrix = self.sparse_layers[layer_idx]
+        except (KeyError, IndexError) as e:
+            # Handle both KeyError and IndexError cases
+            if isinstance(e, KeyError):
+                key_value = e.args[0] if e.args else 'unknown'
+                error_type = f"KeyError {key_value}"
+            else:
+                error_type = f"IndexError {e}"
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
             logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
             # Return result with default values
             return result
@@ -2744,11 +2779,20 @@ class SparseLayerAccessor:
     def _set_full_layer(self, layer_idx, value):
         """Set values for a complete layer."""
         try:
-            sparse_matrix = self.sparse_layers[layer_idx]
-        except KeyError as e:
-            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-            key_value = e.args[0] if e.args else 'unknown'
-            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            # CRITICAL FIX: Handle both list and dictionary access patterns
+            if isinstance(self.sparse_layers, list) and 0 <= layer_idx < len(self.sparse_layers):
+                sparse_matrix = self.sparse_layers[layer_idx]
+            else:
+                # Fallback to dictionary access
+                sparse_matrix = self.sparse_layers[layer_idx]
+        except (KeyError, IndexError) as e:
+            # Handle both KeyError and IndexError cases
+            if isinstance(e, KeyError):
+                key_value = e.args[0] if e.args else 'unknown'
+                error_type = f"KeyError {key_value}"
+            else:
+                error_type = f"IndexError {e}"
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
             logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
             return  # Silently fail instead of raising exception
         
@@ -2800,11 +2844,20 @@ class SparseLayerAccessor:
             return  # Nothing to assign
         
         try:
-            sparse_matrix = self.sparse_layers[layer_idx]
-        except KeyError as e:
-            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-            key_value = e.args[0] if e.args else 'unknown'
-            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            # CRITICAL FIX: Handle both list and dictionary access patterns
+            if isinstance(self.sparse_layers, list) and 0 <= layer_idx < len(self.sparse_layers):
+                sparse_matrix = self.sparse_layers[layer_idx]
+            else:
+                # Fallback to dictionary access
+                sparse_matrix = self.sparse_layers[layer_idx]
+        except (KeyError, IndexError) as e:
+            # Handle both KeyError and IndexError cases
+            if isinstance(e, KeyError):
+                key_value = e.args[0] if e.args else 'unknown'
+                error_type = f"KeyError {key_value}"
+            else:
+                error_type = f"IndexError {e}"
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
             logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
             return  # Silently fail instead of raising exception
         

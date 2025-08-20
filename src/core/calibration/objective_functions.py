@@ -352,11 +352,20 @@ class SpatialSimilarityObjective(ObjectiveFunction):
                             try:
                                 # Get the sparse matrix directly from the accessor
                                 try:
-                                    sparse_matrix = forest_model.state.sparse_layers[layer_idx]
-                                except KeyError as e:
-                                    # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
-                                    key_value = e.args[0] if e.args else 'unknown'
-                                    logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+                                    # CRITICAL FIX: Handle both list and dictionary access patterns
+                                    if isinstance(forest_model.state.sparse_layers, list) and 0 <= layer_idx < len(forest_model.state.sparse_layers):
+                                        sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                    else:
+                                        # Fallback to dictionary access
+                                        sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                except (KeyError, IndexError) as e:
+                                    # Handle both KeyError and IndexError cases
+                                    if isinstance(e, KeyError):
+                                        key_value = e.args[0] if e.args else 'unknown'
+                                        error_type = f"KeyError {key_value}"
+                                    else:
+                                        error_type = f"IndexError {e}"
+                                    logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
                                     logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(forest_model.state.sparse_layers)-1})")
                                     continue  # Skip this layer
                                 
