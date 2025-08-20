@@ -1690,24 +1690,24 @@ class GridSearchCalibrator:
                 logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
                 logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
                 
-                        # CRITICAL FIX: Validate combinations are different
-        if len(combinations_list) > 1:
-            first_combo = combinations_list[0]
-            second_combo = combinations_list[1]
-            if first_combo == second_combo:
-                logger.error("❌ CRITICAL ERROR: First two combinations are identical!")
-                logger.error(f"   First: {first_combo}")
-                logger.error(f"   Second: {second_combo}")
-                logger.error(f"   Parameter space: {self.parameter_space}")
-                logger.error(f"   Total combinations: {self.total_combinations}")
-                raise ValueError("Parameter combinations are identical - grid search will fail")
-            else:
-                logger.info(f"✅ First two combinations are different: {first_combo} vs {second_combo}")
-        else:
-            logger.error("❌ CRITICAL ERROR: Only one combination generated!")
-            logger.error(f"   Combinations: {combinations_list}")
-            logger.error(f"   Parameter space: {self.parameter_space}")
-            raise ValueError("Only one parameter combination generated - grid search will fail")
+                # CRITICAL FIX: Validate combinations are different
+                if len(combinations_list) > 1:
+                    first_combo = combinations_list[0]
+                    second_combo = combinations_list[1]
+                    if first_combo == second_combo:
+                        logger.error("❌ CRITICAL ERROR: First two combinations are identical!")
+                        logger.error(f"   First: {first_combo}")
+                        logger.error(f"   Second: {second_combo}")
+                        logger.error(f"   Parameter space: {self.parameter_space}")
+                        logger.error(f"   Total combinations: {self.total_combinations}")
+                        raise ValueError("Parameter combinations are identical - grid search will fail")
+                    else:
+                        logger.info(f"✅ First two combinations are different: {first_combo} vs {second_combo}")
+                else:
+                    logger.error("❌ CRITICAL ERROR: Only one combination generated!")
+                    logger.error(f"   Combinations: {combinations_list}")
+                    logger.error(f"   Parameter space: {self.parameter_space}")
+                    raise ValueError("Only one parameter combination generated - grid search will fail")
                 
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
