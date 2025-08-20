@@ -2426,11 +2426,20 @@ class SparseLayerAccessor:
                 if 0 <= x < self.width and 0 <= y < self.height:
                     # CRITICAL FIX: Handle both list and dictionary access patterns
                     try:
-                        # Try list access first (most common case)
-                        if isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
+                        # Handle dictionary access (sparse_layers is a dict with integer keys)
+                        if isinstance(self.sparse_layers, dict):
+                            if z in self.sparse_layers:
+                                sparse_matrix = self.sparse_layers[z]
+                            else:
+                                # Key doesn't exist in dictionary - return default value
+                                print(f"🔍 Key {z} not found in sparse_layers dictionary")
+                                print(f"🔍 Available keys: {list(self.sparse_layers.keys())}")
+                                return self.default_value
+                        # Handle list access (sparse_layers is a list)
+                        elif isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
                             sparse_matrix = self.sparse_layers[z]
                         else:
-                            # Fallback to dictionary access
+                            # Fallback to direct access
                             sparse_matrix = self.sparse_layers[z]
                     except (KeyError, IndexError) as e:
                         # Handle both KeyError and IndexError cases
@@ -2496,10 +2505,19 @@ class SparseLayerAccessor:
                 if 0 <= x < self.width and 0 <= y < self.height:
                     try:
                         # CRITICAL FIX: Handle both list and dictionary access patterns
-                        if isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
+                        if isinstance(self.sparse_layers, dict):
+                            if z in self.sparse_layers:
+                                sparse_matrix = self.sparse_layers[z]
+                            else:
+                                # Key doesn't exist in dictionary - skip assignment
+                                print(f"🔍 Key {z} not found in sparse_layers dictionary for assignment")
+                                print(f"🔍 Available keys: {list(self.sparse_layers.keys())}")
+                                return  # Skip assignment
+                        # Handle list access (sparse_layers is a list)
+                        elif isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
                             sparse_matrix = self.sparse_layers[z]
                         else:
-                            # Fallback to dictionary access
+                            # Fallback to direct access
                             sparse_matrix = self.sparse_layers[z]
                         sparse_matrix[x, y] = value
                     except (KeyError, IndexError) as e:
