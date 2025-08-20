@@ -329,6 +329,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         calib_config.memory_limit_gb = self.memory_gb
         calib_config.max_workers = self.workers
         
+        # DEBUG: Log the calibration parameters to verify they're correct
+        logger.info(f"🔍 DEBUG: Calibration parameters: {calib_config.calibration_parameters}")
+        logger.info(f"🔍 DEBUG: Grid search points: {calib_config.grid_search_points}")
+        logger.info(f"🔍 DEBUG: Expected combinations: {calib_config.grid_search_points ** len(calib_config.calibration_parameters)}")
+        
         return calib_config
 
 def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):

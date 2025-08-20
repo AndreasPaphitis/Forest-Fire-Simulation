@@ -1653,6 +1653,11 @@ class GridSearchCalibrator:
                 logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
                 logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
                 
+                # DEBUG: Log first few combinations to verify they're different
+                logger.info(f"🔍 DEBUG: First 3 parameter combinations:")
+                for idx, combo in enumerate(combinations_list[:3]):
+                    logger.info(f"   Combination {idx}: {combo}")
+                
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
                     logger.debug(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
