@@ -175,12 +175,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             # Force 10m resolution for speed
             config.model_resolution = self.custom_config['model_resolution']
             
-            optimized_model = create_optimized_forest_model(
-                grid_size=config.grid_size,
-                num_layers=config.num_layers,
-                config=config,
-                force_optimization=True
-            )
+            # Use unified forest model creation
+            from src.core.calibration.calibration_utils import create_unified_forest_model
+            optimized_model = create_unified_forest_model(config, model_type='memory_optimized')
             
             logger.info(f"✅ Created custom forest model: {type(optimized_model).__name__} (10m resolution)")
             return optimized_model
@@ -213,6 +210,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
     def _calculate_optimal_grid_size_from_day4(self, buffer_percent: float = 10.0) -> Tuple[int, int]:
         """
         Override to use 10m resolution instead of 5m for custom calibration.
+        
+        This method uses the unified grid size calculation utility to ensure
+        consistent results across all calibration modules.
         """
         try:
             # Import geopandas for shapefile reading
@@ -226,8 +226,6 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             if not self._spatial_libs_available:
                 logger.warning("⚠️  Spatial libraries not available, using fallback grid size")
                 return (500, 500)  # Smaller fallback for 10m resolution
-            
-            import geopandas as gpd
             
             # Find Day 4 GeoJSON file (prioritize JSON over shapefiles)
             day4_file = None
@@ -248,38 +246,17 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             
             logger.info(f"📍 Using Day 4 file for grid size calculation: {day4_file.name}")
             
-            # Load Day 4 GeoJSON file
-            gdf = gpd.read_file(day4_file)
+            # Use unified grid size calculation with custom resolution
+            from src.core.calibration.calibration_utils import calculate_unified_grid_size_from_emsr
             
-            # Log the original CRS
-            logger.info(f"🗺️  Original CRS: {gdf.crs}")
-            
-            # Convert from CRS84 (degrees) to EPSG:25828 (meters) for Tenerife
-            if gdf.crs != "EPSG:25828":
-                logger.info(f"🔄 Converting from {gdf.crs} to EPSG:25828")
-                gdf = gdf.to_crs("EPSG:25828")
-            
-            # Get bounds of ALL fire polygons (entire fire complex)
-            bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
-            
-            # Move northern side 10% up for additional buffer
-            height_m_original = bounds[3] - bounds[1]  # maxy - miny
-            north_expansion = height_m_original * 0.10
-            bounds = (bounds[0], bounds[1], bounds[2], bounds[3] + north_expansion)
-            
-            # Calculate dimensions in meters
-            width_m = bounds[2] - bounds[0]  # maxx - minx
-            height_m = bounds[3] - bounds[1]  # maxy - miny
-            
-            # Add buffer
-            buffer_factor = 1.0 + (buffer_percent / 100.0)
-            buffered_width_m = width_m * buffer_factor
-            buffered_height_m = height_m * buffer_factor
-            
-            # CRITICAL FIX: Use 10m resolution instead of 5m for custom calibration
-            cell_size_m = self.custom_config['model_resolution']  # 10.0m
-            grid_width = int(buffered_width_m / cell_size_m)
-            grid_height = int(buffered_height_m / cell_size_m)
+            # For Day 4 calculation, we'll use Day 4 data as both inputs
+            # since we only need the bounds from Day 4
+            grid_width, grid_height = calculate_unified_grid_size_from_emsr(
+                day1_path=str(day4_file),
+                day2_path=str(day4_file),  # Use same file for both
+                buffer_percent=buffer_percent,
+                model_resolution=self.custom_config['model_resolution']  # 10.0m for custom calibration
+            )
             
             # Ensure minimum size but much smaller than before
             grid_width = max(grid_width, 250)  # Minimum 250x250 cells for 10m resolution
@@ -289,10 +266,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             total_cells = grid_width * grid_height * 25  # 25 layers
             
             # Calculate area for reference
+            cell_size_m = self.custom_config['model_resolution']
             grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
             
-            logger.info(f"🗺️  Day 4 fire bounds (EPSG:25828): {bounds}")
-            logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
             logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
             logger.info(f"🎯 Using {cell_size_m}m resolution for custom calibration")
             
@@ -344,16 +320,8 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
 
 def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):
     """Create progress callback for calibration monitoring."""
-    from src.core.calibration.grid_search import create_progress_callback
-    
-    if quiet_mode:
-        def progress_callback(completed: int, total: int, current_result=None):
-            if completed % 10 == 0 or completed == total:  # Update every 10 completions
-                progress = (completed / total) * 100
-                print(f"🎯 Progress: {progress:.1f}% ({completed}/{total})")
-        return progress_callback
-    else:
-        return create_progress_callback(total_combinations)
+    from src.core.calibration.calibration_utils import create_unified_progress_callback
+    return create_unified_progress_callback(verbose=True, quiet_mode=quiet_mode, total_combinations=total_combinations)
 
 def main():
     """Main execution function for custom calibration."""

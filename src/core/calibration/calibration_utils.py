@@ -923,6 +923,300 @@ def calculate_optimal_grid_size_from_emsr(day1_path: str, day2_path: str, buffer
         return (1000, 1000)  # Fallback size
 
 
+def create_unified_progress_callback(verbose: bool = True, quiet_mode: bool = False, 
+                                   total_combinations: int = None) -> callable:
+    """
+    Unified progress callback function to replace redundant implementations.
+    
+    Args:
+        verbose: Whether to show detailed progress information
+        quiet_mode: Whether to suppress most output
+        total_combinations: Total number of combinations for percentage calculation
+        
+    Returns:
+        Progress callback function
+    """
+    def callback(completed: int, total: int, current_result=None):
+        if quiet_mode:
+            return
+            
+        # Calculate progress percentage
+        progress = (completed / total) * 100 if total > 0 else 0
+        
+        # Determine update frequency based on total
+        update_interval = max(1, total // 20) if verbose else max(1, total // 10)
+        
+        if completed % update_interval == 0 or completed == total:
+            if verbose and current_result is not None:
+                # Detailed progress with result information
+                status = "SUCCESS" if hasattr(current_result, 'is_valid') and current_result.is_valid else "FAILED"
+                obj_val = getattr(current_result, 'objective_value', 0.0) if hasattr(current_result, 'objective_value') else 0.0
+                print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: {status} (Objective: {obj_val:.4f})")
+            else:
+                # Simple progress
+                print(f"Progress: {progress:.1f}% ({completed}/{total})")
+    
+    return callback
+
+
+def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str, 
+                                         buffer_percent: float = 10.0,
+                                         model_resolution: float = 5.0) -> Tuple[int, int]:
+    """
+    Unified grid size calculation from EMSR data.
+    
+    This function consolidates the grid size calculation logic from multiple files
+    to ensure consistent results across all calibration modules.
+    
+    Args:
+        day1_path: Path to Day 1 EMSR data
+        day2_path: Path to Day 2 EMSR data  
+        buffer_percent: Buffer percentage to add around fire perimeter
+        model_resolution: Model resolution in meters
+        
+    Returns:
+        Tuple of (width, height) grid dimensions
+    """
+    try:
+        import geopandas as gpd
+        from shapely.geometry import box
+        import numpy as np
+        
+        # Load both day datasets
+        day1_gdf = gpd.read_file(day1_path)
+        day2_gdf = gpd.read_file(day2_path)
+        
+        # Combine geometries from both days
+        all_geometries = []
+        for gdf in [day1_gdf, day2_gdf]:
+            if not gdf.empty:
+                all_geometries.extend(gdf.geometry.tolist())
+        
+        if not all_geometries:
+            raise ValueError("No valid geometries found in EMSR data")
+        
+        # Calculate combined bounds
+        combined_bounds = None
+        for geom in all_geometries:
+            if geom is not None and not geom.is_empty:
+                bounds = geom.bounds  # (minx, miny, maxx, maxy)
+                if combined_bounds is None:
+                    combined_bounds = bounds
+                else:
+                    combined_bounds = (
+                        min(combined_bounds[0], bounds[0]),
+                        min(combined_bounds[1], bounds[1]),
+                        max(combined_bounds[2], bounds[2]),
+                        max(combined_bounds[3], bounds[3])
+                    )
+        
+        if combined_bounds is None:
+            raise ValueError("Could not calculate bounds from geometries")
+        
+        # Calculate dimensions
+        width_m = combined_bounds[2] - combined_bounds[0]
+        height_m = combined_bounds[3] - combined_bounds[1]
+        
+        # Add buffer
+        buffer_m = max(width_m, height_m) * (buffer_percent / 100.0)
+        width_m += buffer_m
+        height_m += buffer_m
+        
+        # Convert to grid cells
+        width_cells = int(np.ceil(width_m / model_resolution))
+        height_cells = int(np.ceil(height_m / model_resolution))
+        
+        return width_cells, height_cells
+        
+    except Exception as e:
+        # Fallback to reasonable defaults
+        print(f"Warning: Grid size calculation failed: {e}. Using default size.")
+        return 500, 500
+
+
+def create_unified_target_data(source_type: str, **kwargs) -> Dict[str, Any]:
+    """
+    Unified target data creation factory function.
+    
+    This function consolidates target data creation logic from multiple files
+    to ensure consistent data structures across all calibration modules.
+    
+    Args:
+        source_type: Type of target data ('emsr', 'production', 'synthetic')
+        **kwargs: Additional arguments specific to source type
+        
+    Returns:
+        Dictionary containing target data
+    """
+    if source_type == 'emsr':
+        return _create_emsr_target_data(**kwargs)
+    elif source_type == 'production':
+        return _create_production_target_data(**kwargs)
+    elif source_type == 'synthetic':
+        return _create_synthetic_target_data(**kwargs)
+    else:
+        raise ValueError(f"Unknown target data source type: {source_type}")
+
+
+def _create_emsr_target_data(day1_path: str, day2_path: str, 
+                           grid_size: tuple = (100, 100), 
+                           model_resolution: float = 5.0) -> Dict[str, Any]:
+    """Create target data from EMSR files."""
+    try:
+        import geopandas as gpd
+        import numpy as np
+        
+        # Load EMSR data
+        day1_gdf = gpd.read_file(day1_path)
+        day2_gdf = gpd.read_file(day2_path)
+        
+        # Process geometries
+        fire_perimeters = []
+        for day_num, gdf in [(1, day1_gdf), (2, day2_gdf)]:
+            if not gdf.empty:
+                for idx, row in gdf.iterrows():
+                    geom = row.geometry
+                    if geom is not None and not geom.is_empty:
+                        # Calculate area in hectares
+                        area_ha = geom.area / 10000  # Convert m² to hectares
+                        
+                        fire_data = {
+                            'shapefile_path': day1_path if day_num == 1 else day2_path,
+                            'date': f"Day {day_num}",
+                            'day_number': day_num,
+                            'fire_id': f"fire_{day_num}_{idx}",
+                            'area_hectares': area_ha,
+                            'bbox': geom.bounds,
+                            'geometry_count': 1,
+                            'is_valid': True
+                        }
+                        fire_perimeters.append(fire_data)
+        
+        return {
+            'fire_perimeters': fire_perimeters,
+            'grid_size': grid_size,
+            'model_resolution': model_resolution,
+            'source_type': 'emsr'
+        }
+        
+    except Exception as e:
+        print(f"Warning: EMSR target data creation failed: {e}")
+        return _create_synthetic_target_data(grid_size=grid_size)
+
+
+def _create_production_target_data(dem_file: str, lidar_data_dir: str,
+                                 grid_size: Tuple[int, int] = (80, 80),
+                                 num_layers: int = 5,
+                                 model_resolution: float = 5.0) -> Dict[str, Any]:
+    """Create target data for production runs."""
+    # Simplified production target data creation
+    return {
+        'dem_file': dem_file,
+        'lidar_data_dir': lidar_data_dir,
+        'grid_size': grid_size,
+        'num_layers': num_layers,
+        'model_resolution': model_resolution,
+        'source_type': 'production'
+    }
+
+
+def _create_synthetic_target_data(grid_size: Tuple[int, int] = (100, 100),
+                                fire_type: str = "circular") -> Dict[str, Any]:
+    """Create synthetic target data."""
+    return create_synthetic_target_data(grid_size, fire_type)
+
+
+def create_unified_forest_model(config, model_type: str = "memory_optimized"):
+    """
+    Unified forest model creation factory function.
+    
+    This function consolidates forest model creation logic from multiple files
+    to ensure consistent model initialization across all calibration modules.
+    
+    Args:
+        config: Model configuration
+        model_type: Type of forest model to create
+        
+    Returns:
+        Forest model instance
+    """
+    try:
+        from src.core.forest_model import create_forest_model
+        from src.config.config_tools import ModelConfig
+        
+        # Ensure config is a ModelConfig object
+        if isinstance(config, dict):
+            config = ModelConfig(**config)
+        
+        # Force memory optimization for large grids
+        if hasattr(config, 'grid_size'):
+            grid_size = config.grid_size
+            if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
+                total_cells = grid_size[0] * grid_size[1]
+                if total_cells > 1_000_000:  # 1M+ cells
+                    model_type = "memory_optimized"
+        
+        # Create forest model
+        forest_model = create_forest_model(
+            model_type=model_type,
+            config=config
+        )
+        
+        return forest_model
+        
+    except Exception as e:
+        print(f"Warning: Forest model creation failed: {e}")
+        raise
+
+
+def validate_unified_config(config: Any) -> Tuple[bool, List[str]]:
+    """
+    Unified configuration validation function.
+    
+    This function consolidates configuration validation logic from multiple files
+    to ensure consistent validation across all calibration modules.
+    
+    Args:
+        config: Configuration object to validate
+        
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+    """
+    errors = []
+    
+    # Basic validation
+    if config is None:
+        errors.append("Configuration is None")
+        return False, errors
+    
+    # Check required attributes
+    required_attrs = ['grid_size', 'num_layers', 'max_steps']
+    for attr in required_attrs:
+        if not hasattr(config, attr):
+            errors.append(f"Missing required attribute: {attr}")
+    
+    # Validate grid size
+    if hasattr(config, 'grid_size'):
+        grid_size = config.grid_size
+        if isinstance(grid_size, (tuple, list)):
+            if len(grid_size) != 2:
+                errors.append("Grid size must be a tuple of (width, height)")
+            elif grid_size[0] <= 0 or grid_size[1] <= 0:
+                errors.append("Grid dimensions must be positive")
+        else:
+            errors.append("Grid size must be a tuple or list")
+    
+    # Validate numeric parameters
+    numeric_attrs = ['num_layers', 'max_steps']
+    for attr in numeric_attrs:
+        if hasattr(config, attr):
+            value = getattr(config, attr)
+            if not isinstance(value, (int, float)) or value <= 0:
+                errors.append(f"{attr} must be a positive number")
+    
+    return len(errors) == 0, errors
+
+
 if __name__ == "__main__":
     # Example usage
     print("Calibration Utilities Example")

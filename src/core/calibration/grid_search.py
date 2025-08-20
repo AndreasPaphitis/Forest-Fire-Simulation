@@ -2047,9 +2047,8 @@ class GridSearchCalibrator:
         # Create a copy for modification
         config_variant = copy.deepcopy(config_variant)
         
-        # CRITICAL FIX: Use create_forest_model factory to ensure memory optimized model type
-        from src.core.forest_model import create_forest_model
-        from src.config.config_tools import ModelConfig
+        # Use unified forest model creation
+        from src.core.calibration.calibration_utils import create_unified_forest_model
         import gc
         gc.disable()
         try:
@@ -2067,20 +2066,18 @@ class GridSearchCalibrator:
                     logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
                     clean_config['simulation_type'] = 'memory_optimized'
                 
-                # Create forest model using factory function to ensure correct type
-                forest_model = create_forest_model(
-                    model_type=simulation_type,
-                    config=ModelConfig(**clean_config)
-                )
+                # Use unified forest model creation
+                forest_model = create_unified_forest_model(clean_config, model_type=simulation_type)
             else:
                 # CRITICAL FIX: Ensure simulation_type is set for ModelConfig objects
                 if hasattr(config_variant, 'simulation_type') and config_variant.simulation_type != 'memory_optimized':
                     logger.warning(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
                     config_variant.simulation_type = 'memory_optimized'
                 
-                forest_model = create_forest_model(
-                    model_type=getattr(config_variant, 'simulation_type', 'memory_optimized'),
-                    config=config_variant
+                # Use unified forest model creation
+                forest_model = create_unified_forest_model(
+                    config_variant, 
+                    model_type=getattr(config_variant, 'simulation_type', 'memory_optimized')
                 )
             return forest_model
         finally:
@@ -2089,16 +2086,8 @@ class GridSearchCalibrator:
 
 def create_progress_callback(verbose: bool = True) -> callable:
     """Create a progress callback function for grid search."""
-    def callback(completed: int, total: int, result: GridSearchResult):
-        if verbose and completed % max(1, total // 10) == 0:
-            progress = completed / total * 100
-            status = "SUCCESS" if result.is_valid else "FAILED"
-            obj_val = result.objective_value if result.is_valid else 0.0
-            
-            print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: "
-                  f"{status} (Objective: {obj_val:.4f})")
-    
-    return callback
+    from src.core.calibration.calibration_utils import create_unified_progress_callback
+    return create_unified_progress_callback(verbose=verbose)
 
 
 def print_progress_bar(completed: int, total: int, width: int = 50) -> str:

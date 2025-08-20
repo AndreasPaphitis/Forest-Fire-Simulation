@@ -669,6 +669,9 @@ class TenerifeFirePerimeterCalibrator:
         """
         Calculate optimal grid size based on Day 4 fire perimeter with buffer.
         
+        This method uses the unified grid size calculation utility to ensure
+        consistent results across all calibration modules.
+        
         Args:
             buffer_percent: Percentage buffer to add around fire perimeter (default: 10%)
             
@@ -680,8 +683,6 @@ class TenerifeFirePerimeterCalibrator:
             if not SPATIAL_LIBS_AVAILABLE:
                 logger.warning("⚠️  Spatial libraries not available, using fallback grid size")
                 return (1000, 1000)  # Much smaller fallback
-            
-            import geopandas as gpd
             
             # Find Day 4 GeoJSON file (prioritize JSON over shapefiles)
             day4_file = None
@@ -702,38 +703,17 @@ class TenerifeFirePerimeterCalibrator:
             
             logger.info(f"📍 Using Day 4 file for grid size calculation: {day4_file.name}")
             
-            # Load Day 4 GeoJSON file
-            gdf = gpd.read_file(day4_file)
+            # Use unified grid size calculation
+            from src.core.calibration.calibration_utils import calculate_unified_grid_size_from_emsr
             
-            # Log the original CRS
-            logger.info(f"🗺️  Original CRS: {gdf.crs}")
-            
-            # Convert from CRS84 (degrees) to EPSG:25828 (meters) for Tenerife
-            if gdf.crs != "EPSG:25828":
-                logger.info(f"🔄 Converting from {gdf.crs} to EPSG:25828")
-                gdf = gdf.to_crs("EPSG:25828")
-            
-            # Get bounds of ALL fire polygons (entire fire complex)
-            bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
-            
-            # Move northern side 10% up for additional buffer
-            height_m_original = bounds[3] - bounds[1]  # maxy - miny
-            north_expansion = height_m_original * 0.10
-            bounds = (bounds[0], bounds[1], bounds[2], bounds[3] + north_expansion)
-            
-            # Calculate dimensions in meters
-            width_m = bounds[2] - bounds[0]  # maxx - minx
-            height_m = bounds[3] - bounds[1]  # maxy - miny
-            
-            # Add buffer
-            buffer_factor = 1.0 + (buffer_percent / 100.0)
-            buffered_width_m = width_m * buffer_factor
-            buffered_height_m = height_m * buffer_factor
-            
-            # Calculate grid size in cells (using 5m resolution)
-            cell_size_m = 5.0
-            grid_width = int(buffered_width_m / cell_size_m)
-            grid_height = int(buffered_height_m / cell_size_m)
+            # For Day 4 calculation, we'll use Day 4 data as both inputs
+            # since we only need the bounds from Day 4
+            grid_width, grid_height = calculate_unified_grid_size_from_emsr(
+                day1_path=str(day4_file),
+                day2_path=str(day4_file),  # Use same file for both
+                buffer_percent=buffer_percent,
+                model_resolution=5.0
+            )
             
             # Ensure minimum size but much smaller than before
             grid_width = max(grid_width, 500)  # Minimum 500x500 cells
@@ -743,10 +723,9 @@ class TenerifeFirePerimeterCalibrator:
             total_cells = grid_width * grid_height * 25  # 25 layers
             
             # Calculate area for reference
+            cell_size_m = 5.0
             grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
             
-            logger.info(f"🗺️  Day 4 fire bounds (EPSG:25828): {bounds}")
-            logger.info(f"🔥 Fire complex dimensions: {width_m:.0f}m × {height_m:.0f}m")
             logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
             
             return (grid_width, grid_height)
