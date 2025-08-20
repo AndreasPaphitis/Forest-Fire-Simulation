@@ -1085,6 +1085,10 @@ class GridSearchCalibrator:
         # Create parameter space
         self.parameter_space = self._create_parameter_space()
         
+        # CRITICAL FIX: Ensure parameter space is not cached/shared between instances
+        logger.info(f"🔍 DEBUG: Parameter space created with ID: {id(self.parameter_space)}")
+        logger.info(f"🔍 DEBUG: Parameter space content: {self.parameter_space}")
+        
         # CRITICAL FIX: Validate parameter space is not empty
         if not self.parameter_space:
             logger.error("❌ CRITICAL ERROR: Parameter space is empty!")
@@ -1193,8 +1197,12 @@ class GridSearchCalibrator:
         logger.info(f"🔍 DEBUG: Parameter names: {param_names}")
         logger.info(f"🔍 DEBUG: Parameter value lists: {param_value_lists}")
         
+        # CRITICAL FIX: Create a fresh list of combinations to avoid iterator reuse issues
+        all_combinations = list(itertools.product(*param_value_lists))
+        logger.info(f"🔍 DEBUG: Created {len(all_combinations)} raw combinations")
+        
         combination_count = 0
-        for combination in itertools.product(*param_value_lists):
+        for combination in all_combinations:
             # CRITICAL FIX: Ensure we always yield a dictionary
             param_dict = dict(zip(param_names, combination))
             # Validate that we have a proper dictionary
