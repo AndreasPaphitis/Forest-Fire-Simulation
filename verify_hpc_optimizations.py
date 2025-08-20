@@ -74,13 +74,13 @@ def test_parameter_bounds_fix():
             get_parameter_bounds_for_calibration
         )
 
-        # Test the top 5 parameters
+        # Test the correct top 5 parameters from sensitivity analysis
         top_5_parameters = [
-            'spread_probability',
-            'fuel_consumption_rate', 
+            'ignition_threshold',
             'ember_probability',
             'ember_ignition',
-            'fuel_moisture_baseline'
+            'spread_probability',
+            'slope_influence'
         ]
 
         # Test old method (should create 17 parameters)
@@ -221,18 +221,18 @@ def test_calibration_integration():
             num_layers=3
         )
 
-        # Create calibration config with top 5 parameters
+        # Create calibration config with correct top 5 parameters
         calib_config = CalibrationConfig(
             experiment_name="test_hpc_optimizations",
             method=CalibrationMethod.GRID_SEARCH,
             objective=CalibrationObjective.SPATIAL_SIMILARITY,
             base_config=base_config,
             calibration_parameters=[
-                'spread_probability',
-                'fuel_consumption_rate', 
+                'ignition_threshold',
                 'ember_probability',
                 'ember_ignition',
-                'fuel_moisture_baseline'
+                'spread_probability',
+                'slope_influence'
             ],
             grid_search_points=2
         )

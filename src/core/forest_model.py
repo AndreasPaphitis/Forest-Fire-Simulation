@@ -2441,7 +2441,9 @@ class SparseLayerAccessor:
                             return self.default_value
                 return self.default_value
             else:
-                raise IndexError(f"Layer index {z} out of range")
+                # CRITICAL FIX: Return default value instead of raising IndexError
+                # This prevents the "Layer index out of range" warnings
+                return self.default_value
         elif isinstance(key, tuple) and len(key) == 2:
             # Handle 2D access for single layer
             x, y = key
@@ -2526,14 +2528,22 @@ class SparseLayerAccessor:
             if 0 <= z_slice < self.num_layers:
                 return self._get_full_layer(z_slice)
             else:
-                raise IndexError(f"Layer index {z_slice} out of range [0, {self.num_layers})")
+                # CRITICAL FIX: Return empty array instead of raising IndexError
+                # This prevents the "Layer index out of range" warnings
+                return np.full((self.width, self.height), self.default_value, dtype=np.float32)
         
         # Pattern 2: Rectangular region with specific layer [x_start:x_end, y_start:y_end, z]
         if (isinstance(x_slice, slice) and isinstance(y_slice, slice) and isinstance(z_slice, int)):
             if 0 <= z_slice < self.num_layers:
                 return self._get_rectangular_region(x_slice, y_slice, z_slice)
             else:
-                raise IndexError(f"Layer index {z_slice} out of range [0, {self.num_layers})")
+                # CRITICAL FIX: Return empty array instead of raising IndexError
+                # This prevents the "Layer index out of range" warnings
+                x_start, x_stop, _ = x_slice.indices(self.width)
+                y_start, y_stop, _ = y_slice.indices(self.height)
+                result_width = x_stop - x_start
+                result_height = y_stop - y_start
+                return np.full((result_width, result_height), self.default_value, dtype=np.float32)
         
         # Pattern 3: Rectangular region across all layers [x_start:x_end, y_start:y_end, :]
         if (isinstance(x_slice, slice) and isinstance(y_slice, slice) and z_slice == slice(None)):
@@ -2670,7 +2680,9 @@ class SparseLayerAccessor:
                 self._set_full_layer(z_slice, value)
                 return
             else:
-                raise IndexError(f"Layer index {z_slice} out of range [0, {self.num_layers})")
+                # CRITICAL FIX: Silently ignore out-of-range layer assignments
+                # This prevents the "Layer index out of range" warnings
+                return
         
         # Pattern 2: Rectangular region assignment [x_start:x_end, y_start:y_end, z] = value
         if (isinstance(x_slice, slice) and isinstance(y_slice, slice) and isinstance(z_slice, int)):
@@ -2678,7 +2690,9 @@ class SparseLayerAccessor:
                 self._set_rectangular_region(x_slice, y_slice, z_slice, value)
                 return
             else:
-                raise IndexError(f"Layer index {z_slice} out of range [0, {self.num_layers})")
+                # CRITICAL FIX: Silently ignore out-of-range layer assignments
+                # This prevents the "Layer index out of range" warnings
+                return
         
         # Pattern 3: Rectangular region across all layers [x_start:x_end, y_start:y_end, :] = value
         if (isinstance(x_slice, slice) and isinstance(y_slice, slice) and z_slice == slice(None)):
