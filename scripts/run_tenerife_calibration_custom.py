@@ -12,7 +12,14 @@ CUSTOM CONFIGURATION:
 ✅ Estimated runtime: ~3-4 hours
 
 Usage:
+    # Default custom configuration
     python scripts/run_tenerife_calibration_custom.py
+    
+    # With custom memory and workers
+    python scripts/run_tenerife_calibration_custom.py --memory 64 --workers 32
+    
+    # Dry run (setup only, no calibration)
+    python scripts/run_tenerife_calibration_custom.py --dry-run
 
 Author: Forest Fire Simulation Team
 Date: 2025
@@ -73,38 +80,71 @@ CUSTOM_CONFIG = {
         'ember_probability',       # Top parameter 3
         'ignition_threshold'       # Top parameter 4
     ],
-    'memory_limit_gb': 24.0,
-    'max_workers': 48,
     'estimated_hours': 3.5
 }
 
-def estimate_custom_calibration_time(config: Dict[str, Any]) -> Dict[str, Any]:
+def validate_system_resources(memory_gb: int, workers: int) -> bool:
+    """Validate that system has sufficient resources for custom calibration."""
+    try:
+        import psutil
+        
+        # Check memory
+        total_memory_gb = psutil.virtual_memory().total / (1024**3)
+        available_memory_gb = psutil.virtual_memory().available / (1024**3)
+        
+        logger.info(f"System check: {total_memory_gb:.1f}GB total, {available_memory_gb:.1f}GB available")
+        
+        # Check CPU cores
+        cpu_count = psutil.cpu_count(logical=False)
+        logical_cores = psutil.cpu_count(logical=True)
+        
+        logger.debug(f"CPU: {cpu_count} physical, {logical_cores} logical cores, {workers} workers requested")
+        
+        # Basic availability check only
+        if available_memory_gb < total_memory_gb * 0.7:
+            logger.warning(f"High memory usage: {available_memory_gb:.1f}GB available ({available_memory_gb/total_memory_gb*100:.1f}%)")
+        
+        # Basic worker validation only
+        if workers > cpu_count * 2:
+            logger.warning(f"High worker count: {workers} workers on {cpu_count} cores")
+        
+        return True
+        
+    except ImportError:
+        logger.warning("psutil not available - skipping system validation")
+        return True
+
+def estimate_custom_calibration_time(parameters: List[str], grid_points: int, workers: int) -> Dict[str, float]:
     """Estimate calibration time for custom configuration."""
     
     # Calculate total combinations: 3⁴ = 81
-    total_combinations = config['grid_search_points'] ** len(config['parameters'])
+    total_combinations = grid_points ** len(parameters)
     
     # Optimized time per simulation with 10m resolution and 100 steps
     # 10m resolution = 4x fewer cells, 100 steps = 2.5x fewer steps
-    base_time_per_sim_seconds = 60.0  # ~1 minute per simulation
+    base_time_per_sim_minutes = 1.0  # ~1 minute per simulation
     
     # Parallel efficiency factor
     parallel_efficiency = 0.9
     
     # Calculate times
-    total_time_seconds = total_combinations * base_time_per_sim_seconds
-    parallel_time_seconds = total_time_seconds / (config['max_workers'] * parallel_efficiency)
+    total_time_minutes = total_combinations * base_time_per_sim_minutes
+    parallel_time_minutes = total_time_minutes / (workers * parallel_efficiency)
     
     # Convert to hours
-    parallel_time_hours = parallel_time_seconds / 3600
+    parallel_time_hours = parallel_time_minutes / 60
+    
+    # Memory estimation (peak usage)
+    # 10m resolution uses ~40-50% less memory than 5m
+    peak_memory_gb = 24.0  # Optimized estimate for 10m resolution
     
     return {
         'total_combinations': total_combinations,
-        'base_time_per_sim_seconds': base_time_per_sim_seconds,
-        'total_time_seconds': total_time_seconds,
-        'parallel_time_seconds': parallel_time_seconds,
+        'base_time_per_sim_minutes': base_time_per_sim_minutes,
+        'total_time_minutes': total_time_minutes,
+        'parallel_time_minutes': parallel_time_minutes,
         'parallel_time_hours': parallel_time_hours,
-        'peak_memory_gb': config['memory_limit_gb']
+        'peak_memory_gb': peak_memory_gb
     }
 
 class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
@@ -115,9 +155,6 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
     def __init__(self, **kwargs):
         # Override default parameters with custom settings
         kwargs.update({
-            'memory_gb': CUSTOM_CONFIG['memory_limit_gb'],
-            'workers': CUSTOM_CONFIG['max_workers'],
-            'grid_search_points': CUSTOM_CONFIG['grid_search_points'],
             'experiment_name': f"tenerife_custom_10m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         })
         
@@ -191,26 +228,68 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         calib_config.grid_search_points = self.custom_config['grid_search_points']
         calib_config.max_steps = self.max_steps
         calib_config.simulation_timeout_minutes = 20.0  # Shorter timeout for 100 steps
-        calib_config.memory_limit_gb = self.custom_config['memory_limit_gb']
-        calib_config.max_workers = self.custom_config['max_workers']
+        calib_config.memory_limit_gb = self.memory_gb
+        calib_config.max_workers = self.workers
         
         return calib_config
+
+def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):
+    """Create progress callback for calibration monitoring."""
+    from src.core.calibration.grid_search import create_progress_callback
+    
+    if quiet_mode:
+        def progress_callback(completed: int, total: int, current_result=None):
+            if completed % 10 == 0 or completed == total:  # Update every 10 completions
+                progress = (completed / total) * 100
+                print(f"🎯 Progress: {progress:.1f}% ({completed}/{total})")
+        return progress_callback
+    else:
+        return create_progress_callback(total_combinations)
 
 def main():
     """Main execution function for custom calibration."""
     
-    parser = argparse.ArgumentParser(description="Custom Tenerife fire perimeter calibration")
+    parser = argparse.ArgumentParser(
+        description="Custom Tenerife fire perimeter calibration with 10m resolution and 100 timesteps",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Default custom configuration
+  python scripts/run_tenerife_calibration_custom.py
+  
+  # With custom memory and workers
+  python scripts/run_tenerife_calibration_custom.py --memory 64 --workers 32
+  
+  # Dry run (setup only)
+  python scripts/run_tenerife_calibration_custom.py --dry-run
+        """
+    )
     
-    # EMSR data directory
+    # System configuration
+    parser.add_argument('--memory', type=int, default=24,
+                       help='Available memory in GB (default: 24)')
+    parser.add_argument('--workers', type=int, default=48,
+                       help='Number of parallel workers (default: 48)')
+    parser.add_argument('--grid-points', type=int, default=3,
+                       help='Grid search points per parameter (default: 3)')
+    
+    # Parameter configuration (use custom parameters)
+    parser.add_argument('--parameters', nargs='+', 
+                       default=CUSTOM_CONFIG['parameters'],
+                       help='Parameters to calibrate (default: top 4 custom parameters)')
+    
+    # Data configuration
     parser.add_argument('--emsr-dir', type=str, 
                        default="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/Data/EMSR/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1",
-                       help='EMSR data directory')
+                       help='Directory containing EMSR fire perimeter data')
+    parser.add_argument('--training-days', nargs='+', type=int, default=[1, 2],
+                       help='Days to use for training/calibration (default: [1, 2])')
+    parser.add_argument('--test-days', nargs='+', type=int, default=[3, 4],
+                       help='Days to use for testing/validation (default: [3, 4])')
     
-    # Training/test days
-    parser.add_argument('--training-days', type=int, nargs='+', default=[1, 2],
-                       help='Training days (default: 1 2)')
-    parser.add_argument('--test-days', type=int, nargs='+', default=[3, 4],
-                       help='Test days (default: 3 4)')
+    # Grid configuration
+    parser.add_argument('--grid-size', type=int, default=None,
+                       help='Override grid size (default: auto-calculate from Day 4)')
     
     # Execution control
     parser.add_argument('--dry-run', action='store_true',
@@ -225,16 +304,29 @@ def main():
     print("Custom Configuration:")
     print(f"✅ Resolution: {CUSTOM_CONFIG['model_resolution']}m")
     print(f"✅ Timesteps: {CUSTOM_CONFIG['max_steps']}")
-    print(f"✅ Parameters: {len(CUSTOM_CONFIG['parameters'])} ({', '.join(CUSTOM_CONFIG['parameters'])})")
-    print(f"✅ Grid search: {CUSTOM_CONFIG['grid_search_points']} points per parameter")
-    print(f"✅ Workers: {CUSTOM_CONFIG['max_workers']}")
-    print(f"✅ Memory: {CUSTOM_CONFIG['memory_limit_gb']}GB")
+    print(f"✅ Parameters: {len(args.parameters)} ({', '.join(args.parameters)})")
+    print(f"✅ Grid search: {args.grid_points} points per parameter")
+    print(f"✅ Workers: {args.workers}")
+    print(f"✅ Memory: {args.memory}GB")
     print(f"✅ Target: {CUSTOM_CONFIG['estimated_hours']} hours")
     print()
     
+    # Log optimization status
+    log_optimization_status()
+    
     try:
-        # Step 1: Emergency cleanup
-        print(f"🧹 EMERGENCY CLEANUP")
+        # Step 1: System validation
+        print(f"\n🔍 SYSTEM VALIDATION")
+        print("=" * 30)
+        
+        if not validate_system_resources(args.memory, args.workers):
+            print("❌ System validation failed")
+            return
+        
+        print(f"✅ System validated: {args.memory}GB memory, {args.workers} workers")
+        
+        # Step 2: Emergency cleanup
+        print(f"\n🧹 EMERGENCY CLEANUP")
         print("=" * 30)
         
         try:
@@ -243,14 +335,14 @@ def main():
         except Exception as e:
             logger.warning(f"Shared memory cleanup failed: {e}")
         
-        # Step 2: Memory protection setup
-        print(f"🛡️  MEMORY PROTECTION SETUP")
+        # Step 3: Memory protection setup
+        print(f"\n🛡️  MEMORY PROTECTION SETUP")
         print("=" * 30)
         
         memory_thresholds = ProductionMemoryThresholds(
-            process_warning_gb=CUSTOM_CONFIG['memory_limit_gb'] * 0.6,
-            process_critical_gb=CUSTOM_CONFIG['memory_limit_gb'] * 0.8,
-            process_emergency_gb=CUSTOM_CONFIG['memory_limit_gb'] * 0.9,
+            process_warning_gb=args.memory * 0.6,
+            process_critical_gb=args.memory * 0.8,
+            process_emergency_gb=args.memory * 0.9,
             system_warning_percent=70.0,
             system_critical_percent=85.0,
             system_emergency_percent=95.0
@@ -259,14 +351,21 @@ def main():
         setup_production_memory_protection(memory_thresholds)
         print("✅ Memory protection configured")
         
-        # Step 3: Create custom calibrator
-        print(f"🎯 CREATING CUSTOM CALIBRATOR")
+        # Step 4: Create custom calibrator
+        print(f"\n🎯 CREATING CUSTOM CALIBRATOR")
         print("=" * 30)
         
-        calibrator = CustomTenerifeCalibrator()
+        calibrator_kwargs = {
+            'memory_gb': args.memory,
+            'workers': args.workers,
+            'grid_search_points': args.grid_points,
+            'experiment_name': f"tenerife_custom_10m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        }
         
-        # Step 4: Create EMSR target data
-        print(f"🔥 CREATING EMSR TARGET DATA")
+        calibrator = CustomTenerifeCalibrator(**calibrator_kwargs)
+        
+        # Step 5: Create EMSR target data
+        print(f"\n🔥 CREATING EMSR TARGET DATA")
         print("=" * 50)
         
         # Paths to EMSR files
@@ -281,8 +380,23 @@ def main():
         print(f"📁 Day 1 EMSR: {day1_path}")
         print(f"📁 Day 2 EMSR: {day2_path}")
         
-        # Step 5: Set up training/validation split
-        print(f"📊 SETTING UP TRAINING/VALIDATION SPLIT")
+        # CRITICAL: Use the same grid size for both target data creation and calibration
+        if args.grid_size is not None:
+            grid_size = (args.grid_size, args.grid_size)
+            print(f"🎯 Using specified grid size: {grid_size[0]} × {grid_size[1]}")
+        else:
+            # Use Day 4 grid size calculation to match the calibrator's default method
+            temp_calibrator = CustomTenerifeCalibrator(
+                memory_gb=args.memory,
+                workers=args.workers,
+                grid_search_points=args.grid_points,
+                experiment_name="temp_grid_calc"
+            )
+            grid_size = temp_calibrator._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
+            print(f"🎯 Using Day 4 grid size: {grid_size[0]} × {grid_size[1]} (matches calibrator default)")
+        
+        # Step 6: Set up training/validation split
+        print(f"\n📊 SETTING UP TRAINING/VALIDATION SPLIT")
         print("=" * 50)
         
         discovery = FirePerimeterDiscovery(args.emsr_dir)
@@ -291,7 +405,9 @@ def main():
         if not fire_dataset.fire_perimeters:
             raise ValueError(f"No fire perimeters found in {args.emsr_dir}")
         
-        print(f"📁 Found {len(fire_dataset.fire_perimeters)} fire perimeters")
+        print(f"📁 Found {len(fire_dataset.fire_perimeters)} fire perimeters:")
+        for fp in fire_dataset.fire_perimeters:
+            print(f"   Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         
         # Set up training/validation split
         training_data, validation_data = calibrator.setup_training_test_split(
@@ -300,25 +416,30 @@ def main():
             test_days=args.test_days
         )
         
-        print(f"✅ Training/Validation split complete:")
-        print(f"   🎯 Training: {len(training_data)} fire perimeters")
+        print(f"\n✅ Training/Validation split complete:")
+        print(f"   🎯 Training (calibration): {len(training_data)} fire perimeters")
+        for fp in training_data:
+            print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         print(f"   🧪 Validation: {len(validation_data)} fire perimeters")
+        for fp in validation_data:
+            print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         
-        # Step 6: Create calibration configuration
+        # Step 7: Create calibration configuration
         calib_config = calibrator.create_calibration_config(
             training_data=training_data,
-            top_5_parameters=CUSTOM_CONFIG['parameters']
+            top_5_parameters=args.parameters,
+            grid_size=grid_size
         )
         
-        # Step 7: Final confirmation and execution
-        print(f"🚀 READY TO EXECUTE CUSTOM CALIBRATION")
+        # Step 8: Final confirmation and execution
+        print(f"\n🚀 READY TO EXECUTE CUSTOM CALIBRATION")
         print("=" * 50)
         
-        estimates = estimate_custom_calibration_time(CUSTOM_CONFIG)
+        estimates = estimate_custom_calibration_time(args.parameters, args.grid_points, args.workers)
         
         print(f"📊 Performance estimates:")
-        print(f"   Total combinations: {estimates['total_combinations']:,} (3⁴)")
-        print(f"   Time per simulation: {estimates['base_time_per_sim_seconds']:.1f} seconds")
+        print(f"   Total combinations: {estimates['total_combinations']:,} ({args.grid_points}^{len(args.parameters)})")
+        print(f"   Time per simulation: {estimates['base_time_per_sim_minutes']:.1f} minutes")
         print(f"   Parallel time: {estimates['parallel_time_hours']:.1f} hours")
         print(f"   Peak memory: {estimates['peak_memory_gb']:.1f} GB")
         print(f"   Results directory: {calibrator.results_dir}")
@@ -326,8 +447,8 @@ def main():
         print(f"🎯 Custom Configuration Summary:")
         print(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m (4x fewer cells)")
         print(f"   Timesteps: {CUSTOM_CONFIG['max_steps']} (2.5x fewer steps)")
-        print(f"   Parameters: {len(CUSTOM_CONFIG['parameters'])} top parameters")
-        print(f"   Grid search: {CUSTOM_CONFIG['grid_search_points']} points each")
+        print(f"   Parameters: {len(args.parameters)} top parameters")
+        print(f"   Grid search: {args.grid_points} points each")
         
         if args.dry_run:
             logger.info(f"✅ DRY RUN COMPLETE - Configuration validated")
@@ -337,29 +458,37 @@ def main():
             return
         
         # Final user confirmation
-        print(f"⚠️  This will take ~{estimates['parallel_time_hours']:.1f} hours")
-        print(f"   Make sure you're on a stable node")
+        if estimates['parallel_time_hours'] > 4:
+            print(f"⚠️  This will take ~{estimates['parallel_time_hours']:.1f} hours")
+            print(f"   Make sure you're on a stable node")
+            
+            response = input(f"\nContinue? (y/N): ").strip().lower()
+            if response not in ['y', 'yes']:
+                print(f"❌ Cancelled by user")
+                return
         
-        response = input(f"\nContinue? (y/N): ").strip().lower()
-        if response not in ['y', 'yes']:
-            print(f"❌ Cancelled by user")
-            return
-        
-        # Step 8: Execute custom calibration
-        print(f"🚀 EXECUTING CUSTOM CALIBRATION")
+        # Step 9: Execute custom calibration
+        print(f"\n🚀 EXECUTING CUSTOM CALIBRATION")
         print("=" * 50)
         
         start_time = time.time()
         
+        # Create progress callback
+        progress_callback = create_quiet_progress_callback(
+            estimates['total_combinations'], 
+            quiet_mode=args.quiet
+        )
+        
         # Run calibration
         results = calibrator.run_calibration(
             calibration_config=calib_config,
-            test_data=validation_data
+            test_data=validation_data,
+            progress_callback=progress_callback
         )
         
         total_time = time.time() - start_time
         
-        # Step 9: Results summary
+        # Step 10: Results summary
         print(f"\n✅ CUSTOM CALIBRATION COMPLETE")
         print("=" * 50)
         print(f"Total time: {total_time/3600:.2f} hours")
