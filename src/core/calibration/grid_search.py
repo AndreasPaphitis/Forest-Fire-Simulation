@@ -1508,7 +1508,7 @@ class GridSearchCalibrator:
                             logger.warning(f"🚨 Adjusted workers to {optimal_workers} for massive grid (max allowed: {max_workers_for_grid} for {memory_gb:.1f}GB system)")
                     except Exception as e:
                         # Fallback if psutil fails
-                        optimal_workers = min(optimal_workers, 32)  # Conservative default
+                        optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
                         logger.warning(f"🚨 Using conservative worker limit: {optimal_workers} (psutil error: {e})")
             
             if self.max_workers > optimal_workers:
@@ -1886,7 +1886,7 @@ class GridSearchCalibrator:
             optimal_workers = min(memory_based_workers, cpu_based_workers, numa_workers)
             
             # Cap at reasonable maximum
-            optimal_workers = min(optimal_workers, 32)
+                                    optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
             
             logger.debug(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
             

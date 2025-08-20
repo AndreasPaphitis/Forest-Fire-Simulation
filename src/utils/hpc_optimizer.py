@@ -208,7 +208,7 @@ class HPCOptimizer:
             memory_based_workers = max(1, int(total_gb / 4))
             
             # NUMA-aware worker count
-            numa_based_workers = self.numa_nodes * 4  # 4 workers per NUMA node
+            numa_based_workers = self.numa_nodes * 6  # 6 workers per NUMA node (increased from 4)
             
             # CPU-based worker count
             cpu_count = psutil.cpu_count(logical=False)  # Physical cores only
@@ -217,8 +217,15 @@ class HPCOptimizer:
             # Take the minimum to prevent overloading
             optimal_workers = min(memory_based_workers, numa_based_workers, cpu_based_workers)
             
-            # Cap at reasonable maximum
-            optimal_workers = min(optimal_workers, 32)
+            # NUMA-aware cap: allow more workers for high NUMA count systems
+            if self.numa_nodes >= 8:
+                max_workers = 64  # High NUMA count systems can handle more workers
+            elif self.numa_nodes >= 4:
+                max_workers = 48  # Medium NUMA count systems
+            else:
+                max_workers = 32  # Low NUMA count systems
+            
+            optimal_workers = min(optimal_workers, max_workers)
             
             return optimal_workers
             
