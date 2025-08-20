@@ -2405,6 +2405,18 @@ class SparseLayerAccessor:
         self.height = height
         self.num_layers = num_layers
         self.default_value = default_value
+        
+        # CRITICAL DEBUG: Log the actual vs expected layer counts
+        actual_layers = len(sparse_layers) if hasattr(sparse_layers, '__len__') else 'unknown'
+        print(f"🔍 SparseLayerAccessor DEBUG:")
+        print(f"   Expected num_layers: {num_layers}")
+        print(f"   Actual sparse_layers length: {actual_layers}")
+        print(f"   sparse_layers type: {type(sparse_layers)}")
+        if hasattr(sparse_layers, '__len__') and actual_layers != num_layers:
+            print(f"   ⚠️  MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
+            print(f"   This will cause KeyError/IndexError when accessing layers >= {actual_layers}")
+        else:
+            print(f"   ✅ Layer count match: {num_layers} layers")
     
     def __getitem__(self, key):
         """Support array-like indexing."""
