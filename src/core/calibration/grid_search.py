@@ -1103,6 +1103,11 @@ class GridSearchCalibrator:
         """Create the parameter space grid."""
         parameter_space = {}
         
+        logger.info(f"🔍 DEBUG: Creating parameter space")
+        logger.info(f"🔍 DEBUG: Calibration parameter names: {self.config.get_calibration_parameter_names()}")
+        logger.info(f"🔍 DEBUG: Parameter bounds keys: {list(self.parameter_bounds.keys())}")
+        logger.info(f"🔍 DEBUG: Grid search points: {self.config.grid_search_points}")
+        
         for param_name in self.config.get_calibration_parameter_names():
             if param_name not in self.parameter_bounds:
                 logger.warning(f"No bounds defined for parameter {param_name}, skipping")
@@ -1114,9 +1119,11 @@ class GridSearchCalibrator:
             grid_points = bounds.generate_grid_points(self.config.grid_search_points)
             parameter_space[param_name] = grid_points
             
-            logger.debug(f"Parameter {param_name}: {len(grid_points)} points from "
+            logger.info(f"🔍 DEBUG: Parameter {param_name}: {len(grid_points)} points from "
                         f"{min(grid_points):.3f} to {max(grid_points):.3f}")
+            logger.info(f"🔍 DEBUG: Grid points for {param_name}: {grid_points}")
         
+        logger.info(f"🔍 DEBUG: Final parameter space: {parameter_space}")
         return parameter_space
     
     def _get_grid_size_from_config(self, calibration_config) -> Union[int, Tuple[int, int]]:
@@ -1167,6 +1174,11 @@ class GridSearchCalibrator:
         param_names = list(self.parameter_space.keys())
         param_value_lists = [self.parameter_space[name] for name in param_names]
         
+        logger.info(f"🔍 DEBUG: Generating parameter combinations")
+        logger.info(f"🔍 DEBUG: Parameter names: {param_names}")
+        logger.info(f"🔍 DEBUG: Parameter value lists: {param_value_lists}")
+        
+        combination_count = 0
         for combination in itertools.product(*param_value_lists):
             # CRITICAL FIX: Ensure we always yield a dictionary
             param_dict = dict(zip(param_names, combination))
@@ -1175,7 +1187,14 @@ class GridSearchCalibrator:
                 logger.error(f"Generated parameter combination is not a dictionary: {type(param_dict)} = {param_dict}")
                 # Fallback to empty dictionary
                 param_dict = {}
+            
+            combination_count += 1
+            if combination_count <= 3:  # Log first 3 combinations
+                logger.info(f"🔍 DEBUG: Combination {combination_count}: {param_dict}")
+            
             yield param_dict
+        
+        logger.info(f"🔍 DEBUG: Generated {combination_count} total combinations")
     
     def _evaluate_single_combination(self, parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:
