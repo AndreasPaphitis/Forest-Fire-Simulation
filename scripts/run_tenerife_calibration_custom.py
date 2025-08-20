@@ -298,10 +298,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             calib_config.base_config.max_steps = self.max_steps
             logger.info(f"🔧 Overrode base_config.max_steps from 300 to {self.max_steps}")
         
-        # CRITICAL FIX: Disable shared terrain to prevent worker initialization issues
+        # CRITICAL FIX: Enable shared terrain for memory efficiency (fixed timeout issues)
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
-            calib_config.base_config.shared_terrain_info = None
-            logger.info(f"🔧 Disabled shared terrain to prevent worker initialization issues")
+            # Shared terrain is now working properly with timeout fixes
+            # Don't disable it - it saves significant memory
+            logger.info(f"🔧 Shared terrain enabled for memory efficiency")
         
         # Override with custom settings
         calib_config.grid_search_points = self.custom_config['grid_search_points']

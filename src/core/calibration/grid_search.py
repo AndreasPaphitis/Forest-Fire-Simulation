@@ -521,6 +521,24 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         if actual_worker_id != worker_id:
             worker_logger.warning(f"🎯 WORKER {worker_id}: Worker ID mismatch! Expected {worker_id}, got {actual_worker_id}")
     
+    # CRITICAL FIX: Remove batch_idx from parameter_values if it exists
+    if '_batch_idx' in parameter_values:
+        batch_idx = parameter_values.pop('_batch_idx')
+        worker_logger.info(f"🎯 WORKER {worker_id}: Removed _batch_idx {batch_idx} from parameters")
+    
+    # CRITICAL FIX: Validate that we have actual parameters after removing metadata
+    if not parameter_values:
+        worker_logger.error(f"🎯 WORKER {worker_id}: No parameters left after removing metadata!")
+        return {
+            'parameter_values': {},
+            'objective_value': 0.0,
+            'objective_components': {},
+            'simulation_stats': {},
+            'evaluation_time': 0.0,
+            'is_valid': False,
+            'error_message': f"No parameters left after removing metadata"
+        }
+    
     if isinstance(parameter_values, (list, tuple)):
         worker_logger.debug(f"List/tuple parameter_values with length: {len(parameter_values)}")
         worker_logger.debug(f"List/tuple content: {list(parameter_values)}")
@@ -1763,8 +1781,29 @@ class GridSearchCalibrator:
                 for i, combo in enumerate(combinations_list[:5]):
                     logger.info(f"   Worker {i}: {combo}")
                 
-                # CRITICAL FIX: Validate combinations are different
+                # CRITICAL FIX: Validate combinations are different and unique
                 if len(combinations_list) > 1:
+                    # Check first few combinations for uniqueness
+                    unique_combinations = set()
+                    duplicate_found = False
+                    
+                    for i, combo in enumerate(combinations_list[:10]):  # Check first 10
+                        combo_tuple = tuple(sorted(combo.items()))  # Convert to tuple for hashing
+                        if combo_tuple in unique_combinations:
+                            logger.error(f"❌ CRITICAL ERROR: Duplicate combination found at index {i}!")
+                            logger.error(f"   Duplicate: {combo}")
+                            logger.error(f"   Parameter space: {self.parameter_space}")
+                            logger.error(f"   Total combinations: {self.total_combinations}")
+                            duplicate_found = True
+                            break
+                        unique_combinations.add(combo_tuple)
+                    
+                    if duplicate_found:
+                        raise ValueError("Duplicate parameter combinations found - grid search will fail")
+                    else:
+                        logger.info(f"✅ First 10 combinations are unique")
+                        
+                    # Also check first two are different (original check)
                     first_combo = combinations_list[0]
                     second_combo = combinations_list[1]
                     if first_combo == second_combo:
@@ -1799,6 +1838,9 @@ class GridSearchCalibrator:
                         # CRITICAL FIX: Add worker_id to combo to ensure uniqueness
                         combo_with_worker = combo.copy()
                         combo_with_worker['_worker_id'] = worker_id  # Add worker ID to ensure uniqueness
+                        
+                        # CRITICAL FIX: Add batch index to ensure uniqueness even within same batch
+                        combo_with_worker['_batch_idx'] = batch_idx
                         
                         logger.info(f"🔍 DEBUG: Submitting Worker {worker_id} with combo: {combo_with_worker}")
                         
