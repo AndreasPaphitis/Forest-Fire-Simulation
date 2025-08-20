@@ -37,7 +37,7 @@ class ModelConfig:
     """
     
     # === SIMULATION PARAMETERS ===
-    max_steps: int = 250  # More steps for better fire spread
+    max_steps: int = 100  # Reduced to 100 timesteps for faster calibration
     random_seed: int = 42
     debug: bool = False
     store_full_states: bool = True
