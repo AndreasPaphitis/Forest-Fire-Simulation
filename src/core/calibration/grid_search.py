@@ -488,10 +488,10 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     worker_logger.propagate = False
     
     # CRITICAL DEBUG: Log all input types to identify the source of the list
-    worker_logger.debug(f"parameter_values type: {type(parameter_values)}")
-    worker_logger.debug(f"parameter_values value: {parameter_values}")
-    worker_logger.debug(f"config_dict type: {type(config_dict)}")
-    worker_logger.debug(f"target_data type: {type(target_data)}")
+    worker_logger.info(f"🎯 WORKER {worker_id}: parameter_values type: {type(parameter_values)}")
+    worker_logger.info(f"🎯 WORKER {worker_id}: parameter_values value: {parameter_values}")
+    worker_logger.info(f"🎯 WORKER {worker_id}: config_dict type: {type(config_dict)}")
+    worker_logger.info(f"🎯 WORKER {worker_id}: target_data type: {type(target_data)}")
     
     if isinstance(parameter_values, (list, tuple)):
         worker_logger.debug(f"List/tuple parameter_values with length: {len(parameter_values)}")
@@ -1742,7 +1742,12 @@ class GridSearchCalibrator:
                 
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
-                    logger.debug(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
+                    logger.info(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
+                    
+                    # CRITICAL DEBUG: Log each combination being assigned to each worker
+                    for batch_idx, combo in enumerate(batch):
+                        worker_id = worker_counter + batch_idx
+                        logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
                     
                     batch_futures = {
                         executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_counter + batch_idx): combo
