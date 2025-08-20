@@ -1511,9 +1511,12 @@ class GridSearchCalibrator:
                         optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
                         logger.warning(f"🚨 Using conservative worker limit: {optimal_workers} (psutil error: {e})")
             
-            if self.max_workers > optimal_workers:
+            # CRITICAL FIX: Only apply HPC optimization if user didn't explicitly specify workers
+            if self.max_workers > optimal_workers and not self._user_specified_workers:
                 logger.warning(f"🧠 HPC OPTIMIZATION: Reducing workers from {self.max_workers} to {optimal_workers} for memory bandwidth")
                 self.max_workers = optimal_workers
+            elif self._user_specified_workers:
+                logger.info(f"🎛️  RESPECTING USER CHOICE: Keeping {self.max_workers} workers (user-specified, bypassing HPC optimization)")
         
         # Use ProcessPoolExecutor for large grids
         # Access grid through base_config
@@ -1687,17 +1690,24 @@ class GridSearchCalibrator:
                 logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
                 logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
                 
-                # CRITICAL FIX: Validate combinations are different
-                if len(combinations_list) > 1:
-                    first_combo = combinations_list[0]
-                    second_combo = combinations_list[1]
-                    if first_combo == second_combo:
-                        logger.error("❌ CRITICAL ERROR: First two combinations are identical!")
-                        logger.error(f"   First: {first_combo}")
-                        logger.error(f"   Second: {second_combo}")
-                        raise ValueError("Parameter combinations are identical - grid search will fail")
-                    else:
-                        logger.info(f"✅ First two combinations are different: {first_combo} vs {second_combo}")
+                        # CRITICAL FIX: Validate combinations are different
+        if len(combinations_list) > 1:
+            first_combo = combinations_list[0]
+            second_combo = combinations_list[1]
+            if first_combo == second_combo:
+                logger.error("❌ CRITICAL ERROR: First two combinations are identical!")
+                logger.error(f"   First: {first_combo}")
+                logger.error(f"   Second: {second_combo}")
+                logger.error(f"   Parameter space: {self.parameter_space}")
+                logger.error(f"   Total combinations: {self.total_combinations}")
+                raise ValueError("Parameter combinations are identical - grid search will fail")
+            else:
+                logger.info(f"✅ First two combinations are different: {first_combo} vs {second_combo}")
+        else:
+            logger.error("❌ CRITICAL ERROR: Only one combination generated!")
+            logger.error(f"   Combinations: {combinations_list}")
+            logger.error(f"   Parameter space: {self.parameter_space}")
+            raise ValueError("Only one parameter combination generated - grid search will fail")
                 
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
