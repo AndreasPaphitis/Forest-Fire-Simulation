@@ -1563,6 +1563,11 @@ class GridSearchCalibrator:
                 logger.error(f"   Parameter space: {self.parameter_space}")
                 raise ValueError(f"Combination {i+1} is identical to first - parameter space is wrong")
         
+        # CRITICAL DEBUG: Log ALL combinations to see the pattern
+        logger.info(f"🔍 DEBUG: ALL {len(combinations_list)} combinations:")
+        for i, combo in enumerate(combinations_list):
+            logger.info(f"   Combination {i}: {combo}")
+        
         logger.info(f"✅ Parameter validation passed: {len(combinations_list)} unique combinations")
         logger.info(f"✅ First 3 combinations are different: {[combinations_list[i] for i in range(3)]}")
         
