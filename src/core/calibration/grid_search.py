@@ -1189,6 +1189,19 @@ class GridSearchCalibrator:
             logger.info(f"🔍 DEBUG: Grid points for {param_name}: {grid_points}")
         
         logger.info(f"🔍 DEBUG: Final parameter space: {parameter_space}")
+        
+        # CRITICAL VALIDATION: Ensure parameter space is not empty and has multiple values per parameter
+        if not parameter_space:
+            logger.error("❌ CRITICAL ERROR: Parameter space is empty!")
+            raise ValueError("Parameter space is empty - no parameters to calibrate")
+        
+        for param_name, values in parameter_space.items():
+            if len(values) < 2:
+                logger.error(f"❌ CRITICAL ERROR: Parameter {param_name} has only {len(values)} value(s)!")
+                logger.error(f"   Values: {values}")
+                raise ValueError(f"Parameter {param_name} must have at least 2 values for grid search")
+        
+        logger.info(f"✅ Parameter space validation passed: {len(parameter_space)} parameters with multiple values each")
         return parameter_space
     
     def _get_grid_size_from_config(self, calibration_config) -> Union[int, Tuple[int, int]]:
@@ -1247,7 +1260,21 @@ class GridSearchCalibrator:
         all_combinations = list(itertools.product(*param_value_lists))
         logger.info(f"🔍 DEBUG: Created {len(all_combinations)} raw combinations")
         
+        # CRITICAL VALIDATION: Ensure we have the expected number of combinations
+        expected_combinations = 1
+        for values in param_value_lists:
+            expected_combinations *= len(values)
+        
+        if len(all_combinations) != expected_combinations:
+            logger.error(f"❌ CRITICAL ERROR: Expected {expected_combinations} combinations but got {len(all_combinations)}!")
+            logger.error(f"   Parameter value lists: {param_value_lists}")
+            raise ValueError(f"Combination count mismatch: expected {expected_combinations}, got {len(all_combinations)}")
+        
+        logger.info(f"✅ Combination count validation passed: {len(all_combinations)} combinations")
+        
         combination_count = 0
+        first_combinations = []  # Store first few combinations for validation
+        
         for combination in all_combinations:
             # CRITICAL FIX: Ensure we always yield a dictionary
             param_dict = dict(zip(param_names, combination))
@@ -1260,8 +1287,20 @@ class GridSearchCalibrator:
             combination_count += 1
             if combination_count <= 3:  # Log first 3 combinations
                 logger.info(f"🔍 DEBUG: Combination {combination_count}: {param_dict}")
+                first_combinations.append(param_dict)
             
             yield param_dict
+        
+        # CRITICAL VALIDATION: Ensure first few combinations are different
+        if len(first_combinations) >= 2:
+            if first_combinations[0] == first_combinations[1]:
+                logger.error(f"❌ CRITICAL ERROR: First two combinations are identical!")
+                logger.error(f"   First: {first_combinations[0]}")
+                logger.error(f"   Second: {first_combinations[1]}")
+                logger.error(f"   Parameter space: {self.parameter_space}")
+                raise ValueError("First two parameter combinations are identical - parameter space is wrong")
+            else:
+                logger.info(f"✅ First two combinations are different: {first_combinations[0]} vs {first_combinations[1]}")
         
         logger.info(f"🔍 DEBUG: Generated {combination_count} total combinations")
     
@@ -1618,13 +1657,9 @@ class GridSearchCalibrator:
                 logger.error(f"   Parameter space: {self.parameter_space}")
                 raise ValueError(f"Combination {i+1} is identical to first - parameter space is wrong")
         
-        # CRITICAL DEBUG: Log ALL combinations to see the pattern
-        logger.info(f"🔍 DEBUG: ALL {len(combinations_list)} combinations:")
-        for i, combo in enumerate(combinations_list):
-            logger.info(f"   Combination {i}: {combo}")
-        
+        # CRITICAL DEBUG: Log first few combinations to verify uniqueness
         logger.info(f"✅ Parameter validation passed: {len(combinations_list)} unique combinations")
-        logger.info(f"✅ First 3 combinations are different: {[combinations_list[i] for i in range(3)]}")
+        logger.info(f"✅ First 3 combinations are different: {[combinations_list[i] for i in range(min(3, len(combinations_list)))]}")
         
         # CRITICAL DEBUG: Validate combinations_list
         logger.debug(f"combinations_list type: {type(combinations_list)}")
@@ -1776,11 +1811,6 @@ class GridSearchCalibrator:
                 logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
                 logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
                 
-                # CRITICAL FIX: Ensure combinations are properly distributed
-                logger.info(f"🔍 DEBUG: First 5 combinations for distribution check:")
-                for i, combo in enumerate(combinations_list[:5]):
-                    logger.info(f"   Worker {i}: {combo}")
-                
                 # CRITICAL FIX: Validate combinations are different and unique
                 if len(combinations_list) > 1:
                     # Check first few combinations for uniqueness
@@ -1825,11 +1855,6 @@ class GridSearchCalibrator:
                     batch = combinations_list[i:i + batch_size]
                     logger.info(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
                     
-                    # CRITICAL DEBUG: Log each combination being assigned to each worker
-                    for batch_idx, combo in enumerate(batch):
-                        worker_id = worker_counter + batch_idx
-                        logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
-                    
                     # CRITICAL FIX: Ensure each worker gets a unique combination by adding worker_id to the combo
                     batch_futures = {}
                     for batch_idx, combo in enumerate(batch):
@@ -1842,7 +1867,9 @@ class GridSearchCalibrator:
                         # CRITICAL FIX: Add batch index to ensure uniqueness even within same batch
                         combo_with_worker['_batch_idx'] = batch_idx
                         
-                        logger.info(f"🔍 DEBUG: Submitting Worker {worker_id} with combo: {combo_with_worker}")
+                        # Only log first few assignments to avoid spam
+                        if worker_id < 5:
+                            logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
                         
                         future = executor.submit(evaluate_worker_function, combo_with_worker, target_data, config_dict, objective_function_name, worker_id)
                         batch_futures[future] = combo_with_worker
