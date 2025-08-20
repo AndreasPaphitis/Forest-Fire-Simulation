@@ -322,6 +322,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             calib_config.base_config.max_steps = self.max_steps
             logger.info(f"🔧 Overrode base_config.max_steps from 300 to {self.max_steps}")
         
+        # CRITICAL FIX: Disable shared terrain to prevent worker initialization issues
+        if hasattr(calib_config, 'base_config') and calib_config.base_config:
+            calib_config.base_config.shared_terrain_info = None
+            logger.info(f"🔧 Disabled shared terrain to prevent worker initialization issues")
+        
         # Override with custom settings
         calib_config.grid_search_points = self.custom_config['grid_search_points']
         calib_config.max_steps = self.max_steps
@@ -334,6 +339,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         logger.info(f"🔍 DEBUG: Grid search points: {calib_config.grid_search_points}")
         logger.info(f"🔍 DEBUG: Expected combinations: {calib_config.grid_search_points ** len(calib_config.calibration_parameters)}")
         
+        logger.info(f"🔍 DEBUG: About to return calibration config")
         return calib_config
 
 def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):
@@ -528,11 +534,13 @@ Examples:
             print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         
         # Step 7: Create calibration configuration
+        logger.info(f"🔍 DEBUG: About to create calibration config")
         calib_config = calibrator.create_calibration_config(
             training_data=training_data,
             top_5_parameters=args.parameters,
             grid_size=grid_size
         )
+        logger.info(f"🔍 DEBUG: Calibration config created successfully")
         
         # Step 8: Final confirmation and execution
         print(f"\n🚀 READY TO EXECUTE CUSTOM CALIBRATION")
@@ -583,11 +591,13 @@ Examples:
         )
         
         # Run calibration
+        logger.info(f"🔍 DEBUG: About to run calibration")
         results = calibrator.run_calibration(
             calibration_config=calib_config,
             test_data=validation_data,
             progress_callback=progress_callback
         )
+        logger.info(f"🔍 DEBUG: Calibration run completed")
         
         total_time = time.time() - start_time
         
