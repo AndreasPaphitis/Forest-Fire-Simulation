@@ -493,6 +493,13 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     worker_logger.info(f"🎯 WORKER {worker_id}: config_dict type: {type(config_dict)}")
     worker_logger.info(f"🎯 WORKER {worker_id}: target_data type: {type(target_data)}")
     
+    # CRITICAL FIX: Remove worker_id from parameter_values if it exists
+    if '_worker_id' in parameter_values:
+        actual_worker_id = parameter_values.pop('_worker_id')
+        worker_logger.info(f"🎯 WORKER {worker_id}: Removed _worker_id {actual_worker_id} from parameters")
+        if actual_worker_id != worker_id:
+            worker_logger.warning(f"🎯 WORKER {worker_id}: Worker ID mismatch! Expected {worker_id}, got {actual_worker_id}")
+    
     if isinstance(parameter_values, (list, tuple)):
         worker_logger.debug(f"List/tuple parameter_values with length: {len(parameter_values)}")
         worker_logger.debug(f"List/tuple content: {list(parameter_values)}")
@@ -1757,15 +1764,24 @@ class GridSearchCalibrator:
                     batch = combinations_list[i:i + batch_size]
                     logger.info(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
                     
-                    # CRITICAL DEBUG: Log each combination being assigned to each worker
-                    for batch_idx, combo in enumerate(batch):
-                        worker_id = worker_counter + batch_idx
-                        logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
-                    
-                    batch_futures = {
-                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_counter + batch_idx): combo
-                        for batch_idx, combo in enumerate(batch)
-                    }
+                            # CRITICAL DEBUG: Log each combination being assigned to each worker
+        for batch_idx, combo in enumerate(batch):
+            worker_id = worker_counter + batch_idx
+            logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
+        
+        # CRITICAL FIX: Ensure each worker gets a unique combination by adding worker_id to the combo
+        batch_futures = {}
+        for batch_idx, combo in enumerate(batch):
+            worker_id = worker_counter + batch_idx
+            
+            # CRITICAL FIX: Add worker_id to combo to ensure uniqueness
+            combo_with_worker = combo.copy()
+            combo_with_worker['_worker_id'] = worker_id  # Add worker ID to ensure uniqueness
+            
+            logger.info(f"🔍 DEBUG: Submitting Worker {worker_id} with combo: {combo_with_worker}")
+            
+            future = executor.submit(evaluate_worker_function, combo_with_worker, target_data, config_dict, objective_function_name, worker_id)
+            batch_futures[future] = combo_with_worker
                     worker_counter += len(batch)
                     all_futures.extend(batch_futures.keys())
                     
