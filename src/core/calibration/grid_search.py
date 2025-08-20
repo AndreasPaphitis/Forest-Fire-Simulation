@@ -520,21 +520,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     worker_logger.info(f"🎯 WORKER {worker_id}: config_dict type: {type(config_dict)}")
     worker_logger.info(f"🎯 WORKER {worker_id}: target_data type: {type(target_data)}")
     
-    # CRITICAL FIX: Remove worker_id from parameter_values if it exists
-    if '_worker_id' in parameter_values:
-        actual_worker_id = parameter_values.pop('_worker_id')
-        worker_logger.info(f"🎯 WORKER {worker_id}: Removed _worker_id {actual_worker_id} from parameters")
-        if actual_worker_id != worker_id:
-            worker_logger.warning(f"🎯 WORKER {worker_id}: Worker ID mismatch! Expected {worker_id}, got {actual_worker_id}")
-    
-    # CRITICAL FIX: Remove batch_idx from parameter_values if it exists
-    if '_batch_idx' in parameter_values:
-        batch_idx = parameter_values.pop('_batch_idx')
-        worker_logger.info(f"🎯 WORKER {worker_id}: Removed _batch_idx {batch_idx} from parameters")
-    
-    # CRITICAL FIX: Validate that we have actual parameters after removing metadata
+    # CRITICAL FIX: Validate that we have actual parameters
     if not parameter_values:
-        worker_logger.error(f"🎯 WORKER {worker_id}: No parameters left after removing metadata!")
+        worker_logger.error(f"🎯 WORKER {worker_id}: No parameters provided!")
         return {
             'parameter_values': {},
             'objective_value': 0.0,
@@ -542,42 +530,8 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
             'simulation_stats': {},
             'evaluation_time': 0.0,
             'is_valid': False,
-            'error_message': f"No parameters left after removing metadata"
+            'error_message': f"No parameters provided"
         }
-    
-    if isinstance(parameter_values, (list, tuple)):
-        worker_logger.debug(f"List/tuple parameter_values with length: {len(parameter_values)}")
-        worker_logger.debug(f"List/tuple content: {list(parameter_values)}")
-    
-    # CRITICAL FIX: Ensure parameter_values is a dictionary
-    if not isinstance(parameter_values, dict):
-        worker_logger.debug(f"parameter_values is not a dictionary: {type(parameter_values)} = {parameter_values}")
-        
-        # Try to convert list to dictionary if possible
-        if isinstance(parameter_values, (list, tuple)):
-            # This is a fallback - we need to know the parameter names
-            # For now, return an error result
-            worker_logger.debug("Cannot convert list to dictionary without parameter names")
-            return {
-                'parameter_values': {},
-                'objective_value': 0.0,
-                'objective_components': {},
-                'simulation_stats': {},
-                'evaluation_time': 0.0,
-                'is_valid': False,
-                'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
-            }
-        else:
-            # Return error result
-            return {
-                'parameter_values': {},
-                'objective_value': 0.0,
-                'objective_components': {},
-                'simulation_stats': {},
-                'evaluation_time': 0.0,
-                'is_valid': False,
-                'error_message': f"parameter_values is not a dictionary: {type(parameter_values)}"
-            }
     
     try:
         # Also disable propagation for all child loggers
@@ -616,12 +570,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 timeout_minutes = config_dict.pop('simulation_timeout_minutes', None)
                 
                 # Ensure unique random seed for each worker to prevent identical results
-                # CRITICAL FIX: Use worker_id to create unique seeds, not parameter hash
+                # CRITICAL FIX: Use worker_id to create unique seeds for each worker
                 base_seed = config_dict.get('random_seed', 42)
-                # CRITICAL FIX: Use worker_id as the primary differentiator since parameters are identical
                 # Use a large multiplier to ensure seeds are well-separated and unique
                 worker_seed = base_seed + (worker_id * 100000)
-                config_dict['random_seed'] = worker_seed
+                
+                # Create a copy of config_dict to avoid modifying the shared config
+                worker_config_dict = config_dict.copy()
+                worker_config_dict['random_seed'] = worker_seed
                 
                 # DEBUG: Log the seed generation to verify uniqueness
                 worker_logger.info(f"🔧 Worker {worker_id} seed generation:")
@@ -631,11 +587,10 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_logger.info(f"   Final worker seed: {worker_seed}")
                 worker_logger.info(f"   Parameters: {parameter_values}")
                 
-                # CRITICAL: DO NOT vary parameters between workers - this defeats calibration purpose!
-                # Each worker should test the EXACT SAME parameters, just with different random seeds
-                # This ensures we're calibrating the same parameter set across all workers
+                # CRITICAL: Each worker tests DIFFERENT parameter combinations for grid search
+                # This ensures we explore the full parameter space systematically
                 
-                model_config = ModelConfig(**config_dict)
+                model_config = ModelConfig(**worker_config_dict)
                 worker_logger.debug(f"✅ ModelConfig created successfully with worker seed: {worker_seed}")
                 
                 # Store timeout for later use
@@ -1868,19 +1823,16 @@ class GridSearchCalibrator:
                     for batch_idx, combo in enumerate(batch):
                         worker_id = worker_counter + batch_idx
                         
-                        # CRITICAL FIX: Add worker_id to combo to ensure uniqueness
-                        combo_with_worker = combo.copy()
-                        combo_with_worker['_worker_id'] = worker_id  # Add worker ID to ensure uniqueness
-                        
-                        # CRITICAL FIX: Add batch index to ensure uniqueness even within same batch
-                        combo_with_worker['_batch_idx'] = batch_idx
+                        # CRITICAL FIX: DO NOT modify the parameter combination - pass it as-is
+                        # Each worker should test DIFFERENT parameter combinations for grid search
+                        # The worker_id is passed separately to the worker function
                         
                         # Only log first few assignments to avoid spam
                         if worker_id < 5:
                             logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
                         
-                        future = executor.submit(evaluate_worker_function, combo_with_worker, target_data, config_dict, objective_function_name, worker_id)
-                        batch_futures[future] = combo_with_worker
+                        future = executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_id)
+                        batch_futures[future] = combo
                     worker_counter += len(batch)
                     all_futures.extend(batch_futures.keys())
                     
