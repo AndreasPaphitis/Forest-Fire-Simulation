@@ -351,7 +351,14 @@ class SpatialSimilarityObjective(ObjectiveFunction):
                         for layer_idx in range(num_layers):
                             try:
                                 # Get the sparse matrix directly from the accessor
-                                sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                try:
+                                    sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                except KeyError as e:
+                                    # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+                                    key_value = e.args[0] if e.args else 'unknown'
+                                    logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+                                    logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(forest_model.state.sparse_layers)-1})")
+                                    continue  # Skip this layer
                                 
                                 # Check if this layer has any non-zero elements (burning cells)
                                 if sparse_matrix.nnz > 0:

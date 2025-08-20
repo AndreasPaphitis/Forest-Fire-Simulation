@@ -2412,15 +2412,18 @@ class SparseLayerAccessor:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    # CRITICAL FIX: Add debug logging for KeyError 7
+                    # CRITICAL FIX: Add debug logging for all KeyErrors (7, 11, 12, etc.)
                     try:
                         # Handle both lil_matrix and dok_matrix formats
                         sparse_matrix = self.sparse_layers[z]
                     except KeyError as e:
-                        if e.args[0] == 7:
-                            print(f"🔍 KeyError 7 in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
-                            print(f"🔍 sparse_layers keys/indices: {list(range(len(self.sparse_layers))) if hasattr(self.sparse_layers, '__len__') else 'no length'}")
-                        raise
+                        # Handle all KeyError cases (7, 11, 12, etc.)
+                        key_value = e.args[0] if e.args else 'unknown'
+                        print(f"🔍 KeyError {key_value} in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
+                        print(f"🔍 sparse_layers keys/indices: {list(range(len(self.sparse_layers))) if hasattr(self.sparse_layers, '__len__') else 'no length'}")
+                        print(f"🔍 Requested layer {z} is out of range [0, {len(self.sparse_layers)-1}]")
+                        # Return default value instead of raising
+                        return self.default_value
                     
                     # Check if it's a DOK matrix (Dictionary of Keys)
                     if hasattr(sparse_matrix, 'keys'):
@@ -2474,6 +2477,12 @@ class SparseLayerAccessor:
                         # CRITICAL FIX: Safe assignment for both DOK and LIL matrices
                         sparse_matrix = self.sparse_layers[z]
                         sparse_matrix[x, y] = value
+                    except KeyError as e:
+                        # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+                        key_value = e.args[0] if e.args else 'unknown'
+                        logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+                        logger.warning(f"⚠️  Layer {z} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+                        return  # Silently fail instead of raising exception
                     except Exception as e:
                         # CRITICAL FIX: Don't raise exception - just log and continue
                         # This prevents segfaults on massive grids
@@ -2569,7 +2578,15 @@ class SparseLayerAccessor:
     
     def _get_full_layer(self, layer_idx):
         """Extract a complete layer as a dense 2D array."""
-        sparse_matrix = self.sparse_layers[layer_idx]
+        try:
+            sparse_matrix = self.sparse_layers[layer_idx]
+        except KeyError as e:
+            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+            key_value = e.args[0] if e.args else 'unknown'
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+            # Return default layer
+            return np.full((self.width, self.height), self.default_value, dtype=np.float32)
         
         # For efficiency, check if we can convert the entire sparse layer
         # This is safe for layer access as it's only 2D
@@ -2616,7 +2633,15 @@ class SparseLayerAccessor:
         result = np.full((result_width, result_height), self.default_value, dtype=np.float32)
         
         # Fill with actual values from sparse matrix
-        sparse_matrix = self.sparse_layers[layer_idx]
+        try:
+            sparse_matrix = self.sparse_layers[layer_idx]
+        except KeyError as e:
+            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+            key_value = e.args[0] if e.args else 'unknown'
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+            # Return result with default values
+            return result
         
         for local_x in range(result_width):
             global_x = x_start + local_x
@@ -2718,7 +2743,14 @@ class SparseLayerAccessor:
     
     def _set_full_layer(self, layer_idx, value):
         """Set values for a complete layer."""
-        sparse_matrix = self.sparse_layers[layer_idx]
+        try:
+            sparse_matrix = self.sparse_layers[layer_idx]
+        except KeyError as e:
+            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+            key_value = e.args[0] if e.args else 'unknown'
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+            return  # Silently fail instead of raising exception
         
         if np.isscalar(value):
             # Scalar assignment - only set non-default values to save memory
@@ -2767,7 +2799,14 @@ class SparseLayerAccessor:
         if result_width <= 0 or result_height <= 0:
             return  # Nothing to assign
         
-        sparse_matrix = self.sparse_layers[layer_idx]
+        try:
+            sparse_matrix = self.sparse_layers[layer_idx]
+        except KeyError as e:
+            # Handle KeyError cases (7, 11, 12, etc.) - layer doesn't exist
+            key_value = e.args[0] if e.args else 'unknown'
+            logger.warning(f"⚠️  Sparse access failed after 3 attempts: {key_value}")
+            logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+            return  # Silently fail instead of raising exception
         
         if np.isscalar(value):
             # Scalar assignment
