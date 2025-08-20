@@ -566,8 +566,18 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 # Ensure unique random seed for each worker to prevent identical results
                 # CRITICAL FIX: Use worker_id to create unique seeds, not parameter hash
                 base_seed = config_dict.get('random_seed', 42)
-                worker_seed = base_seed + (worker_id * 1000) + (hash(str(parameter_values)) % 1000)
+                # CRITICAL FIX: Use worker_id as the primary differentiator since parameters are identical
+                # Use a large multiplier to ensure seeds are well-separated and unique
+                worker_seed = base_seed + (worker_id * 100000)
                 config_dict['random_seed'] = worker_seed
+                
+                # DEBUG: Log the seed generation to verify uniqueness
+                worker_logger.info(f"🔧 Worker {worker_id} seed generation:")
+                worker_logger.info(f"   Base seed: {base_seed}")
+                worker_logger.info(f"   Worker ID: {worker_id}")
+                worker_logger.info(f"   Worker multiplier: {worker_id * 100000}")
+                worker_logger.info(f"   Final worker seed: {worker_seed}")
+                worker_logger.info(f"   Parameters: {parameter_values}")
                 
                 # CRITICAL: DO NOT vary parameters between workers - this defeats calibration purpose!
                 # Each worker should test the EXACT SAME parameters, just with different random seeds
@@ -1638,12 +1648,20 @@ class GridSearchCalibrator:
                 batch_size = min(10, self.max_workers)
                 all_futures = []
                 
+                # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
+                worker_counter = 0
+                logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
+                logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
+                
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
+                    logger.debug(f"📦 Batch {i//batch_size + 1}: {len(batch)} combinations (workers {worker_counter} to {worker_counter + len(batch) - 1})")
+                    
                     batch_futures = {
-                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_id): combo
-                        for worker_id, combo in enumerate(batch, start=i)
+                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_counter + batch_idx): combo
+                        for batch_idx, combo in enumerate(batch)
                     }
+                    worker_counter += len(batch)
                     all_futures.extend(batch_futures.keys())
                     
                     if i + batch_size < len(combinations_list):
