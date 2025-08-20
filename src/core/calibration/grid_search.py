@@ -1711,15 +1711,15 @@ class GridSearchCalibrator:
                 batch_size = min(10, self.max_workers)
                 all_futures = []
                 
-                        # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
-        worker_counter = 0
-        logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
-        logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
-        
-        # CRITICAL FIX: Ensure combinations are properly distributed
-        logger.info(f"🔍 DEBUG: First 5 combinations for distribution check:")
-        for i, combo in enumerate(combinations_list[:5]):
-            logger.info(f"   Worker {i}: {combo}")
+                # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
+                worker_counter = 0
+                logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
+                logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
+                
+                # CRITICAL FIX: Ensure combinations are properly distributed
+                logger.info(f"🔍 DEBUG: First 5 combinations for distribution check:")
+                for i, combo in enumerate(combinations_list[:5]):
+                    logger.info(f"   Worker {i}: {combo}")
                 
                 # CRITICAL FIX: Validate combinations are different
                 if len(combinations_list) > 1:
