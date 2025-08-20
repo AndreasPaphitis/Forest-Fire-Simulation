@@ -1085,8 +1085,23 @@ class GridSearchCalibrator:
         # Create parameter space
         self.parameter_space = self._create_parameter_space()
         
+        # CRITICAL FIX: Validate parameter space is not empty
+        if not self.parameter_space:
+            logger.error("❌ CRITICAL ERROR: Parameter space is empty!")
+            logger.error(f"   Calibration parameters: {self.config.get_calibration_parameter_names()}")
+            logger.error(f"   Parameter bounds keys: {list(self.parameter_bounds.keys())}")
+            raise ValueError("Parameter space is empty - cannot proceed with calibration")
+        
         # Calculate total combinations
         self.total_combinations = self._calculate_total_combinations()
+        
+        # CRITICAL FIX: Validate total combinations is correct
+        if self.total_combinations == 0:
+            logger.error("❌ CRITICAL ERROR: Total combinations is 0!")
+            logger.error(f"   Parameter space: {self.parameter_space}")
+            raise ValueError("Total combinations is 0 - cannot proceed with calibration")
+        
+        logger.info(f"✅ Parameter space created successfully: {self.total_combinations} combinations")
         
         # Start HPC monitoring
         start_hpc_monitoring()
@@ -1672,10 +1687,17 @@ class GridSearchCalibrator:
                 logger.info(f"🎯 Starting grid search with {len(combinations_list)} parameter combinations")
                 logger.info(f"📊 Parameter space: {list(self.parameter_space.keys())}")
                 
-                # DEBUG: Log first few combinations to verify they're different
-                logger.info(f"🔍 DEBUG: First 3 parameter combinations:")
-                for idx, combo in enumerate(combinations_list[:3]):
-                    logger.info(f"   Combination {idx}: {combo}")
+                # CRITICAL FIX: Validate combinations are different
+                if len(combinations_list) > 1:
+                    first_combo = combinations_list[0]
+                    second_combo = combinations_list[1]
+                    if first_combo == second_combo:
+                        logger.error("❌ CRITICAL ERROR: First two combinations are identical!")
+                        logger.error(f"   First: {first_combo}")
+                        logger.error(f"   Second: {second_combo}")
+                        raise ValueError("Parameter combinations are identical - grid search will fail")
+                    else:
+                        logger.info(f"✅ First two combinations are different: {first_combo} vs {second_combo}")
                 
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
