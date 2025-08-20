@@ -37,7 +37,7 @@ class ModelConfig:
     """
     
     # === SIMULATION PARAMETERS ===
-    max_steps: int = 20
+    max_steps: int = 250  # More steps for better fire spread
     random_seed: int = 42
     debug: bool = False
     store_full_states: bool = True
@@ -50,10 +50,10 @@ class ModelConfig:
     model_resolution: float = 5.0
     
     # === FIRE SPREAD PARAMETERS ===
-    spread_probability: float = 0.75  # Optimized for balanced spread
-    fuel_consumption_rate: float = 0.5  # Optimized for proper burnout
-    ignition_threshold: float = 0.08  # Optimized for easier ignition
-    min_fuel_value: float = 0.05  # Optimized for easier burnout
+    spread_probability: float = 0.6  # Balanced spread for better sensitivity
+    fuel_consumption_rate: float = 0.3  # Moderate consumption for varied results
+    ignition_threshold: float = 0.1  # Reasonable threshold for sensitivity
+    min_fuel_value: float = 0.05  # Lower for easier burnout
     max_fuel_value: float = 1.0  # Changed to 1.0 for PAD data (0-1 range)
     initial_fuel_load: float = 0.5  # Changed to 0.5 for PAD data (0-1 range)
     fuel_moisture_baseline: float = 0.3
@@ -76,7 +76,7 @@ class ModelConfig:
     min_depression_area: int = 4
 
     # === EMBER PARAMETERS ===
-    ember_probability: float = 0.4  # Optimized for better long-range spread
+    ember_probability: float = 0.2  # Moderate ember generation for sensitivity
     ember_distance: int = 5
     ember_ignition: float = 0.3
     ember_height_factor: float = 0.2

@@ -562,8 +562,16 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 # Extract timeout before creating ModelConfig (ModelConfig doesn't accept this parameter)
                 timeout_minutes = config_dict.pop('simulation_timeout_minutes', None)
                 
+                # Ensure unique random seed for each worker to prevent identical results
+                worker_seed = config_dict.get('random_seed', 42) + hash(str(parameter_values)) % 10000
+                config_dict['random_seed'] = worker_seed
+                
+                # CRITICAL: DO NOT vary parameters between workers - this defeats calibration purpose!
+                # Each worker should test the EXACT SAME parameters, just with different random seeds
+                # This ensures we're calibrating the same parameter set across all workers
+                
                 model_config = ModelConfig(**config_dict)
-                worker_logger.debug("✅ ModelConfig created successfully")
+                worker_logger.debug(f"✅ ModelConfig created successfully with worker seed: {worker_seed}")
                 
                 # Store timeout for later use
                 if timeout_minutes is not None:
