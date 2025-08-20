@@ -1059,9 +1059,9 @@ class TenerifeFirePerimeterCalibrator:
             'lidar_data_dir': lidar_dir
         }
         
-        logger.info(f"📂 Data availability:")
-        logger.info(f"   Preprocessed terrain: {'✅' if config['use_preprocessed_terrain'] else '❌'}")
-        logger.info(f"   LiDAR data: {'✅' if config['use_lidar'] else '❌'}")
+        logger.debug(f"📂 Data availability:")
+        logger.debug(f"   Preprocessed terrain: {'✅' if config['use_preprocessed_terrain'] else '❌'}")
+        logger.debug(f"   LiDAR data: {'✅' if config['use_lidar'] else '❌'}")
         
         if not config['use_preprocessed_terrain'] and not config['use_lidar']:
             logger.warning("⚠️  No terrain or LiDAR data found - will use synthetic data")
@@ -1239,13 +1239,13 @@ class TenerifeFirePerimeterCalibrator:
             target_data = self._prepare_target_data(calibration_config.calibration_targets, grid_size=grid_size)
             
             # Debug: Check what target_data contains
-            logger.info(f"🔍 Target data keys: {list(target_data.keys()) if target_data else 'None'}")
+            logger.debug(f"🔍 Target data keys: {list(target_data.keys()) if target_data else 'None'}")
             if target_data and 'fire_perimeter' in target_data:
                 fire_perim = target_data['fire_perimeter']
-                logger.info(f"🔍 Fire perimeter shape: {fire_perim.shape if hasattr(fire_perim, 'shape') else 'no shape'}")
-                logger.info(f"🔍 Fire perimeter sum: {np.sum(fire_perim) if hasattr(fire_perim, 'sum') else 'no sum'}")
+                logger.debug(f"🔍 Fire perimeter shape: {fire_perim.shape if hasattr(fire_perim, 'shape') else 'no shape'}")
+                logger.debug(f"🔍 Fire perimeter sum: {np.sum(fire_perim) if hasattr(fire_perim, 'sum') else 'no sum'}")
             else:
-                logger.warning(f"⚠️  No fire_perimeter in target_data: {target_data}")
+                logger.debug(f"⚠️  No fire_perimeter in target_data: {target_data}")
             
             results = calibrator.run_calibration(
                 target_data=target_data,
@@ -1321,7 +1321,7 @@ class TenerifeFirePerimeterCalibrator:
         Returns:
             Dictionary containing rasterized fire perimeter data
         """
-        logger.info(f"🔍 _prepare_target_data called with {len(calibration_targets)} targets")
+        logger.debug(f"🔍 _prepare_target_data called with {len(calibration_targets)} targets")
         
         if not SPATIAL_LIBS_AVAILABLE:
             logger.warning("Spatial libraries not available - using synthetic target data")
@@ -1461,12 +1461,12 @@ class TenerifeFirePerimeterCalibrator:
             fire_cells = np.sum(fire_perimeter_grid > 0)
             fire_area_grid_ha = fire_cells * (cell_size * cell_size) / 10000
             
-            logger.info(f"✅ Successfully rasterized fire perimeter:")
-            logger.info(f"   Grid shape: {fire_perimeter_grid.shape}")
-            logger.info(f"   Fire cells: {fire_cells:,}")
-            logger.info(f"   Fire area (grid): {fire_area_grid_ha:.1f} ha")
-            logger.info(f"   Fire area (original): {fire_area_ha:.1f} ha")
-            logger.info(f"   Area difference: {abs(fire_area_grid_ha - fire_area_ha):.1f} ha")
+            logger.debug(f"✅ Successfully rasterized fire perimeter:")
+            logger.debug(f"   Grid shape: {fire_perimeter_grid.shape}")
+            logger.debug(f"   Fire cells: {fire_cells:,}")
+            logger.debug(f"   Fire area (grid): {fire_area_grid_ha:.1f} ha")
+            logger.debug(f"   Fire area (original): {fire_area_ha:.1f} ha")
+            logger.debug(f"   Area difference: {abs(fire_area_grid_ha - fire_area_ha):.1f} ha")
             
             # Prepare target data for multiple calibration targets if needed
             target_data = {
@@ -1515,7 +1515,7 @@ class TenerifeFirePerimeterCalibrator:
                 
                 target_data['additional_targets'] = additional_targets
             
-            logger.info(f"🎯 Target data preparation complete")
+            logger.debug(f"🎯 Target data preparation complete")
             return target_data
             
         except Exception as e:

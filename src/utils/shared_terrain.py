@@ -131,7 +131,7 @@ class SharedTerrainManager:
                         # CRITICAL FIX: Use actual Day 4 fire bounds when available
                         if fire_bounds is not None:
                             # Use actual fire bounds to calculate the correct terrain subset
-                            logger.info(f"🎯 Using actual Day 4 fire bounds: {fire_bounds}")
+                            logger.debug(f"🎯 Using actual Day 4 fire bounds: {fire_bounds}")
                             
                             # Convert fire bounds to terrain grid coordinates
                             # This requires knowing the terrain's geographic extent and resolution
@@ -163,15 +163,15 @@ class SharedTerrainManager:
                             center_row = int(full_height * 0.35)  # Southern region
                             center_col = int(full_width * 0.45)   # Center-east area
                             
-                            logger.info(f"🎯 Day 4 Fire Area Targeting (with bounds):")
-                            logger.info(f"   Fire bounds: {fire_bounds}")
-                            logger.info(f"   Fire size: {fire_width_m:.0f}m × {fire_height_m:.0f}m")
-                            logger.info(f"   Fire cells: {fire_width_cells} × {fire_height_cells}")
-                            logger.info(f"   Target cells: {target_width} × {target_height}")
+                            logger.debug(f"🎯 Day 4 Fire Area Targeting (with bounds):")
+                            logger.debug(f"   Fire bounds: {fire_bounds}")
+                            logger.debug(f"   Fire size: {fire_width_m:.0f}m × {fire_height_m:.0f}m")
+                            logger.debug(f"   Fire cells: {fire_width_cells} × {fire_height_cells}")
+                            logger.debug(f"   Target cells: {target_width} × {target_height}")
                             
                         else:
                             # Fallback to estimated percentages when fire bounds not available
-                            logger.info(f"⚠️  No fire bounds provided - using estimated Day 4 fire area location")
+                            logger.debug(f"⚠️  No fire bounds provided - using estimated Day 4 fire area location")
                             
                             # Calculate the center of the target region in the full terrain
                             # This should correspond to the Day 4 fire area location
@@ -184,10 +184,10 @@ class SharedTerrainManager:
                             center_row = int(full_height * 0.35)  # 35% down (southern region)
                             center_col = int(full_width * 0.45)   # 45% across (center-east area)
                             
-                            logger.info(f"🎯 Day 4 Fire Area Targeting (estimated):")
-                            logger.info(f"   Full terrain: {full_height}×{full_width} cells")
-                            logger.info(f"   Target region: {target_height}×{target_width} cells")
-                            logger.info(f"   Fire area center: ({center_row}, {center_col})")
+                            logger.debug(f"🎯 Day 4 Fire Area Targeting (estimated):")
+                            logger.debug(f"   Full terrain: {full_height}×{full_width} cells")
+                            logger.debug(f"   Target region: {target_height}×{target_width} cells")
+                            logger.debug(f"   Fire area center: ({center_row}, {center_col})")
                         
                         # Calculate start positions to center the target region
                         start_row = center_row - (target_height // 2)
@@ -206,7 +206,7 @@ class SharedTerrainManager:
                         end_row = start_row + target_height
                         end_col = start_col + target_width
                         
-                        logger.info(f"   Subset bounds: [{start_row}:{end_row}, {start_col}:{end_col}]")
+                        logger.debug(f"   Subset bounds: [{start_row}:{end_row}, {start_col}:{end_col}]")
                         
                         terrain_data = terrain_data[start_row:end_row, start_col:end_col]
                 
@@ -225,7 +225,7 @@ class SharedTerrainManager:
                 self.terrain_shapes[terrain_name] = terrain_data.shape
                 self.terrain_dtypes[terrain_name] = terrain_data.dtype
                 
-                logger.info(f"✅ Loaded {terrain_name} into shared memory: {terrain_data.shape}, {nbytes/1024/1024:.1f} MB")
+                logger.debug(f"✅ Loaded {terrain_name} into shared memory: {terrain_data.shape}, {nbytes/1024/1024:.1f} MB")
             
             self.is_loaded = True
             logger.info(f"✅ All terrain data loaded into shared memory")
