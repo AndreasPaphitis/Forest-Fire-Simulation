@@ -280,7 +280,7 @@ Examples:
     
     # Data configuration
     parser.add_argument('--emsr-dir', type=str, 
-                       default="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/Data/EMSR/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1",
+                       default="EMSR Delineations",
                        help='Directory containing EMSR fire perimeter data')
     parser.add_argument('--training-days', nargs='+', type=int, default=[1, 2],
                        help='Days to use for training/calibration (default: [1, 2])')
