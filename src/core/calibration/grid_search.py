@@ -563,7 +563,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 timeout_minutes = config_dict.pop('simulation_timeout_minutes', None)
                 
                 # Ensure unique random seed for each worker to prevent identical results
-                worker_seed = config_dict.get('random_seed', 42) + hash(str(parameter_values)) % 10000
+                # CRITICAL FIX: Use worker_id to create unique seeds, not parameter hash
+                base_seed = config_dict.get('random_seed', 42)
+                worker_seed = base_seed + (worker_id * 1000) + (hash(str(parameter_values)) % 1000)
                 config_dict['random_seed'] = worker_seed
                 
                 # CRITICAL: DO NOT vary parameters between workers - this defeats calibration purpose!
