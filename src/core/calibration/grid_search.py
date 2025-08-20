@@ -429,7 +429,8 @@ def get_shared_target_data() -> Optional[Dict[str, Any]]:
 def evaluate_worker_function(parameter_values: Dict[str, float], 
                            target_data: Optional[Dict[str, Any]],
                            config_dict: Dict[str, Any],
-                           objective_function_name: str) -> Dict[str, Any]:
+                           objective_function_name: str,
+                           worker_id: int = 0) -> Dict[str, Any]:
     """
     Standalone worker function for multiprocessing evaluation.
     
@@ -1640,8 +1641,8 @@ class GridSearchCalibrator:
                 for i in range(0, len(combinations_list), batch_size):
                     batch = combinations_list[i:i + batch_size]
                     batch_futures = {
-                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name): combo
-                        for combo in batch
+                        executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_id): combo
+                        for worker_id, combo in enumerate(batch, start=i)
                     }
                     all_futures.extend(batch_futures.keys())
                     

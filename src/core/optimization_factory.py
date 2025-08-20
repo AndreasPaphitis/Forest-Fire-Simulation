@@ -322,19 +322,19 @@ def log_optimization_status():
     """Log current optimization status."""
     status = get_optimization_status()
     
-    logger.info("🚀 OPTIMIZATION STATUS:")
-    logger.info(f"   Optimizations available: {status['optimizations_available']}")
-    logger.info(f"   Auto-optimize threshold: {status['configuration']['auto_optimize_threshold']:,} cells")
-    logger.info(f"   Force-optimize threshold: {status['configuration']['force_optimize_threshold']:,} cells")
+    logger.debug("🚀 OPTIMIZATION STATUS:")
+    logger.debug(f"   Optimizations available: {status['optimizations_available']}")
+    logger.debug(f"   Auto-optimize threshold: {status['configuration']['auto_optimize_threshold']:,} cells")
+    logger.debug(f"   Force-optimize threshold: {status['configuration']['force_optimize_threshold']:,} cells")
     
     if status['optimizations_available']:
-        logger.info("   Available optimizations:")
-        logger.info(f"     • Vectorized processing: {status['configuration']['enable_vectorized_processing']}")
-        logger.info(f"     • Batch updates: {status['configuration']['enable_batch_updates']}")
-        logger.info(f"     • Neighbor caching: {status['configuration']['enable_neighbor_caching']}")
-        logger.info(f"     • Optimized sparse ops: {status['configuration']['enable_optimized_sparse_ops']}")
+        logger.debug("   Available optimizations:")
+        logger.debug(f"     • Vectorized processing: {status['configuration']['enable_vectorized_processing']}")
+        logger.debug(f"     • Batch updates: {status['configuration']['enable_batch_updates']}")
+        logger.debug(f"     • Neighbor caching: {status['configuration']['enable_neighbor_caching']}")
+        logger.debug(f"     • Optimized sparse ops: {status['configuration']['enable_optimized_sparse_ops']}")
     else:
-        logger.warning("   No optimizations available - using standard implementations")
+        logger.debug("   No optimizations available - using standard implementations")
 
 
 # Convenience aliases for backward compatibility

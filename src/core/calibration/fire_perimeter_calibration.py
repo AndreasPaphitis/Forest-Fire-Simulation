@@ -153,8 +153,8 @@ class FirePerimeterDiscovery:
         Returns:
             FirePerimeterDataset with discovered fire perimeters
         """
-        print("🔍 DISCOVERING FIRE PERIMETER SHAPEFILES")
-        print("=" * 70)
+        logger.debug("🔍 DISCOVERING FIRE PERIMETER SHAPEFILES")
+        logger.debug("=" * 70)
         
         fire_perimeters = []
         
@@ -163,7 +163,7 @@ class FirePerimeterDiscovery:
             if not day_dir.is_dir():
                 continue
             
-            print(f"📁 Scanning: {day_dir.name}")
+            logger.debug(f"📁 Scanning: {day_dir.name}")
             
             # Extract date and day number from directory name
             day_info = self._parse_day_directory(day_dir.name)
@@ -205,14 +205,14 @@ class FirePerimeterDiscovery:
             if fire_perimeter.is_valid:
                 fire_perimeters.append(fire_perimeter)
                 file_format = Path(shapefile_path).suffix.upper()
-                print(f"   ✅ Added: {shapefile_path.name} ({file_format})")
-                print(f"      Date: {date_str}, Day: {day_number}")
-                print(f"      Area: {fire_perimeter.area_hectares:.1f} ha" if fire_perimeter.area_hectares else "      Area: Unknown")
+                logger.debug(f"   ✅ Added: {shapefile_path.name} ({file_format})")
+                logger.debug(f"      Date: {date_str}, Day: {day_number}")
+                logger.debug(f"      Area: {fire_perimeter.area_hectares:.1f} ha" if fire_perimeter.area_hectares else "      Area: Unknown")
             else:
                 print(f"   ❌ Invalid: {fire_perimeter.error_message}")
         
-        print(f"\n📊 DISCOVERY SUMMARY:")
-        print(f"   Total fire perimeters found: {len(fire_perimeters)}")
+        logger.debug(f"\n📊 DISCOVERY SUMMARY:")
+        logger.debug(f"   Total fire perimeters found: {len(fire_perimeters)}")
         
         # Create dataset
         dataset = FirePerimeterDataset(
@@ -417,28 +417,28 @@ class FirePerimeterDiscovery:
             print("❌ No valid fire perimeters found")
             return
         
-        print(f"\n🔥 FIRE PERIMETER DATASET SUMMARY:")
-        print(f"   Fire ID: {dataset.fire_perimeters[0].fire_id}")
-        print(f"   Date range: {dataset.date_range[0]} to {dataset.date_range[1]}" if dataset.date_range else "   Date range: Unknown")
-        print(f"   Total days: {len(dataset.fire_perimeters)}")
+        logger.debug(f"\n🔥 FIRE PERIMETER DATASET SUMMARY:")
+        logger.debug(f"   Fire ID: {dataset.fire_perimeters[0].fire_id}")
+        logger.debug(f"   Date range: {dataset.date_range[0]} to {dataset.date_range[1]}" if dataset.date_range else "   Date range: Unknown")
+        logger.debug(f"   Total days: {len(dataset.fire_perimeters)}")
         
         # Display progression
-        print(f"\n📅 TEMPORAL PROGRESSION:")
+        logger.debug(f"\n📅 TEMPORAL PROGRESSION:")
         for i, fp in enumerate(sorted(dataset.fire_perimeters, key=lambda x: x.day_number), 1):
             area_str = f"{fp.area_hectares:.1f} ha" if fp.area_hectares else "Unknown"
-            print(f"   {i}. Day {fp.day_number} ({fp.date}): {area_str}")
-            print(f"      CRS: {fp.crs}")
-            print(f"      Features: {fp.geometry_count}")
+            logger.debug(f"   {i}. Day {fp.day_number} ({fp.date}): {area_str}")
+            logger.debug(f"      CRS: {fp.crs}")
+            logger.debug(f"      Features: {fp.geometry_count}")
         
         # Check CRS consistency
         crs_list = [fp.crs for fp in dataset.fire_perimeters if fp.crs]
         if len(set(crs_list)) > 1:
-            print(f"\n⚠️  CRS INCONSISTENCY DETECTED:")
+            logger.debug(f"\n⚠️  CRS INCONSISTENCY DETECTED:")
             for crs in set(crs_list):
                 count = crs_list.count(crs)
-                print(f"      {crs}: {count} files")
+                logger.debug(f"      {crs}: {count} files")
         else:
-            print(f"\n✅ CRS CONSISTENCY: All files use {crs_list[0]}" if crs_list else "\n❌ No CRS information available")
+            logger.debug(f"\n✅ CRS CONSISTENCY: All files use {crs_list[0]}" if crs_list else "\n❌ No CRS information available")
 
 
 class TenerifeFirePerimeterCalibrator:
