@@ -311,8 +311,8 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             # Calculate total cells - handle dynamic layer detection
             num_layers = self.custom_config['num_layers']
             if num_layers is None:
-                # Use detected value for calculation purposes
-                num_layers = 12  # Use detected value instead of hardcoded 25
+                # Use a default for calculation purposes (will be detected dynamically later)
+                num_layers = 25  # Default to 25 layers for memory calculation
             total_cells = grid_width * grid_height * num_layers  # Use configured layers
             
             # Calculate area for reference
@@ -451,8 +451,8 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                 # Use configured layer count
                 num_layers = self.custom_config['num_layers']
                 if num_layers is None:
-                    # Fallback to detected value if None
-                    num_layers = 12  # Use detected value instead of hardcoded 25
+                    # Fallback to default if None
+                    num_layers = 25
                 calib_config.base_config.num_layers = num_layers
                 logger.info(f"🔧 Using configured layer count: {calib_config.base_config.num_layers}")
         
@@ -679,8 +679,8 @@ Examples:
             # Handle dynamic layer detection
             if CUSTOM_CONFIG['num_layers'] is None:
                 # Dynamic detection will happen during calibration setup
-                # Don't override here - let the dynamic detection in create_calibration_config handle it
-                pass
+                # Use a default for now, will be overridden by dynamic detection
+                calib_config.base_config.num_layers = 25  # Default, will be detected dynamically
             else:
                 calib_config.base_config.num_layers = CUSTOM_CONFIG['num_layers']
                 

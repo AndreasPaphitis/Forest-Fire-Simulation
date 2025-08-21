@@ -616,10 +616,10 @@ class TiledLiDARIntegration:
         
         # Use available layers up to the requested num_layers
         # Note: Layer 0 is excluded, so we start from layer 1
-        max_available_layer = max(available_layers.keys())
-        actual_layers_to_use = min(num_layers, max_available_layer)
+        num_available_layers = len(available_layers)  # Use count of available layers, not max index
+        actual_layers_to_use = min(num_layers, num_available_layers)
         
-        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {max_available_layer}, excluding layer 0)")
+        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {num_available_layers}, max layer index: {max_available_layer}, excluding layer 0)")
         
         # Create pad_files_dict with available layers (starting from layer 1)
         pad_files_dict = {}
