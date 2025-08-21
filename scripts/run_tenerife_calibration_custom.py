@@ -343,9 +343,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         
         # CRITICAL FIX: Enable LiDAR/PAD data with bounds subsetting
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
-            # Enable LiDAR data processing (disabled for local testing)
-            calib_config.base_config.use_lidar_data = False
-            calib_config.base_config.lidar_data_dir = "PAD Results"
+            # Enable LiDAR data processing - CRITICAL: NEVER DISABLE
+            calib_config.base_config.use_lidar_data = True
+            calib_config.base_config.lidar_data_dir = r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results"
             calib_config.base_config.auto_size_from_lidar = False  # Use our Day 4 grid size
             
             # Set LiDAR processing parameters for memory efficiency
