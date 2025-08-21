@@ -74,7 +74,7 @@ logger = get_logger(__name__)
 CUSTOM_CONFIG = {
     'model_resolution': 20.0,  # 20m resolution (minimum acceptable)
     'max_steps': 100,  # Full 100 timesteps
-    'num_layers': 25,  # LiDAR provides 25 fuel/vegetation layers for fire simulation
+    'num_layers': 11,  # PAD data provides 11 layers (0-10) for fuel/vegetation simulation
     'grid_size': None,  # Use Day 4 dynamic grid size (345x345)
     'simulation_timeout_minutes': 45.0,  # Longer timeout for complex simulations
     'memory_optimization_level': 3,  # Maximum optimization
