@@ -98,7 +98,7 @@ class FirePerimeterDataset:
 class FirePerimeterDiscovery:
     """Discover and validate fire perimeter shapefiles from EMSR directory structure."""
     
-    def __init__(self, base_directory: Union[str, Path] = "EMSR Delineations"):
+    def __init__(self, base_directory: Union[str, Path] = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations"):
         """
         Initialize fire perimeter discovery.
         
@@ -507,7 +507,7 @@ class TenerifeFirePerimeterCalibrator:
         
         # Set up EMSR directory for grid size calculation
         # Use the base_directory parameter if provided, otherwise use default
-        emsr_dir = self._base_directory_param if self._base_directory_param else "EMSR Delineations"
+        emsr_dir = self._base_directory_param if self._base_directory_param else "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations"
         self.base_directory = self._find_emsr_directory(emsr_dir)
         
         print()
@@ -1613,7 +1613,7 @@ def main():
     print("=" * 70)
     
     # Step 1: Discover fire perimeters
-    discovery = FirePerimeterDiscovery("EMSR Delineations")
+    discovery = FirePerimeterDiscovery("/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations")
     fire_dataset = discovery.discover_fire_perimeters()
     
     if not fire_dataset.fire_perimeters:

@@ -186,7 +186,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
         # Store EMSR directory for LiDAR bounds calculation (will be set later)
-        self.emsr_dir = 'EMSR Delineations'
+        self.emsr_dir = '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations'
         
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
         logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
@@ -468,7 +468,7 @@ Examples:
     
     # Data configuration
     parser.add_argument('--emsr-dir', type=str, 
-                       default="EMSR Delineations",
+                       default="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations",
                        help='Directory containing EMSR fire perimeter data')
     parser.add_argument('--training-days', nargs='+', type=int, default=[1, 2],
                        help='Days to use for training/calibration (default: [1, 2])')
