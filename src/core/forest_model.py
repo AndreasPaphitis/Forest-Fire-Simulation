@@ -2426,7 +2426,10 @@ class SparseLayerAccessor:
         # CRITICAL DEBUG: Log the actual vs expected layer counts (REDUCED VERBOSITY)
         actual_layers = len(sparse_layers) if hasattr(sparse_layers, '__len__') else 'unknown'
         if hasattr(sparse_layers, '__len__') and actual_layers != num_layers:
-            print(f"🔍 LAYER MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
+            # Only log once to avoid spam
+            if not hasattr(self, '_layer_mismatch_logged'):
+                print(f"🔍 LAYER MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
+                self._layer_mismatch_logged = True
         # Only log on mismatch - reduce verbosity
     
     def __getitem__(self, key):
