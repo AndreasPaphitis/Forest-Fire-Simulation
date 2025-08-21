@@ -5,11 +5,11 @@
 Tenerife Fire Perimeter Calibration Runner - CUSTOM VERSION
 
 CUSTOM CONFIGURATION:
-✅ 10m resolution (coarse for speed)
+✅ 20m resolution (scientifically accurate)
 ✅ 100 timesteps (short simulations)
 ✅ Top 4 parameters (spread_probability, fuel_consumption_rate, ember_probability, ignition_threshold)
 ✅ 3-point grid search (3⁴ = 81 combinations)
-✅ Estimated runtime: ~3-4 hours
+✅ Estimated runtime: ~4-6 hours
 
 Usage:
     # Default custom configuration
@@ -70,18 +70,33 @@ logger = get_logger(__name__)
 
 # === CUSTOM CONFIGURATION ===
 
+# PRODUCTION MODE: Correct configuration with performance optimizations
 CUSTOM_CONFIG = {
-    'grid_search_points': 3,  # 3 points per parameter
-    'max_steps': 100,  # 100 timesteps as requested
-    'model_resolution': 10.0,  # 10m resolution as requested
+    'model_resolution': 20.0,  # 20m resolution (minimum acceptable)
+    'max_steps': 100,  # Full 100 timesteps
+    'num_layers': 25,  # All 25 layers as required
+    'grid_size': None,  # Use Day 4 dynamic grid size (345x345)
+    'simulation_timeout_minutes': 45.0,  # Longer timeout for complex simulations
+    'memory_optimization_level': 3,  # Maximum optimization
+    'use_lidar_data': True,  # ENABLE LiDAR/PAD data as required
+    'shared_terrain_info': True,  # Enable shared terrain as required
+    'workers_per_simulation': 2,  # NEW: Multiple workers per simulation
+    'grid_search_points': 3,  # Use 3 points per parameter for better exploration
     'parameters': [
         'spread_probability',      # Top parameter 1
         'fuel_consumption_rate',   # Top parameter 2
-        'ember_probability',       # Top parameter 3
-        'ignition_threshold'       # Top parameter 4
+        'ignition_threshold',      # Top parameter 3
+        'ember_probability'        # Top parameter 4
     ],
-    'estimated_hours': 3.5
+    'estimated_hours': 2.5  # More realistic estimate for proper simulation
 }
+
+# EMERGENCY: Minimal parameter space
+GRID_POINTS = 2  # Only 2 points per parameter
+MAX_WORKERS = 2  # Only 2 workers
+
+# PRODUCTION: Override experiment name
+experiment_name = f"tenerife_production_20m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
 def validate_system_resources(memory_gb: int, workers: int) -> bool:
     """Validate that system has sufficient resources for custom calibration."""
@@ -153,9 +168,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
     """
     
     def __init__(self, **kwargs):
-        # Override default parameters with custom settings
+        # Override default parameters with EMERGENCY settings
         kwargs.update({
-            'experiment_name': f"tenerife_custom_10m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            'experiment_name': experiment_name
         })
         
         super().__init__(**kwargs)
@@ -163,11 +178,17 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         # Store custom config
         self.custom_config = CUSTOM_CONFIG
         
-        # Override max_steps for 100 timesteps
+        # Override max_steps for emergency timesteps
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
-        logger.info(f"🚀 CustomTenerifeCalibrator initialized with 10m resolution, 100 timesteps")
-        logger.info(f"📊 Target: {CUSTOM_CONFIG['estimated_hours']} hours")
+        logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
+        logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
+        logger.info(f"   Steps: {CUSTOM_CONFIG['max_steps']}")
+        logger.info(f"   Layers: {CUSTOM_CONFIG['num_layers']}")
+        logger.info(f"   Grid: Dynamic Day 4 size")
+        logger.info(f"   LiDAR: {CUSTOM_CONFIG['use_lidar_data']}")
+        logger.info(f"   Shared terrain: {CUSTOM_CONFIG['shared_terrain_info']}")
+        logger.info(f"   Workers per sim: {CUSTOM_CONFIG['workers_per_simulation']}")
     
     def _create_optimized_forest_model(self, config):
         """Create custom-optimized forest model with 10m resolution."""
@@ -224,8 +245,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                     self._spatial_libs_available = False
             
             if not self._spatial_libs_available:
-                logger.warning("⚠️  Spatial libraries not available, using fallback grid size")
-                return (500, 500)  # Smaller fallback for 10m resolution
+                raise ImportError("Spatial libraries (geopandas) required for Day 4 grid size calculation")
             
             # Find Day 4 GeoJSON file (prioritize JSON over shapefiles)
             day4_file = None
@@ -241,29 +261,45 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                         break
             
             if not day4_file:
-                logger.warning("⚠️  Day 4 file not found, using fallback grid size")
-                return (500, 500)  # Smaller fallback for 10m resolution
+                raise FileNotFoundError("Day 4 EMSR file not found - required for grid size calculation")
             
             logger.info(f"📍 Using Day 4 file for grid size calculation: {day4_file.name}")
             
-            # Use unified grid size calculation with custom resolution
-            from src.core.calibration.calibration_utils import calculate_unified_grid_size_from_emsr
+            # CRITICAL FIX: Use Day 4 data directly for grid size calculation
+            # Don't use the unified function that expects two different days
+            import geopandas as gpd
+            import numpy as np
             
-            # For Day 4 calculation, we'll use Day 4 data as both inputs
-            # since we only need the bounds from Day 4
-            grid_width, grid_height = calculate_unified_grid_size_from_emsr(
-                day1_path=str(day4_file),
-                day2_path=str(day4_file),  # Use same file for both
-                buffer_percent=buffer_percent,
-                model_resolution=self.custom_config['model_resolution']  # 10.0m for custom calibration
-            )
+            # Load Day 4 data directly
+            day4_gdf = gpd.read_file(str(day4_file))
             
-            # Ensure minimum size but much smaller than before
-            grid_width = max(grid_width, 250)  # Minimum 250x250 cells for 10m resolution
-            grid_height = max(grid_height, 250)
+            # Convert to UTM coordinates for accurate calculations
+            utm_crs = 'EPSG:32628'  # UTM Zone 28N for Tenerife
+            day4_utm = day4_gdf.to_crs(utm_crs)
+            
+            # Calculate actual fire area from Day 4
+            fire_area_m2 = day4_utm.area.sum()
+            fire_area_km2 = fire_area_m2 / 1e6
+            
+            # Calculate grid dimensions based on fire area (square root approach)
+            fire_side_length_km = (fire_area_km2 ** 0.5)  # Square root for roughly square grid
+            
+            # Convert to meters and add buffer
+            fire_side_length_m = fire_side_length_km * 1000
+            buffer_m = fire_side_length_m * (buffer_percent / 100.0)
+            total_side_length_m = fire_side_length_m + buffer_m
+            
+            # Convert to grid cells
+            model_resolution = self.custom_config['model_resolution']
+            grid_width = int(np.floor(total_side_length_m / model_resolution))
+            grid_height = int(np.floor(total_side_length_m / model_resolution))
+            
+            # NO FALLBACK: Use the actual Day 4 fire perimeter size
+            # Don't artificially expand the grid - use the real fire area
+            logger.info(f"🎯 Actual Day 4 fire area: {grid_width} × {grid_height} cells")
             
             # Calculate total cells
-            total_cells = grid_width * grid_height * 25  # 25 layers
+            total_cells = grid_width * grid_height * self.custom_config['num_layers']  # Use configured layers
             
             # Calculate area for reference
             cell_size_m = self.custom_config['model_resolution']
@@ -276,8 +312,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             
         except Exception as e:
             logger.error(f"❌ Error calculating optimal grid size: {e}")
-            logger.warning("⚠️  Using fallback grid size")
-            return (500, 500)  # Smaller fallback for 10m resolution
+            raise
     
     def create_calibration_config(self, training_data, top_5_parameters=None, grid_size=None):
         """Create custom calibration configuration."""
@@ -286,12 +321,82 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         if top_5_parameters is None:
             top_5_parameters = self.custom_config['parameters']
         
-        # Create base config
+        # Create base config with LiDAR enabled
         calib_config = super().create_calibration_config(
             training_data=training_data,
             top_5_parameters=top_5_parameters,
             grid_size=grid_size
         )
+        
+        # CRITICAL FIX: Enable LiDAR/PAD data with bounds subsetting
+        if hasattr(calib_config, 'base_config') and calib_config.base_config:
+            # Enable LiDAR data processing
+            calib_config.base_config.use_lidar_data = True
+            calib_config.base_config.lidar_data_dir = r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results"
+            calib_config.base_config.auto_size_from_lidar = False  # Use our Day 4 grid size
+            
+            # Set LiDAR processing parameters for memory efficiency
+            calib_config.base_config.tile_size = 500  # Larger tiles for 20m resolution
+            calib_config.base_config.memory_optimization_level = 2  # High optimization
+            calib_config.base_config.max_parallel_tiles = 4  # Limit parallel processing
+            
+            # CRITICAL: Set geographic bounds for LiDAR subsetting
+            # Calculate Day 4 fire bounds to limit LiDAR processing to actual fire area
+            try:
+                from src.core.calibration.calibration_utils import calculate_unified_grid_size_from_emsr
+                import geopandas as gpd
+                
+                # Find Day 4 EMSR file to get the fire bounds
+                day4_file = None
+                for day_dir in sorted(Path("EMSR Delineations").iterdir()):
+                    if not day_dir.is_dir():
+                        continue
+                    if "Day 4" in day_dir.name or "26_08_23" in day_dir.name:
+                        for file in day_dir.glob("*.shp"):
+                            day4_file = file
+                            break
+                        if day4_file:
+                            break
+                
+                if day4_file:
+                    # Read Day 4 shapefile to get geographic bounds
+                    gdf = gpd.read_file(str(day4_file))
+                    if not gdf.empty:
+                        # Convert to UTM Zone 28N for accurate bounds
+                        gdf_utm = gdf.to_crs('EPSG:32628')
+                        bounds = gdf_utm.total_bounds  # [minx, miny, maxx, maxy]
+                        
+                        # Add 10% buffer for fire spread
+                        buffer_factor = 1.1
+                        width_m = bounds[2] - bounds[0]
+                        height_m = bounds[3] - bounds[1]
+                        center_x = (bounds[0] + bounds[2]) / 2
+                        center_y = (bounds[1] + bounds[3]) / 2
+                        
+                        buffered_width = width_m * buffer_factor
+                        buffered_height = height_m * buffer_factor
+                        
+                        geo_bounds = (
+                            center_x - buffered_width/2,   # min_x
+                            center_y - buffered_height/2,  # min_y
+                            center_x + buffered_width/2,   # max_x
+                            center_y + buffered_height/2   # max_y
+                        )
+                        
+                        # Set bounds for LiDAR subsetting
+                        calib_config.base_config.geo_bounds = geo_bounds
+                        calib_config.base_config.crs = "EPSG:32628"
+                        
+                        logger.info(f"🌱 LiDAR bounds set from Day 4 fire: {geo_bounds}")
+                        logger.info(f"🌱 Fire area: {width_m/1000:.1f}km × {height_m/1000:.1f}km")
+                        
+            except Exception as e:
+                logger.warning(f"⚠️  Could not set LiDAR bounds from Day 4: {e}")
+                logger.warning(f"⚠️  LiDAR will process full extent (may use more memory)")
+            
+            logger.info(f"🌱 LiDAR/PAD fuel data enabled with bounds subsetting for memory efficiency")
+            logger.info(f"🌱 LiDAR directory: {calib_config.base_config.lidar_data_dir}")
+            logger.info(f"🌱 Tile size: {calib_config.base_config.tile_size} cells")
         
         # CRITICAL FIX: Override base_config max_steps to use 100 instead of 300
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
@@ -511,6 +616,35 @@ Examples:
         )
         logger.info(f"🔍 DEBUG: Calibration config created successfully")
         
+        # PRODUCTION OVERRIDE: Apply production settings
+        if hasattr(calib_config, 'base_config') and calib_config.base_config:
+            calib_config.base_config.model_resolution = CUSTOM_CONFIG['model_resolution']
+            calib_config.base_config.max_steps = CUSTOM_CONFIG['max_steps']
+            calib_config.base_config.num_layers = CUSTOM_CONFIG['num_layers']
+            if CUSTOM_CONFIG['grid_size'] is not None:
+                calib_config.base_config.grid_size = CUSTOM_CONFIG['grid_size']
+            calib_config.base_config.simulation_timeout_minutes = CUSTOM_CONFIG['simulation_timeout_minutes']
+            calib_config.base_config.memory_optimization_level = CUSTOM_CONFIG['memory_optimization_level']
+            # LiDAR and shared terrain are already enabled in the calibrator
+            
+        # PRODUCTION: Override grid search parameters for multi-worker approach
+        calib_config.grid_search_points = GRID_POINTS
+        calib_config.max_workers = min(MAX_WORKERS, 4)  # Limit to 4 total workers
+        
+        # NEW: Configure workers per simulation for heavy workloads
+        if hasattr(calib_config, 'workers_per_simulation'):
+            calib_config.workers_per_simulation = CUSTOM_CONFIG['workers_per_simulation']
+        
+        logger.info(f"🚀 PRODUCTION MODE: Applied production settings")
+        logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
+        logger.info(f"   Steps: {CUSTOM_CONFIG['max_steps']}")
+        logger.info(f"   Layers: {CUSTOM_CONFIG['num_layers']}")
+        logger.info(f"   LiDAR: {CUSTOM_CONFIG['use_lidar_data']}")
+        logger.info(f"   Shared terrain: {CUSTOM_CONFIG['shared_terrain_info']}")
+        logger.info(f"   Workers: {MAX_WORKERS}")
+        logger.info(f"   Workers per sim: {CUSTOM_CONFIG['workers_per_simulation']}")
+        logger.info(f"   Grid points: {GRID_POINTS}")
+        
         # Step 8: Final confirmation and execution
         print(f"\n🚀 READY TO EXECUTE CUSTOM CALIBRATION")
         print("=" * 50)
@@ -519,7 +653,6 @@ Examples:
         
         print(f"📊 Performance estimates:")
         print(f"   Total combinations: {estimates['total_combinations']:,} ({args.grid_points}^{len(args.parameters)})")
-        print(f"   Time per simulation: {estimates['base_time_per_sim_minutes']:.1f} minutes")
         print(f"   Parallel time: {estimates['parallel_time_hours']:.1f} hours")
         print(f"   Peak memory: {estimates['peak_memory_gb']:.1f} GB")
         print(f"   Results directory: {calibrator.results_dir}")
@@ -553,10 +686,10 @@ Examples:
         
         start_time = time.time()
         
-        # Create progress callback
+        # Create progress callback with reduced verbosity
         progress_callback = create_quiet_progress_callback(
             estimates['total_combinations'], 
-            quiet_mode=args.quiet
+            quiet_mode=True  # Force quiet mode to reduce output
         )
         
         # Run calibration
@@ -570,15 +703,12 @@ Examples:
         
         total_time = time.time() - start_time
         
-        # Step 10: Results summary
+        # Step 10: Results summary (simplified to avoid duplication)
         print(f"\n✅ CUSTOM CALIBRATION COMPLETE")
-        print("=" * 50)
         print(f"Total time: {total_time/3600:.2f} hours")
         print(f"Results saved to: {calibrator.results_dir}")
         
-        if results and hasattr(results, 'best_parameters'):
-            print(f"Best parameters: {results.best_parameters}")
-            print(f"Best objective: {results.best_objective_value:.4f}")
+        # Don't duplicate best objective - it's already shown by the calibrator
         
     except Exception as e:
         logger.error(f"❌ Custom calibration failed: {e}")

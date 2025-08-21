@@ -803,9 +803,9 @@ class TenerifeFirePerimeterCalibrator:
         base_config = ModelConfig(
             # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
             grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
-            num_layers=25,             # Original 25 layers for detailed vertical modeling
+            num_layers=11,             # Match available terrain layers (was 25)
             max_steps=300,             # Extended for comprehensive fire progression
-            model_resolution=5.0,      # Original 5m resolution for high detail
+            model_resolution=10.0,     # 10m resolution for faster processing
             
             # CRITICAL FIX: FORCE MEMORY OPTIMIZED MODEL TYPE
             simulation_type="memory_optimized",  # Force sparse storage and memory optimizations
@@ -992,8 +992,10 @@ class TenerifeFirePerimeterCalibrator:
         return None
     
     def _find_lidar_dir(self) -> Optional[str]:
-        """Find LiDAR data directory with fallbacks."""
+        """Find LiDAR PAD data directory with nested structure support."""
         possible_paths = [
+            # Local Windows path
+            r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results",
             # HPC path
             "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results/",
             # Project relative path
@@ -1010,18 +1012,40 @@ class TenerifeFirePerimeterCalibrator:
         for path in possible_paths:
             path_obj = Path(path)
             if path_obj.exists() and path_obj.is_dir():
-                # Check if it has LiDAR files
+                # IMPROVED: Check for PAD raster files with specific patterns
+                pad_files = []
+                
+                # Pattern 1: Dataset directories with pad_rasters subdirectories
+                pad_files.extend(list(path_obj.rglob("**/pad_rasters/*_pad_*.tif")))
+                
+                # Pattern 2: Direct pad subdirectories with layer files  
+                pad_files.extend(list(path_obj.rglob("**/pad/*_layer_*.tif")))
+                pad_files.extend(list(path_obj.rglob("**/pad/layer_*/*.tif")))
+                
+                # Pattern 3: NRD raster files (intermediate processing)
+                nrd_files = list(path_obj.rglob("**/nrd_rasters/*_nrd_*.tif"))
+                
+                # Pattern 4: Traditional LiDAR files
                 lidar_files = (list(path_obj.rglob("*.las")) + 
                               list(path_obj.rglob("*.laz")) + 
                               list(path_obj.rglob("*.tif")) +
                               list(path_obj.rglob("*.tiff")))
-                if len(lidar_files) > 0:
-                    logger.info(f"✅ Found LiDAR directory: {path} ({len(lidar_files)} files)")
+                
+                total_files = len(pad_files) + len(nrd_files) + len(lidar_files)
+                
+                if len(pad_files) > 0:
+                    logger.info(f"✅ Found LiDAR PAD directory: {path} ({len(pad_files)} PAD files)")
+                    return str(path_obj)
+                elif len(nrd_files) > 0:
+                    logger.info(f"✅ Found LiDAR NRD directory: {path} ({len(nrd_files)} NRD files)")
+                    return str(path_obj)
+                elif total_files > 0:
+                    logger.info(f"✅ Found LiDAR directory: {path} ({total_files} files)")
                     return str(path_obj)
                 else:
-                    logger.debug(f"Directory exists but no LiDAR files: {path}")
+                    logger.debug(f"Directory exists but no LiDAR/PAD files: {path}")
         
-        logger.warning("⚠️  No valid LiDAR directory found")
+        logger.warning("⚠️  No valid LiDAR/PAD directory found")
         return None
     
     def _validate_paths(self) -> Dict[str, Any]:
@@ -1193,16 +1217,9 @@ class TenerifeFirePerimeterCalibrator:
         if progress_callback is None:
             progress_callback = create_progress_callback(verbose=True)
         
-        # Display calibration info
+        # Display calibration info (reduced verbosity)
         estimation_info = calibrator.get_estimation_info()
-        print(f"📊 CALIBRATION OVERVIEW:")
-        print(f"   Total combinations: {estimation_info['total_combinations']:,}")
-        print(f"   Estimated runtime: {estimation_info['estimated_time_hours']:.1f} hours")
-        print(f"   Memory requirement: {estimation_info.get('memory_requirement_gb', 0.0):.1f} GB")
-        print(f"   Parallel workers: {self.workers}")
-        
-        # Run calibration
-        print(f"\n🔥 Running grid search calibration...")
+        # Don't duplicate calibration start message - it's shown by the calling script
         start_time = datetime.now()
         
         try:
@@ -1214,14 +1231,12 @@ class TenerifeFirePerimeterCalibrator:
             
             target_data = self._prepare_target_data(calibration_config.calibration_targets, grid_size=grid_size)
             
-            # Debug: Check what target_data contains
-            logger.debug(f"🔍 Target data keys: {list(target_data.keys()) if target_data else 'None'}")
+            # Debug: Check what target_data contains (reduced verbosity)
             if target_data and 'fire_perimeter' in target_data:
                 fire_perim = target_data['fire_perimeter']
-                logger.debug(f"🔍 Fire perimeter shape: {fire_perim.shape if hasattr(fire_perim, 'shape') else 'no shape'}")
-                logger.debug(f"🔍 Fire perimeter sum: {np.sum(fire_perim) if hasattr(fire_perim, 'sum') else 'no sum'}")
+                logger.debug(f"🔍 Target data ready: {fire_perim.shape if hasattr(fire_perim, 'shape') else 'no shape'}")
             else:
-                logger.debug(f"⚠️  No fire_perimeter in target_data: {target_data}")
+                logger.warning(f"⚠️  No fire_perimeter in target_data")
             
             results = calibrator.run_calibration(
                 target_data=target_data,
@@ -1231,7 +1246,7 @@ class TenerifeFirePerimeterCalibrator:
             end_time = datetime.now()
             runtime = (end_time - start_time).total_seconds() / 3600  # hours
             
-            print(f"\n✅ Calibration completed in {runtime:.2f}h")
+            # Don't duplicate completion message - it's shown by the calling script
             best_value = results.get_best_objective_value()
             if best_value is not None:
                 print(f"🎯 Best objective: {best_value:.4f}")

@@ -1,0 +1,44 @@
+{
+  "experiment_name": "emergency_hpc_calibration",
+  "base_config": {
+    "model_resolution": 30.0,
+    "max_steps": 75,
+    "num_layers": 8,
+    "grid_size": [150, 150],
+    "simulation_timeout_minutes": 20.0,
+    "memory_optimization_level": 3,
+    "use_lidar_data": false,
+    "shared_terrain_info": null,
+    "spread_probability": 0.8,
+    "fuel_consumption_rate": 0.01,
+    "ignition_threshold": 0.1,
+    "stop_when_fire_extinguished": false
+  },
+  "calibration_config": {
+    "grid_search_points": 2,
+    "max_workers": 4,
+    "parameter_bounds": {
+      "spread_probability": {
+        "min": 0.6,
+        "max": 0.9,
+        "type": "float"
+      },
+      "fuel_consumption_rate": {
+        "min": 0.005,
+        "max": 0.02,
+        "type": "float"
+      },
+      "ignition_threshold": {
+        "min": 0.05,
+        "max": 0.2,
+        "type": "float"
+      }
+    }
+  },
+  "hpc_settings": {
+    "memory_per_worker_gb": 4,
+    "timeout_hours": 2,
+    "use_shared_memory": false,
+    "batch_size": 4
+  }
+}

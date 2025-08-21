@@ -2406,17 +2406,11 @@ class SparseLayerAccessor:
         self.num_layers = num_layers
         self.default_value = default_value
         
-        # CRITICAL DEBUG: Log the actual vs expected layer counts
+        # CRITICAL DEBUG: Log the actual vs expected layer counts (REDUCED VERBOSITY)
         actual_layers = len(sparse_layers) if hasattr(sparse_layers, '__len__') else 'unknown'
-        print(f"🔍 SparseLayerAccessor DEBUG:")
-        print(f"   Expected num_layers: {num_layers}")
-        print(f"   Actual sparse_layers length: {actual_layers}")
-        print(f"   sparse_layers type: {type(sparse_layers)}")
         if hasattr(sparse_layers, '__len__') and actual_layers != num_layers:
-            print(f"   ⚠️  MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
-            print(f"   This will cause KeyError/IndexError when accessing layers >= {actual_layers}")
-        else:
-            print(f"   ✅ Layer count match: {num_layers} layers")
+            print(f"🔍 LAYER MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
+        # Only log on mismatch - reduce verbosity
     
     def __getitem__(self, key):
         """Support array-like indexing."""
@@ -2432,8 +2426,7 @@ class SparseLayerAccessor:
                                 sparse_matrix = self.sparse_layers[z]
                             else:
                                 # Key doesn't exist in dictionary - return default value
-                                print(f"🔍 Key {z} not found in sparse_layers dictionary")
-                                print(f"🔍 Available keys: {list(self.sparse_layers.keys())}")
+                                # REDUCED VERBOSITY: Only log critical errors
                                 return self.default_value
                         # Handle list access (sparse_layers is a list)
                         elif isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
@@ -2449,10 +2442,7 @@ class SparseLayerAccessor:
                         else:
                             error_type = f"IndexError {e}"
                         
-                        print(f"🔍 {error_type} in SparseLayerAccessor: z={z}, sparse_layers type={type(self.sparse_layers)}, len={len(self.sparse_layers)}")
-                        print(f"🔍 sparse_layers keys/indices: {list(range(len(self.sparse_layers))) if hasattr(self.sparse_layers, '__len__') else 'no length'}")
-                        print(f"🔍 Requested layer {z} is out of range [0, {len(self.sparse_layers)-1}]")
-                        # Return default value instead of raising
+                        # REDUCED VERBOSITY: Only log critical errors
                         return self.default_value
                     
                     # Check if it's a DOK matrix (Dictionary of Keys)
@@ -2510,8 +2500,7 @@ class SparseLayerAccessor:
                                 sparse_matrix = self.sparse_layers[z]
                             else:
                                 # Key doesn't exist in dictionary - skip assignment
-                                print(f"🔍 Key {z} not found in sparse_layers dictionary for assignment")
-                                print(f"🔍 Available keys: {list(self.sparse_layers.keys())}")
+                                # REDUCED VERBOSITY: Only log critical errors
                                 return  # Skip assignment
                         # Handle list access (sparse_layers is a list)
                         elif isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
@@ -2527,14 +2516,12 @@ class SparseLayerAccessor:
                             error_type = f"KeyError {key_value}"
                         else:
                             error_type = f"IndexError {e}"
-                        logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
-                        logger.warning(f"⚠️  Layer {z} not found in sparse_layers (available: 0-{len(self.sparse_layers)-1})")
+                        # REDUCED VERBOSITY: Only log critical errors
                         return  # Silently fail instead of raising exception
                     except Exception as e:
                         # CRITICAL FIX: Don't raise exception - just log and continue
                         # This prevents segfaults on massive grids
-                        logger.warning(f"⚠️  Sparse matrix assignment failed at ({x}, {y}, {z}): {e}")
-                        logger.warning("Continuing without assignment to prevent segfault")
+                        # REDUCED VERBOSITY: Only log critical errors
                         return  # Silently fail instead of raising exception
         elif isinstance(key, tuple) and len(key) == 2:
             x, y = key

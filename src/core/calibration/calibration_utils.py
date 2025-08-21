@@ -948,13 +948,12 @@ def create_unified_progress_callback(verbose: bool = True, quiet_mode: bool = Fa
         
         if completed % update_interval == 0 or completed == total:
             if verbose and current_result is not None:
-                # Detailed progress with result information
+                # Detailed progress with result information (simplified to avoid duplication)
                 status = "SUCCESS" if hasattr(current_result, 'is_valid') and current_result.is_valid else "FAILED"
-                obj_val = getattr(current_result, 'objective_value', 0.0) if hasattr(current_result, 'objective_value') else 0.0
-                print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: {status} (Objective: {obj_val:.4f})")
+                print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: {status}")
             else:
-                # Simple progress
-                print(f"Progress: {progress:.1f}% ({completed}/{total})")
+                # Simple progress (avoid duplication with grid search logging)
+                pass  # Let grid search handle progress reporting
     
     return callback
 
@@ -995,11 +994,21 @@ def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str,
         if not all_geometries:
             raise ValueError("No valid geometries found in EMSR data")
         
-        # Calculate combined bounds
+        # CRITICAL FIX: Convert to projected coordinate system for accurate distance calculations
+        # The data is in EPSG:4326 (geographic), but we need meters for grid calculations
+        # Use UTM zone 28N for Tenerife (approximately -16° longitude)
+        utm_crs = 'EPSG:32628'  # UTM Zone 28N
+        
+        # Convert to projected coordinates
+        day1_proj = day1_gdf.to_crs(utm_crs)
+        day2_proj = day2_gdf.to_crs(utm_crs)
+        
+        # Calculate combined bounds in projected coordinates
+        # For Day 4 calculation, we want to focus on the actual fire area, not the entire bounding box
         combined_bounds = None
-        for geom in all_geometries:
-            if geom is not None and not geom.is_empty:
-                bounds = geom.bounds  # (minx, miny, maxx, maxy)
+        for gdf_proj in [day1_proj, day2_proj]:
+            if not gdf_proj.empty:
+                bounds = gdf_proj.total_bounds  # (minx, miny, maxx, maxy) in meters
                 if combined_bounds is None:
                     combined_bounds = bounds
                 else:
@@ -1010,23 +1019,39 @@ def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str,
                         max(combined_bounds[3], bounds[3])
                     )
         
-        if combined_bounds is None:
-            raise ValueError("Could not calculate bounds from geometries")
+        # CRITICAL FIX: For Day 4, use a more reasonable grid size based on actual fire area
+        # Instead of using the full bounding box, calculate a grid that covers the fire area efficiently
+        # The Day 4 fire area is ~122.7 km², so we need a grid that can accommodate this
         
-        # Calculate dimensions
-        width_m = combined_bounds[2] - combined_bounds[0]
-        height_m = combined_bounds[3] - combined_bounds[1]
+        # Calculate the actual fire area in square meters
+        total_fire_area_m2 = 0
+        for gdf_proj in [day1_proj, day2_proj]:
+            if not gdf_proj.empty:
+                total_fire_area_m2 += gdf_proj.area.sum()
         
-        # Add buffer
-        buffer_m = max(width_m, height_m) * (buffer_percent / 100.0)
-        width_m += buffer_m
-        height_m += buffer_m
+        # CRITICAL FIX: Calculate grid dimensions based on fire area (square root approach)
+        # For 122.7 km² fire area, we want a grid that's roughly square and covers this area
+        fire_area_km2 = total_fire_area_m2 / 1e6
+        fire_side_length_km = (fire_area_km2 ** 0.5)  # Square root for roughly square grid
         
-        # Convert to grid cells
-        width_cells = int(np.ceil(width_m / model_resolution))
-        height_cells = int(np.ceil(height_m / model_resolution))
+        # Convert to meters and add buffer
+        fire_side_length_m = fire_side_length_km * 1000
+        buffer_m = fire_side_length_m * (buffer_percent / 100.0)
+        total_side_length_m = fire_side_length_m + buffer_m
+        
+        # Convert to grid cells (CRITICAL: Use floor, not ceil, to avoid oversized grids)
+        width_cells = int(np.floor(total_side_length_m / model_resolution))
+        height_cells = int(np.floor(total_side_length_m / model_resolution))
+        
+        # CRITICAL: Ensure minimum grid size for Day 4 fire
+        min_cells = int(np.ceil((fire_side_length_m / model_resolution) * 0.8))  # At least 80% of fire area
+        width_cells = max(width_cells, min_cells)
+        height_cells = max(height_cells, min_cells)
         
         return width_cells, height_cells
+        
+        # The calculation is now done above using the fire area approach
+        pass
         
     except Exception as e:
         # Fallback to reasonable defaults

@@ -499,7 +499,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     # Set up logging for worker process - COMPREHENSIVE FIX
     # Completely isolate worker logging to prevent duplicates
     worker_logger = logging.getLogger(f"worker_{time.time()}")
-    worker_logger.setLevel(logging.WARNING)  # Changed from INFO to WARNING to reduce verbosity
+    worker_logger.setLevel(logging.ERROR)  # REDUCED VERBOSITY: Only show errors
     
     # Clear any existing handlers
     for handler in worker_logger.handlers[:]:
@@ -514,11 +514,10 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     # Critical: Prevent propagation to avoid duplicate logging
     worker_logger.propagate = False
     
-    # CRITICAL DEBUG: Log all input types to identify the source of the list
-    worker_logger.info(f"🎯 WORKER {worker_id}: parameter_values type: {type(parameter_values)}")
-    worker_logger.info(f"🎯 WORKER {worker_id}: parameter_values value: {parameter_values}")
-    worker_logger.info(f"🎯 WORKER {worker_id}: config_dict type: {type(config_dict)}")
-    worker_logger.info(f"🎯 WORKER {worker_id}: target_data type: {type(target_data)}")
+    # CRITICAL DEBUG: Log all input types to identify the source of the list (REDUCED VERBOSITY)
+    # Only log first worker to avoid spam
+    if worker_id < 1:
+        worker_logger.info(f"🎯 WORKER {worker_id}: parameters: {parameter_values}")
     
     # CRITICAL FIX: Validate that we have actual parameters
     if not parameter_values:
@@ -579,13 +578,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_config_dict = config_dict.copy()
                 worker_config_dict['random_seed'] = worker_seed
                 
-                # DEBUG: Log the seed generation to verify uniqueness
-                worker_logger.info(f"🔧 Worker {worker_id} seed generation:")
-                worker_logger.info(f"   Base seed: {base_seed}")
-                worker_logger.info(f"   Worker ID: {worker_id}")
-                worker_logger.info(f"   Worker multiplier: {worker_id * 100000}")
-                worker_logger.info(f"   Final worker seed: {worker_seed}")
-                worker_logger.info(f"   Parameters: {parameter_values}")
+                # DEBUG: Log the seed generation to verify uniqueness (REDUCED VERBOSITY)
+                if worker_id < 1:  # Only log first worker
+                    worker_logger.info(f"🔧 Worker {worker_id}: seed={worker_seed}, params={parameter_values}")
                 
                 # CRITICAL: Each worker tests DIFFERENT parameter combinations for grid search
                 # This ensures we explore the full parameter space systematically
@@ -1477,7 +1472,7 @@ class GridSearchCalibrator:
                 logger.info(f"Best objective value: {best_value:.4f}")
             else:
                 logger.info(f"Best objective value: None (no valid results)")
-            logger.info(f"Best parameters: {results.get_best_parameters()}")
+            # Don't duplicate best parameters - they're shown by the calling script
             
             # Store convergence information
             results.convergence_info = {
@@ -1506,14 +1501,10 @@ class GridSearchCalibrator:
             if progress_callback:
                 progress_callback(i + 1, self.total_combinations, result)
             
-            # Periodic logging
-            if (i + 1) % max(1, self.total_combinations // 20) == 0:
+            # Periodic logging (reduced to avoid duplication with progress callback)
+            if (i + 1) % max(1, self.total_combinations // 10) == 0:  # Less frequent updates
                 progress = (i + 1) / self.total_combinations * 100
-                best_value = results.get_best_objective_value()
-                if best_value is None:
-                    best_value = 0.0
-                logger.info(f"Progress: {progress:.1f}% ({i + 1}/{self.total_combinations}), "
-                           f"Best objective: {best_value:.4f}")
+                logger.info(f"Progress: {progress:.1f}% ({i + 1}/{self.total_combinations})")
         
         return results
     
@@ -1768,8 +1759,15 @@ class GridSearchCalibrator:
         
         try:
             with executor:
-                # Submit jobs in batches to prevent resource contention
-                batch_size = min(10, self.max_workers)
+                # CRITICAL: Check for workers per simulation configuration
+                workers_per_sim = getattr(self.config, 'workers_per_simulation', 1)
+                if workers_per_sim > 1:
+                    logger.info(f"🔧 Multi-worker mode: {workers_per_sim} workers per simulation")
+                    # Adjust batch size for multi-worker simulations
+                    batch_size = max(1, min(5, self.max_workers // workers_per_sim))
+                else:
+                    # Submit jobs in batches to prevent resource contention
+                    batch_size = min(10, self.max_workers)
                 all_futures = []
                 
                 # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
@@ -1830,8 +1828,8 @@ class GridSearchCalibrator:
                         # Each worker should test DIFFERENT parameter combinations for grid search
                         # The worker_id is passed separately to the worker function
                         
-                        # Only log first few assignments to avoid spam
-                        if worker_id < 5:
+                        # Only log first assignment to avoid spam
+                        if worker_id < 1:
                             logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
                         
                         future = executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_id)
@@ -1861,12 +1859,10 @@ class GridSearchCalibrator:
                         results.add_result(result)
                         completed += 1
                         
-                        # Progress updates every 5% or every 10 evaluations
+                        # Progress updates every 5% or every 10 evaluations (simplified)
                         if completed % progress_interval == 0 or completed % 10 == 0:
                             progress_percent = (completed / total_combinations) * 100
-                            best_value = results.get_best_objective_value()
-                            best_value_str = f"{best_value:.4f}" if best_value is not None else "None"
-                            logger.info(f"📊 Progress: {progress_percent:.1f}% ({completed}/{total_combinations}) - Best: {best_value_str}")
+                            logger.info(f"📊 Progress: {progress_percent:.1f}% ({completed}/{total_combinations})")
                         
                         if progress_callback:
                             progress_callback(completed, len(combinations_list), result)
