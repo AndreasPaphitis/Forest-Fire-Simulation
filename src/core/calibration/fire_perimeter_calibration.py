@@ -807,7 +807,7 @@ class TenerifeFirePerimeterCalibrator:
         base_config = ModelConfig(
             # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
             grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
-            num_layers=12,             # Production: 12 layers to match available LiDAR data
+            num_layers=25,             # Production: 25 LiDAR fuel/vegetation layers for fire simulation
             max_steps=100,             # Production: 100 timesteps for efficiency
             model_resolution=20.0,     # Production: 20m resolution for efficiency
             
