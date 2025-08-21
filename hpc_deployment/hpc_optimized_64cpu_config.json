@@ -1,0 +1,44 @@
+{
+    "hpc_configuration": {
+        "cpus": 64,
+        "memory_per_cpu_gb": 1.7,
+        "total_memory_gb": 108.8,
+        "recommended_workers": 64,
+        "memory_safety_margin": 0.8
+    },
+    "simulation_configuration": {
+        "model_resolution": 20.0,
+        "max_steps": 100,
+        "num_layers": 25,
+        "grid_size": null,
+        "simulation_timeout_minutes": 45.0,
+        "memory_optimization_level": 3,
+        "use_lidar_data": true,
+        "shared_terrain_info": true,
+        "workers_per_simulation": 1
+    },
+    "calibration_configuration": {
+        "grid_search_points": 3,
+        "parameters": [
+            "spread_probability",
+            "fuel_consumption_rate", 
+            "ignition_threshold",
+            "ember_probability"
+        ],
+        "total_combinations": 81,
+        "estimated_runtime_hours": 1.5
+    },
+    "memory_analysis": {
+        "per_simulation_memory_mb": 150,
+        "total_simulation_memory_gb": 12.2,
+        "shared_terrain_memory_mb": 74,
+        "memory_efficiency_percent": 11.2,
+        "memory_pressure": "none"
+    },
+    "deployment_notes": {
+        "optimal_setup": "64 CPUs with 1 worker per simulation",
+        "memory_advantage": "Only 11% memory usage - no cleanup needed",
+        "speed_advantage": "All 81 simulations can run in parallel",
+        "recommendation": "Use 64 CPUs for optimal efficiency"
+    }
+}

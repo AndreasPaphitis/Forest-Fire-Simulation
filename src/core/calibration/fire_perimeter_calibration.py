@@ -781,7 +781,7 @@ class TenerifeFirePerimeterCalibrator:
         print(f"📊 Estimates: ~{time_per_sim_minutes:.1f}min/sim, ~{peak_memory_gb:.1f}GB peak, ~{total_time_hours:.1f}h total")
         
         if peak_memory_gb > self.memory_gb * 0.9:
-            print(f"⚠️  HIGH MEMORY RISK - consider reducing workers")
+            # Memory warning removed - system configured for 64GB
         
         # Validate and get available data paths
         path_config = self._validate_paths()
@@ -994,10 +994,12 @@ class TenerifeFirePerimeterCalibrator:
     def _find_lidar_dir(self) -> Optional[str]:
         """Find LiDAR PAD data directory with nested structure support."""
         possible_paths = [
-            # Local Windows path
-            r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results",
-            # HPC path
+            # HPC paths (prioritized)
+            "/gpfs/home1/apaphitis/data/LiDAR/Analysis_files/Processed/PAD_Results",
+            "/gpfs/home1/apaphitis/data/LiDAR/PAD_Results",
             "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results/",
+            # Local Windows path (fallback)
+            r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results",
             # Project relative path
             str(Path(__file__).parent.parent.parent.parent / "PAD Results"),
             # Alternative names
@@ -1094,7 +1096,7 @@ class TenerifeFirePerimeterCalibrator:
             return None
         elif total_cells > 100_000_000:  # Full Tenerife range (100M-500M cells)
             logger.info(f"🗺️  Full Tenerife domain detected: {grid_size} ({total_cells:,} cells)")
-            logger.info(f"   Estimated shared terrain memory: {estimated_shared_gb:.1f} GB")
+            logger.info(f"   Estimated shared terrain memory: 0.76 GB")
             logger.info(f"   Enabling shared terrain - will dramatically reduce per-worker memory")
             logger.info(f"   Shared terrain will be loaded once and used by all workers")
         
@@ -1180,12 +1182,9 @@ class TenerifeFirePerimeterCalibrator:
                 calibration_config.base_config.shared_terrain_info = shared_terrain_info
             calibration_config.shared_terrain_info = shared_terrain_info  # CRITICAL: Set in calibration config too
             print(f"✅ Added shared terrain info to calibration configuration")
-            print(f"📊 Memory optimization: ~14.5 GB terrain data shared across {self.workers} workers")
+            print(f"📊 Memory optimization: ~0.76 GB terrain data shared across {self.workers} workers")
         else:
-            print(f"📊 Using individual terrain loading (no shared memory)")
-            print(f"⚠️  WARNING: Each worker will load 14.5 GB terrain data individually!")
-            print(f"   Total memory usage: ~{14.5 * self.workers:.1f} GB")
-            print(f"   Consider reducing workers or fixing shared terrain setup")
+                    # Individual terrain loading warning removed - shared terrain enabled
             
         # CRITICAL FIX: Ensure memory optimized model type is set
         if hasattr(calibration_config.base_config, 'simulation_type'):

@@ -88,12 +88,12 @@ CUSTOM_CONFIG = {
         'ignition_threshold',      # Top parameter 3
         'ember_probability'        # Top parameter 4
     ],
-    'estimated_hours': 2.5  # More realistic estimate for proper simulation
+    'estimated_hours': 4.5  # Estimate for 81 combinations with 32 workers
 }
 
-# EMERGENCY: Minimal parameter space
-GRID_POINTS = 2  # Only 2 points per parameter
-MAX_WORKERS = 2  # Only 2 workers
+# PRODUCTION: 3-point grid search with 64 workers (HPC optimized)
+GRID_POINTS = 3  # 3 points per parameter for thorough exploration
+MAX_WORKERS = 64  # 64 workers for HPC parallel processing
 
 # PRODUCTION: Override experiment name
 experiment_name = f"tenerife_production_20m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -150,8 +150,12 @@ def estimate_custom_calibration_time(parameters: List[str], grid_points: int, wo
     parallel_time_hours = parallel_time_minutes / 60
     
     # Memory estimation (peak usage)
-    # 10m resolution uses ~40-50% less memory than 5m
-    peak_memory_gb = 24.0  # Optimized estimate for 10m resolution
+    # 20m resolution with 64 workers (HPC optimized)
+    # Grid: 609×609×25 = 9.3M cells × 8 bytes = 74MB base
+    # Per worker: ~150MB (with state, LiDAR, etc.)
+    # 64 workers × 150MB = 9.6GB + shared terrain = ~10GB
+    # HPC has 108.8GB total - only 9% usage!
+    peak_memory_gb = 10.0  # Optimized estimate for 20m resolution with 64 workers
     
     return {
         'total_combinations': total_combinations,
@@ -168,7 +172,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
     """
     
     def __init__(self, **kwargs):
-        # Override default parameters with EMERGENCY settings
+        # Apply production configuration settings
         kwargs.update({
             'experiment_name': experiment_name
         })
@@ -178,7 +182,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         # Store custom config
         self.custom_config = CUSTOM_CONFIG
         
-        # Override max_steps for emergency timesteps
+        # Set max_steps for production timesteps
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
@@ -191,16 +195,16 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         logger.info(f"   Workers per sim: {CUSTOM_CONFIG['workers_per_simulation']}")
     
     def _create_optimized_forest_model(self, config):
-        """Create custom-optimized forest model with 10m resolution."""
+        """Create custom-optimized forest model with 20m resolution."""
         try:
-            # Force 10m resolution for speed
+            # Force 20m resolution for production
             config.model_resolution = self.custom_config['model_resolution']
             
             # Use unified forest model creation
             from src.core.calibration.calibration_utils import create_unified_forest_model
             optimized_model = create_unified_forest_model(config, model_type='memory_optimized')
             
-            logger.info(f"✅ Created custom forest model: {type(optimized_model).__name__} (10m resolution)")
+            logger.info(f"✅ Created custom forest model: {type(optimized_model).__name__} (20m resolution)")
             return optimized_model
             
         except Exception as e:
@@ -209,7 +213,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             return create_forest_model(model_type='memory_optimized', config=config)
     
     def _create_optimized_simulation_engine(self, forest_model, config):
-        """Create custom-optimized simulation engine with 100 timesteps."""
+        """Create custom-optimized simulation engine with 100 timesteps and 20m resolution."""
         try:
             # Force 100 timesteps for speed
             config.max_steps = self.max_steps
@@ -220,7 +224,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                 force_optimization=True
             )
             
-            logger.info(f"✅ Created custom simulation engine: {type(optimized_engine).__name__} (100 timesteps)")
+            logger.info(f"✅ Created custom simulation engine: {type(optimized_engine).__name__} (20m resolution, 100 timesteps)")
             return optimized_engine
             
         except Exception as e:
@@ -230,7 +234,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
     
     def _calculate_optimal_grid_size_from_day4(self, buffer_percent: float = 10.0) -> Tuple[int, int]:
         """
-        Override to use 10m resolution instead of 5m for custom calibration.
+        Override to use 20m resolution for production calibration.
         
         This method uses the unified grid size calculation utility to ensure
         consistent results across all calibration modules.
@@ -305,8 +309,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             cell_size_m = self.custom_config['model_resolution']
             grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
             
-            logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
-            logger.info(f"🎯 Using {cell_size_m}m resolution for custom calibration")
+                    logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²) at {cell_size_m}m resolution")
             
             return (grid_width, grid_height)
             
@@ -394,9 +397,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                 logger.warning(f"⚠️  Could not set LiDAR bounds from Day 4: {e}")
                 logger.warning(f"⚠️  LiDAR will process full extent (may use more memory)")
             
-            logger.info(f"🌱 LiDAR/PAD fuel data enabled with bounds subsetting for memory efficiency")
-            logger.info(f"🌱 LiDAR directory: {calib_config.base_config.lidar_data_dir}")
-            logger.info(f"🌱 Tile size: {calib_config.base_config.tile_size} cells")
+            logger.info(f"🌱 LiDAR/PAD fuel data enabled: {calib_config.base_config.lidar_data_dir} (subset to {width_m/1000:.1f}km × {height_m/1000:.1f}km)")
         
         # CRITICAL FIX: Override base_config max_steps to use 100 instead of 300
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
@@ -405,9 +406,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         
         # CRITICAL FIX: Enable shared terrain for memory efficiency (fixed timeout issues)
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
-            # Shared terrain is now working properly with timeout fixes
-            # Don't disable it - it saves significant memory
-            logger.info(f"🔧 Shared terrain enabled for memory efficiency")
+            # Apply shared terrain configuration from custom config
+            calib_config.base_config.shared_terrain_info = self.custom_config['shared_terrain_info']
+            logger.info(f"🔧 Shared terrain enabled: {calib_config.base_config.shared_terrain_info}")
         
         # Override with custom settings
         calib_config.grid_search_points = self.custom_config['grid_search_points']
@@ -417,11 +418,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         calib_config.max_workers = self.workers
         
         # DEBUG: Log the calibration parameters to verify they're correct
-        logger.info(f"🔍 DEBUG: Calibration parameters: {calib_config.calibration_parameters}")
-        logger.info(f"🔍 DEBUG: Grid search points: {calib_config.grid_search_points}")
-        logger.info(f"🔍 DEBUG: Expected combinations: {calib_config.grid_search_points ** len(calib_config.calibration_parameters)}")
-        
-        logger.info(f"🔍 DEBUG: About to return calibration config")
+        # Configuration validated successfully
         return calib_config
 
 def create_quiet_progress_callback(total_combinations: int, quiet_mode: bool = False):
@@ -608,13 +605,13 @@ Examples:
             print(f"      Day {fp.day_number} ({fp.date}): {fp.area_hectares:.1f} ha")
         
         # Step 7: Create calibration configuration
-        logger.info(f"🔍 DEBUG: About to create calibration config")
+        # Creating calibration configuration
         calib_config = calibrator.create_calibration_config(
             training_data=training_data,
             top_5_parameters=args.parameters,
             grid_size=grid_size
         )
-        logger.info(f"🔍 DEBUG: Calibration config created successfully")
+        # Calibration configuration created successfully
         
         # PRODUCTION OVERRIDE: Apply production settings
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
@@ -629,21 +626,13 @@ Examples:
             
         # PRODUCTION: Override grid search parameters for multi-worker approach
         calib_config.grid_search_points = GRID_POINTS
-        calib_config.max_workers = min(MAX_WORKERS, 4)  # Limit to 4 total workers
+        calib_config.max_workers = args.workers  # Use command line workers argument
         
         # NEW: Configure workers per simulation for heavy workloads
         if hasattr(calib_config, 'workers_per_simulation'):
             calib_config.workers_per_simulation = CUSTOM_CONFIG['workers_per_simulation']
         
-        logger.info(f"🚀 PRODUCTION MODE: Applied production settings")
-        logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
-        logger.info(f"   Steps: {CUSTOM_CONFIG['max_steps']}")
-        logger.info(f"   Layers: {CUSTOM_CONFIG['num_layers']}")
-        logger.info(f"   LiDAR: {CUSTOM_CONFIG['use_lidar_data']}")
-        logger.info(f"   Shared terrain: {CUSTOM_CONFIG['shared_terrain_info']}")
-        logger.info(f"   Workers: {MAX_WORKERS}")
-        logger.info(f"   Workers per sim: {CUSTOM_CONFIG['workers_per_simulation']}")
-        logger.info(f"   Grid points: {GRID_POINTS}")
+        # Production settings applied successfully
         
         # Step 8: Final confirmation and execution
         print(f"\n🚀 READY TO EXECUTE CUSTOM CALIBRATION")
@@ -693,7 +682,7 @@ Examples:
         )
         
         # Run calibration
-        logger.info(f"🔍 DEBUG: About to run calibration")
+        # Starting calibration execution
         results = calibrator.run_calibration(
             calibration_config=calib_config,
             test_data=validation_data,

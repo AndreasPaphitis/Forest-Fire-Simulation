@@ -509,11 +509,11 @@ class FireSimulationEngine:
             
             # Simple progress indicator
             if (step + 1) % 5 == 0:
-                print(f"🔥 Step {step + 1}/{sim_max_steps} - Active: {len(self.active_cells)}, Burned: {len(self.burned_cells)}")
+                # Step progress suppressed for calibration runs
             
             # Progress updates every 10 steps or when fire size changes significantly
             if (step + 1) % 10 == 0 or len(self.active_cells) == 0:
-                logger.info(f"📊 Step {step + 1}/{sim_max_steps}: {len(self.active_cells)} active cells, {len(self.burned_cells)} burned, {step_time:.2f}s")
+                # Step statistics suppressed for calibration runs
             
             # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
@@ -594,10 +594,7 @@ class FireSimulationEngine:
                 else:
                     spread_rate = len(self.active_cells)
                 
-                logger.info(f"📊 STEP {step+1}/{sim_max_steps}")
-                logger.info(f"   Active: {len(self.active_cells)} cells | Burned: {len(self.burned_cells)} cells")
-                logger.info(f"   Total Affected: {total_affected:,} cells ({affected_percentage:.3f}% of grid)")
-                logger.info(f"   Spread Rate: {spread_rate:.2f} active cells/step")
+                        # Detailed step statistics suppressed for calibration runs
         
         # Update final statistics
         stats['steps'] = self.current_step + 1

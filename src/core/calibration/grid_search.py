@@ -1090,8 +1090,7 @@ class GridSearchCalibrator:
         self.parameter_space = self._create_parameter_space()
         
         # CRITICAL FIX: Ensure parameter space is not cached/shared between instances
-        logger.info(f"🔍 DEBUG: Parameter space created with ID: {id(self.parameter_space)}")
-        logger.info(f"🔍 DEBUG: Parameter space content: {self.parameter_space}")
+        # Parameter space debug info suppressed
         
         # CRITICAL FIX: Validate parameter space is not empty
         if not self.parameter_space:
@@ -1126,10 +1125,7 @@ class GridSearchCalibrator:
         """Create the parameter space grid."""
         parameter_space = {}
         
-        logger.info(f"🔍 DEBUG: Creating parameter space")
-        logger.info(f"🔍 DEBUG: Calibration parameter names: {self.config.get_calibration_parameter_names()}")
-        logger.info(f"🔍 DEBUG: Parameter bounds keys: {list(self.parameter_bounds.keys())}")
-        logger.info(f"🔍 DEBUG: Grid search points: {self.config.grid_search_points}")
+        # Parameter space creation debug info suppressed
         
         for param_name in self.config.get_calibration_parameter_names():
             if param_name not in self.parameter_bounds:
@@ -1142,11 +1138,9 @@ class GridSearchCalibrator:
             grid_points = bounds.generate_grid_points(self.config.grid_search_points)
             parameter_space[param_name] = grid_points
             
-            logger.info(f"🔍 DEBUG: Parameter {param_name}: {len(grid_points)} points from "
-                        f"{min(grid_points):.3f} to {max(grid_points):.3f}")
-            logger.info(f"🔍 DEBUG: Grid points for {param_name}: {grid_points}")
+            # Parameter grid points debug info suppressed
         
-        logger.info(f"🔍 DEBUG: Final parameter space: {parameter_space}")
+        # Final parameter space debug info suppressed
         
         # CRITICAL VALIDATION: Ensure parameter space is not empty and has multiple values per parameter
         if not parameter_space:
@@ -1210,13 +1204,11 @@ class GridSearchCalibrator:
         param_names = list(self.parameter_space.keys())
         param_value_lists = [self.parameter_space[name] for name in param_names]
         
-        logger.info(f"🔍 DEBUG: Generating parameter combinations")
-        logger.info(f"🔍 DEBUG: Parameter names: {param_names}")
-        logger.info(f"🔍 DEBUG: Parameter value lists: {param_value_lists}")
+        # Parameter combination generation debug info suppressed
         
         # CRITICAL FIX: Create a fresh list of combinations to avoid iterator reuse issues
         all_combinations = list(itertools.product(*param_value_lists))
-        logger.info(f"🔍 DEBUG: Created {len(all_combinations)} raw combinations")
+        # Raw combinations debug info suppressed
         
         # CRITICAL VALIDATION: Ensure we have the expected number of combinations
         expected_combinations = 1
@@ -1244,7 +1236,7 @@ class GridSearchCalibrator:
             
             combination_count += 1
             if combination_count <= 3:  # Log first 3 combinations
-                logger.info(f"🔍 DEBUG: Combination {combination_count}: {param_dict}")
+                # Individual combination debug info suppressed
                 first_combinations.append(param_dict)
             
             yield param_dict
@@ -1260,7 +1252,7 @@ class GridSearchCalibrator:
             else:
                 logger.info(f"✅ First two combinations are different: {first_combinations[0]} vs {first_combinations[1]}")
         
-        logger.info(f"🔍 DEBUG: Generated {combination_count} total combinations")
+        # Total combinations debug info suppressed
     
     def _evaluate_single_combination(self, parameter_values: Dict[str, float],
                                    target_data: Optional[Dict[str, Any]] = None) -> GridSearchResult:

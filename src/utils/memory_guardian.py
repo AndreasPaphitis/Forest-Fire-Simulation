@@ -270,8 +270,7 @@ class MemoryGuardian:
                     
                     # Log periodic status
                     if status['pressure_level'] != "normal" or time.time() % 300 < interval_seconds:  # Every 5 min
-                        logger.info(f"📊 Memory: {status['current_memory_gb']:.2f}GB "
-                                   f"({status['pressure_level']}, {status['trend']})")
+                        # Memory monitoring suppressed for calibration runs
                     
                 except Exception as e:
                     logger.error(f"❌ Memory monitoring error: {e}")

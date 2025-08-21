@@ -695,15 +695,15 @@ class BaseForestModel(ABC):
                 elev_min = np.min(self.terrain_elevation)
                 elev_max = np.max(self.terrain_elevation)
                 elev_range = elev_max - elev_min
-                logger.info(f"📊 Terrain elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+                # Terrain statistics suppressed for calibration runs
             
             if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
-                barranco_count = np.sum(self.barranco_mask)
-                logger.info(f"🏞️ Barranco cells: {barranco_count}")
+                # Barranco statistics suppressed for calibration runs
+                pass
             
             if hasattr(self, 'wind_channeling_mask') and self.wind_channeling_mask is not None:
-                wind_channeling_count = np.sum(self.wind_channeling_mask)
-                logger.info(f"💨 Wind channeling cells: {wind_channeling_count}")
+                # Wind channeling statistics suppressed for calibration runs
+                pass
             
             # CRITICAL FIX: Mark terrain data as loaded to prevent repeated loading
             self._terrain_data_loaded = True
