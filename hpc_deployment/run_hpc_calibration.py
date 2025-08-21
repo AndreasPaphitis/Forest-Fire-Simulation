@@ -32,7 +32,7 @@ HPC_CONFIG = {
 HPC_PATHS = {
     'project_root': '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation',
     'lidar_data': '/gpfs/home1/apaphitis/data/LiDAR/Analysis_files/Processed/PAD_Results',
-    'emsr_data': '/gpfs/home1/apaphitis/data/EMSR_Delineations',
+    'emsr_data': '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations',
     'preprocessed_terrain': '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain',
     'output_results': '/gpfs/home1/apaphitis/results/tenerife_calibration'
 }
@@ -162,9 +162,7 @@ def create_hpc_command():
     --memory {HPC_CONFIG['memory_parameter']} \\
     --workers {HPC_CONFIG['workers']} \\
     --grid-points {HPC_CONFIG['grid_points']} \\
-    --emsr-dir "{HPC_PATHS['emsr_data']}" \\
-    --output-dir "{HPC_PATHS['output_results']}" \\
-    --experiment-name "tenerife_hpc_64cpu_{datetime.now().strftime('%Y%m%d_%H%M%S')}" """
+    --emsr-dir "{HPC_PATHS['emsr_data']}" """
     
     print("Recommended HPC command:")
     print(command)
@@ -221,9 +219,7 @@ def main():
             '--memory', str(HPC_CONFIG['memory_parameter']),
             '--workers', str(HPC_CONFIG['workers']),
             '--grid-points', str(HPC_CONFIG['grid_points']),
-            '--emsr-dir', HPC_PATHS['emsr_data'],
-            '--output-dir', HPC_PATHS['output_results'],
-            '--experiment-name', f"tenerife_hpc_64cpu_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            '--emsr-dir', HPC_PATHS['emsr_data']
         ]
         
         run_calibration()
