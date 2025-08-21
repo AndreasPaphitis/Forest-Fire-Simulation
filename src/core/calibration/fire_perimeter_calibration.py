@@ -803,15 +803,15 @@ class TenerifeFirePerimeterCalibrator:
         base_config = ModelConfig(
             # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
             grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
-            num_layers=11,             # Match available terrain layers (was 25)
-            max_steps=300,             # Extended for comprehensive fire progression
-            model_resolution=10.0,     # 10m resolution for faster processing
+            num_layers=25,             # Production: 25 layers for full simulation
+            max_steps=100,             # Production: 100 timesteps for efficiency
+            model_resolution=20.0,     # Production: 20m resolution for efficiency
             
             # CRITICAL FIX: FORCE MEMORY OPTIMIZED MODEL TYPE
             simulation_type="memory_optimized",  # Force sparse storage and memory optimizations
             
             # MAXIMUM MEMORY OPTIMIZATION
-            memory_optimization_level=2,  # Maximum valid optimization level
+            memory_optimization_level=3,  # Production: Maximum optimization level
             use_disk_storage=True,        # Store history on disk
             use_differential_history=True, # Only store changes
             use_sparse_storage=True,      # Sparse arrays for fuel/state
@@ -888,7 +888,7 @@ class TenerifeFirePerimeterCalibrator:
             parallel_execution=True,
             max_workers=self.workers,  # Use CLI-specified worker count
             memory_limit_gb=self.memory_gb * 0.9,  # Leave 10% for system
-            simulation_timeout_minutes=360.0,      # 6 hours per simulation (extended for 300 timesteps)
+            simulation_timeout_minutes=45.0,       # Production: 45 minutes per simulation (100 timesteps)
             
             # SPATIAL SIMILARITY WEIGHTS
             jaccard_weight=0.4,
