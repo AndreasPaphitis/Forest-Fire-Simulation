@@ -185,6 +185,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         # Set max_steps for production timesteps
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
+        # Store EMSR directory for LiDAR bounds calculation
+        self.emsr_dir = kwargs.get('base_directory', 'EMSR Delineations')
+        
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
         logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
         logger.info(f"   Steps: {CUSTOM_CONFIG['max_steps']}")
@@ -345,13 +348,14 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             
             # CRITICAL: Set geographic bounds for LiDAR subsetting
             # Calculate Day 4 fire bounds to limit LiDAR processing to actual fire area
+            width_m = height_m = None  # Initialize variables
             try:
                 from src.core.calibration.calibration_utils import calculate_unified_grid_size_from_emsr
                 import geopandas as gpd
                 
                 # Find Day 4 EMSR file to get the fire bounds
                 day4_file = None
-                for day_dir in sorted(Path("EMSR Delineations").iterdir()):
+                for day_dir in sorted(Path(self.emsr_dir).iterdir()):
                     if not day_dir.is_dir():
                         continue
                     if "Day 4" in day_dir.name or "26_08_23" in day_dir.name:
@@ -397,7 +401,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                 logger.warning(f"⚠️  Could not set LiDAR bounds from Day 4: {e}")
                 logger.warning(f"⚠️  LiDAR will process full extent (may use more memory)")
             
-            logger.info(f"🌱 LiDAR/PAD fuel data enabled: {calib_config.base_config.lidar_data_dir} (subset to {width_m/1000:.1f}km × {height_m/1000:.1f}km)")
+            # Log LiDAR status with proper bounds check
+            if width_m is not None and height_m is not None:
+                logger.info(f"🌱 LiDAR/PAD fuel data enabled: {calib_config.base_config.lidar_data_dir} (subset to {width_m/1000:.1f}km × {height_m/1000:.1f}km)")
+            else:
+                logger.info(f"🌱 LiDAR/PAD fuel data enabled: {calib_config.base_config.lidar_data_dir} (full extent)")
         
         # CRITICAL FIX: Override base_config max_steps to use 100 instead of 300
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
