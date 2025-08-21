@@ -781,7 +781,7 @@ class TenerifeFirePerimeterCalibrator:
         print(f"📊 Estimates: ~{time_per_sim_minutes:.1f}min/sim, ~{peak_memory_gb:.1f}GB peak, ~{total_time_hours:.1f}h total")
         
         if peak_memory_gb > self.memory_gb * 0.9:
-            # Memory warning removed - system configured for 64GB
+            pass  # Memory warning removed - system configured for 64GB
         
         # Validate and get available data paths
         path_config = self._validate_paths()
@@ -1184,7 +1184,7 @@ class TenerifeFirePerimeterCalibrator:
             print(f"✅ Added shared terrain info to calibration configuration")
             print(f"📊 Memory optimization: ~0.76 GB terrain data shared across {self.workers} workers")
         else:
-                    # Individual terrain loading warning removed - shared terrain enabled
+            pass  # Individual terrain loading warning removed - shared terrain enabled
             
         # CRITICAL FIX: Ensure memory optimized model type is set
         if hasattr(calibration_config.base_config, 'simulation_type'):

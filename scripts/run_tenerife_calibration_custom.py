@@ -309,7 +309,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             cell_size_m = self.custom_config['model_resolution']
             grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
             
-                    logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²) at {cell_size_m}m resolution")
+            logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²) at {cell_size_m}m resolution")
             
             return (grid_width, grid_height)
             
