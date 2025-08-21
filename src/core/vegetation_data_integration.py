@@ -615,21 +615,22 @@ class TiledLiDARIntegration:
             return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
         
         # Use available layers up to the requested num_layers
+        # Note: Layer 0 is excluded, so we start from layer 1
         max_available_layer = max(available_layers.keys())
-        actual_layers_to_use = min(num_layers, max_available_layer + 1)
+        actual_layers_to_use = min(num_layers, max_available_layer)
         
-        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {max_available_layer + 1})")
+        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {max_available_layer}, excluding layer 0)")
         
-        # Create pad_files_dict with available layers
+        # Create pad_files_dict with available layers (starting from layer 1)
         pad_files_dict = {}
-        for layer in range(actual_layers_to_use):
+        for layer in range(1, actual_layers_to_use + 1):  # Start from layer 1, exclude layer 0
             if layer in available_layers:
-                pad_files_dict[layer] = available_layers[layer]
-                logger.info(f"Layer {layer} (height {layer * 2}m): {len(available_layers[layer])} files")
+                pad_files_dict[layer - 1] = available_layers[layer]  # Map layer 1->0, layer 2->1, etc.
+                logger.info(f"Layer {layer - 1} (height {layer * 2}m): {len(available_layers[layer])} files")
             else:
                 logger.warning(f"No PAD files found for layer {layer} (height {layer * 2}m)")
                 # Create empty layer for missing data
-                pad_files_dict[layer] = []
+                pad_files_dict[layer - 1] = []
             
         # Use the new resampling method with robust error handling
         model_grid_size = (x_end - x_start, y_end - y_start)

@@ -1353,10 +1353,11 @@ class LiDARDataManager:
     def _find_layer_files(self, base_dir: Union[str, Path], layer: int) -> List[Path]:
         """
         Find PAD files for a specific layer in the given directory and its subdirectories.
+        Note: Layer 0 is excluded as it's usually noise.
         
         Args:
             base_dir: Base directory to search
-            layer: Layer number (height in meters: 0, 2, 4, 6, ..., 24)
+            layer: Layer number (0-based, but layer 0 is excluded, so 0=2m, 1=4m, 2=6m, etc.)
             
         Returns:
             List of paths to PAD files for the specified layer
@@ -1375,8 +1376,8 @@ class LiDARDataManager:
             return []
         
         # Pattern to match PAD files: *_pad_{height}.0m.tif
-        # Height is in meters (0, 2, 4, 6, ..., 24)
-        height_meters = layer * 2  # Convert layer index to height in meters
+        # Layer 0 is excluded, so layer 0 = 2m, layer 1 = 4m, layer 2 = 6m, etc.
+        height_meters = (layer + 1) * 2  # Convert layer index to height in meters (skip 0m)
         pattern = f"*_pad_{height_meters}.0m.tif"
         
         # Find files matching the pattern
@@ -1389,32 +1390,34 @@ class LiDARDataManager:
     def get_max_available_layers(self, base_dir: Union[str, Path]) -> int:
         """
         Get the maximum number of available layers in the PAD data.
+        Excludes layer 0 (0m height) as it's usually noise.
         
         Args:
             base_dir: Base directory containing pad_rasters folder
             
         Returns:
-            Maximum layer index + 1 (total number of layers)
+            Maximum layer index (total number of layers, excluding layer 0)
         """
         available_layers = self._detect_available_layers(base_dir)
         if not available_layers:
             return 0
         
         max_layer = max(available_layers.keys())
-        total_layers = max_layer + 1  # Layer indices are 0-based
+        total_layers = max_layer  # Layer indices are 0-based, but we exclude layer 0
         
-        logger.info(f"Maximum available layers: {total_layers} (layers 0 to {max_layer})")
+        logger.info(f"Maximum available layers: {total_layers} (layers 1 to {max_layer}, excluding layer 0)")
         return total_layers
     
     def _detect_available_layers(self, base_dir: Union[str, Path]) -> Dict[int, List[Path]]:
         """
         Detect all available PAD layers and their files across all datasets.
+        Excludes layer 0 (0m height) as it's usually noise.
         
         Args:
             base_dir: Base directory containing pad_rasters folder
             
         Returns:
-            Dictionary mapping layer indices to lists of file paths
+            Dictionary mapping layer indices to lists of file paths (excluding layer 0)
         """
         base_path = Path(base_dir)
         pad_rasters_dir = base_path / "pad_rasters"
@@ -1440,6 +1443,11 @@ class LiDARDataManager:
                     height_meters = int(match.group(1))
                     layer_index = height_meters // 2  # Convert height to layer index (0m->0, 2m->1, 4m->2, etc.)
                     
+                    # Exclude layer 0 (0m height) as it's usually noise
+                    if layer_index == 0:
+                        logger.info(f"Excluding layer 0 (0m height) from {filename} - typically noise")
+                        continue
+                    
                     if layer_index not in layer_files:
                         layer_files[layer_index] = []
                     layer_files[layer_index].append(file_path)
@@ -1448,15 +1456,15 @@ class LiDARDataManager:
                 logger.warning(f"Could not parse height from filename {filename}: {e}")
                 continue
         
-        # Log the detected layers
+        # Log the detected layers (excluding layer 0)
         if layer_files:
             max_layer = max(layer_files.keys())
-            logger.info(f"Detected {len(layer_files)} layers (0 to {max_layer}) with {sum(len(files) for files in layer_files.values())} total files")
+            logger.info(f"Detected {len(layer_files)} layers (1 to {max_layer}, excluding layer 0) with {sum(len(files) for files in layer_files.values())} total files")
             for layer_idx in sorted(layer_files.keys()):
                 height_meters = layer_idx * 2
                 logger.info(f"  Layer {layer_idx} (height {height_meters}m): {len(layer_files[layer_idx])} files")
         else:
-            logger.warning("No PAD files detected")
+            logger.warning("No PAD files detected (excluding layer 0)")
         
         return layer_files
 
