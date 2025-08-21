@@ -215,8 +215,8 @@ class BaseForestModel(ABC):
             self.store_full_states = getattr(self.config, 'store_full_states', kwargs.get('store_full_states', False))
             self.debug = getattr(self.config, 'debug', kwargs.get('debug', False))
             self.geo_bounds = getattr(self.config, 'geo_bounds', kwargs.get('geo_bounds', None))
-        # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
-        self.fire_area_bounds = self.geo_bounds
+            # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
+            self.fire_area_bounds = self.geo_bounds
         else:
             final_grid_size = grid_size
             self.num_layers = num_layers
@@ -228,8 +228,8 @@ class BaseForestModel(ABC):
             self.store_full_states = kwargs.get('store_full_states', False)
             self.debug = kwargs.get('debug', False)
             self.geo_bounds = kwargs.get('geo_bounds', None)
-        # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
-        self.fire_area_bounds = self.geo_bounds
+            # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
+            self.fire_area_bounds = self.geo_bounds
 
         # Handle grid size as tuple or single value
         if isinstance(final_grid_size, tuple):

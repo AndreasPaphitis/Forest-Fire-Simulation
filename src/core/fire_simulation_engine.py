@@ -509,11 +509,11 @@ class FireSimulationEngine:
             
             # Simple progress indicator
             if (step + 1) % 5 == 0:
-                # Step progress suppressed for calibration runs
+                pass  # Step progress suppressed for calibration runs
             
             # Progress updates every 10 steps or when fire size changes significantly
             if (step + 1) % 10 == 0 or len(self.active_cells) == 0:
-                # Step statistics suppressed for calibration runs
+                pass  # Step statistics suppressed for calibration runs
             
             # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
@@ -594,7 +594,7 @@ class FireSimulationEngine:
                 else:
                     spread_rate = len(self.active_cells)
                 
-                        # Detailed step statistics suppressed for calibration runs
+                pass  # Detailed step statistics suppressed for calibration runs
         
         # Update final statistics
         stats['steps'] = self.current_step + 1
