@@ -345,7 +345,7 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
             # Enable LiDAR data processing
             calib_config.base_config.use_lidar_data = True
-            calib_config.base_config.lidar_data_dir = r"C:\Users\user\Desktop\UvA\YEAR 2\Thesis\LiDAR\Analysis files\Processed\PAD Results"
+            calib_config.base_config.lidar_data_dir = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results"
             calib_config.base_config.auto_size_from_lidar = False  # Use our Day 4 grid size
             
             # Set LiDAR processing parameters for memory efficiency

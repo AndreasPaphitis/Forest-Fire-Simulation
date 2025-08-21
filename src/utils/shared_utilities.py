@@ -386,14 +386,14 @@ def optimize_gdal_io(cache_size_mb: int = 256, thread_count: Optional[int] = Non
         config = get_global_config() # Get the global config instance
 
         # Use parameters from ModelConfig, allowing overrides via function arguments
-        effective_cache_size_mb = cache_size_mb if cache_size_mb is not None else config.gdal_cache_mb
-        effective_thread_count = thread_count if thread_count is not None else config.gdal_thread_count
+        effective_cache_size_mb = cache_size_mb if cache_size_mb is not None else (getattr(config, 'gdal_cache_mb', 256) if config else 256)
+        effective_thread_count = thread_count if thread_count is not None else (getattr(config, 'gdal_thread_count', 4) if config else 4)
         effective_compression_options = compression_options # Keep explicit override if passed
-        hpc_mode_active = hpc_mode if hpc_mode is not None else config.hpc_mode_gdal # Check explicit then config for hpc_mode_gdal
+        hpc_mode_active = hpc_mode if hpc_mode is not None else (getattr(config, 'hpc_mode_gdal', False) if config else False) # Check explicit then config for hpc_mode_gdal
 
         if hpc_mode_active: # If HPC mode is active (either by param or config.hpc_mode_gdal)
             # Override with HPC specific values from config if not explicitly passed to function
-            effective_cache_size_mb = cache_size_mb if cache_size_mb is not None else config.hpc_io_block_size # Assuming hpc_io_block_size is for cache in HPC
+            effective_cache_size_mb = cache_size_mb if cache_size_mb is not None else (getattr(config, 'hpc_io_block_size', 512) if config else 512) # Assuming hpc_io_block_size is for cache in HPC
             if effective_thread_count is None:
                 effective_thread_count = min(16, os.cpu_count() if hasattr(os, 'cpu_count') else 8) # Default HPC threads
             if effective_compression_options is None:
@@ -439,7 +439,7 @@ def monitor_memory_usage(memory_limit_gb: Optional[float] = None, warning_thresh
         
         config = get_global_config() # Get the global config instance
         # Use memory_limit_per_node from ModelConfig, allow override via function argument
-        limit_gb = memory_limit_gb if memory_limit_gb is not None else config.hpc_memory_limit_per_node
+        limit_gb = memory_limit_gb if memory_limit_gb is not None else (getattr(config, 'hpc_memory_limit_per_node', 64) if config else 64)
         
         if memory_usage_gb > limit_gb * warning_threshold:
             logger.warning(f"Memory usage: {memory_usage_gb:.2f} GB (approaching limit of {limit_gb:.2f} GB at {warning_threshold*100}% threshold).")
