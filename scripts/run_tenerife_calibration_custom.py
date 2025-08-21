@@ -185,8 +185,8 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         # Set max_steps for production timesteps
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
-        # Store EMSR directory for LiDAR bounds calculation
-        self.emsr_dir = kwargs.get('base_directory', 'EMSR Delineations')
+        # Store EMSR directory for LiDAR bounds calculation (will be set later)
+        self.emsr_dir = 'EMSR Delineations'
         
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
         logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
@@ -552,13 +552,23 @@ Examples:
         
         calibrator = CustomTenerifeCalibrator(**calibrator_kwargs)
         
+        # Set EMSR directory for the calibrator
+        calibrator.emsr_dir = args.emsr_dir
+        calibrator.base_directory = Path(args.emsr_dir)  # Also set base_directory for parent class methods
+        
         # Step 5: Create EMSR target data
         print(f"\n🔥 CREATING EMSR TARGET DATA")
         print("=" * 50)
         
-        # Paths to EMSR files
-        day1_path = f"{args.emsr_dir}/Day 1 (18_08_23)/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1.shp"
-        day2_path = f"{args.emsr_dir}/Day 2 (21_08_23)/EMSR685_AOI01_DEL_MONIT01_observedEventA_v1.shp"
+        # Paths to EMSR files (prioritize JSON over SHP)
+        day1_json = f"{args.emsr_dir}/Day 1 (18_08_23)/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1.json"
+        day1_shp = f"{args.emsr_dir}/Day 1 (18_08_23)/EMSR685_AOI01_DEL_PRODUCT_observedEventA_v1.shp"
+        day2_json = f"{args.emsr_dir}/Day 2 (21_08_23)/EMSR685_AOI01_DEL_MONIT01_observedEventA_v1.json"
+        day2_shp = f"{args.emsr_dir}/Day 2 (21_08_23)/EMSR685_AOI01_DEL_MONIT01_observedEventA_v1.shp"
+        
+        # Use JSON if available, fallback to SHP
+        day1_path = day1_json if os.path.exists(day1_json) else day1_shp
+        day2_path = day2_json if os.path.exists(day2_json) else day2_shp
         
         if not os.path.exists(day1_path):
             raise FileNotFoundError(f"Day 1 EMSR file not found: {day1_path}")
@@ -580,6 +590,8 @@ Examples:
                 grid_search_points=args.grid_points,
                 experiment_name="temp_grid_calc"
             )
+            temp_calibrator.emsr_dir = args.emsr_dir  # Set EMSR directory
+            temp_calibrator.base_directory = Path(args.emsr_dir)  # Also set base_directory
             grid_size = temp_calibrator._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
             print(f"🎯 Using Day 4 grid size: {grid_size[0]} × {grid_size[1]} (matches calibrator default)")
         
