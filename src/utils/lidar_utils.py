@@ -148,11 +148,25 @@ class LiDARDataManager:
         self.base_dir = base_dir if base_dir is not None else \
                         (getattr(self.config, 'lidar_data_dir', None) if self.config else None)
         
-        self.resolution = resolution if resolution is not None else \
-                           (getattr(self.config, 'model_resolution', global_conf.model_resolution) if self.config else global_conf.model_resolution)
+        # Handle resolution with fallback defaults
+        if resolution is not None:
+            self.resolution = resolution
+        elif self.config and hasattr(self.config, 'model_resolution'):
+            self.resolution = self.config.model_resolution
+        elif global_conf and hasattr(global_conf, 'model_resolution'):
+            self.resolution = global_conf.model_resolution
+        else:
+            self.resolution = 20.0  # Default fallback
         
-        self.layer_height = layer_height if layer_height is not None else \
-                            (getattr(self.config, 'layer_height', global_conf.layer_height) if self.config else global_conf.layer_height)
+        # Handle layer_height with fallback defaults
+        if layer_height is not None:
+            self.layer_height = layer_height
+        elif self.config and hasattr(self.config, 'layer_height'):
+            self.layer_height = self.config.layer_height
+        elif global_conf and hasattr(global_conf, 'layer_height'):
+            self.layer_height = global_conf.layer_height
+        else:
+            self.layer_height = 2.0  # Default fallback
         
         logger.info(f"LiDARDataManager initialized. Base_dir: {self.base_dir}, Resolution: {self.resolution}, Layer_height: {self.layer_height}")
         

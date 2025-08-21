@@ -188,6 +188,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         # Store EMSR directory for LiDAR bounds calculation (will be set later)
         self.emsr_dir = '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations'
         
+        # Set LiDAR directory for dynamic layer detection
+        self.lidar_dir = '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results'
+        
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
         logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
         logger.info(f"   Steps: {CUSTOM_CONFIG['max_steps']}")
