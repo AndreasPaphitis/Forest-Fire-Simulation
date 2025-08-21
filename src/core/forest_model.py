@@ -215,6 +215,8 @@ class BaseForestModel(ABC):
             self.store_full_states = getattr(self.config, 'store_full_states', kwargs.get('store_full_states', False))
             self.debug = getattr(self.config, 'debug', kwargs.get('debug', False))
             self.geo_bounds = getattr(self.config, 'geo_bounds', kwargs.get('geo_bounds', None))
+        # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
+        self.fire_area_bounds = self.geo_bounds
         else:
             final_grid_size = grid_size
             self.num_layers = num_layers
@@ -226,6 +228,8 @@ class BaseForestModel(ABC):
             self.store_full_states = kwargs.get('store_full_states', False)
             self.debug = kwargs.get('debug', False)
             self.geo_bounds = kwargs.get('geo_bounds', None)
+        # CRITICAL FIX: Set fire_area_bounds from geo_bounds for proper terrain subsetting
+        self.fire_area_bounds = self.geo_bounds
 
         # Handle grid size as tuple or single value
         if isinstance(final_grid_size, tuple):
@@ -645,6 +649,19 @@ class BaseForestModel(ABC):
                                             
                                             # Extract the correct geographic region
                                             terrain_data = terrain_data[grid_min_y:grid_max_y, grid_min_x:grid_max_x]
+                                            
+                                            # CRITICAL FIX: Resample to simulation resolution
+                                            if terrain_data.shape != (self.width, self.height):
+                                                try:
+                                                    from scipy.ndimage import zoom
+                                                    zoom_factors = (self.height / terrain_data.shape[0], self.width / terrain_data.shape[1])
+                                                    terrain_data = zoom(terrain_data, zoom_factors, order=1)  # Linear interpolation
+                                                    logger.info(f"🎯 Resampled {filename} from {terrain_data.shape} to ({self.height}, {self.width})")
+                                                except Exception as e:
+                                                    logger.warning(f"⚠️  Resampling failed for {filename}: {e}")
+                                                    logger.warning(f"⚠️  Using simple resize - may lose geographic accuracy")
+                                                    # Fallback to simple resize
+                                                    terrain_data = terrain_data[:self.height, :self.width]
                                             
                                             logger.info(f"🎯 Using buffered fire area subset for {filename}: ({grid_min_x}, {grid_min_y}) to ({grid_max_x}, {grid_max_y})")
                                         else:
