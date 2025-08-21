@@ -457,7 +457,8 @@ class TenerifeFirePerimeterCalibrator:
                  workers: int = 60,
                  grid_search_points: int = 3,
                  experiment_name: str = "tenerife_fire_calibration",
-                 grid_size: Optional[Tuple[int, int]] = None):
+                 grid_size: Optional[Tuple[int, int]] = None,
+                 base_directory: Optional[str] = None):
         """
         Initialize Tenerife fire perimeter calibrator.
         
@@ -473,6 +474,7 @@ class TenerifeFirePerimeterCalibrator:
         self.grid_search_points = grid_search_points
         self.experiment_name = experiment_name
         self.grid_size = grid_size
+        self._base_directory_param = base_directory  # Store the parameter
         
         # Validate configuration
         if memory_gb not in [64, 128]:
@@ -504,7 +506,9 @@ class TenerifeFirePerimeterCalibrator:
         logger.info(f"⚡ NumExpr optimization: {numexpr_info}")
         
         # Set up EMSR directory for grid size calculation
-        self.base_directory = self._find_emsr_directory("EMSR Delineations")
+        # Use the base_directory parameter if provided, otherwise use default
+        emsr_dir = self._base_directory_param if self._base_directory_param else "EMSR Delineations"
+        self.base_directory = self._find_emsr_directory(emsr_dir)
         
         print()
     

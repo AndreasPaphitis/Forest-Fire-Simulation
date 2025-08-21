@@ -547,14 +547,14 @@ Examples:
             'memory_gb': args.memory,
             'workers': args.workers,
             'grid_search_points': args.grid_points,
-            'experiment_name': f"tenerife_custom_10m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            'experiment_name': f"tenerife_custom_10m_100t_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            'base_directory': args.emsr_dir  # Pass EMSR directory to parent class
         }
         
         calibrator = CustomTenerifeCalibrator(**calibrator_kwargs)
         
-        # Set EMSR directory for the calibrator
+        # Set EMSR directory for the custom calibrator methods
         calibrator.emsr_dir = args.emsr_dir
-        calibrator.base_directory = Path(args.emsr_dir)  # Also set base_directory for parent class methods
         
         # Step 5: Create EMSR target data
         print(f"\n🔥 CREATING EMSR TARGET DATA")
@@ -588,10 +588,10 @@ Examples:
                 memory_gb=args.memory,
                 workers=args.workers,
                 grid_search_points=args.grid_points,
-                experiment_name="temp_grid_calc"
+                experiment_name="temp_grid_calc",
+                base_directory=args.emsr_dir  # Pass EMSR directory to parent class
             )
-            temp_calibrator.emsr_dir = args.emsr_dir  # Set EMSR directory
-            temp_calibrator.base_directory = Path(args.emsr_dir)  # Also set base_directory
+            temp_calibrator.emsr_dir = args.emsr_dir  # Set EMSR directory for custom methods
             grid_size = temp_calibrator._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
             print(f"🎯 Using Day 4 grid size: {grid_size[0]} × {grid_size[1]} (matches calibrator default)")
         
