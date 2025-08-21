@@ -446,7 +446,11 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
                     calib_config.base_config.num_layers = 11
             else:
                 # Use configured layer count
-                calib_config.base_config.num_layers = self.custom_config['num_layers']
+                num_layers = self.custom_config['num_layers']
+                if num_layers is None:
+                    # Fallback to default if None
+                    num_layers = 25
+                calib_config.base_config.num_layers = num_layers
                 logger.info(f"🔧 Using configured layer count: {calib_config.base_config.num_layers}")
         
         # Override with custom settings
