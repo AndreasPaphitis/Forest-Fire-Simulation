@@ -1383,21 +1383,16 @@ class LiDARDataManager:
             logger.warning(f"Base directory does not exist: {base_path}")
             return []
         
-        # Look for pad_rasters subdirectory
-        pad_rasters_dir = base_path / "pad_rasters"
-        if not pad_rasters_dir.exists():
-            logger.warning(f"pad_rasters directory does not exist: {pad_rasters_dir}")
-            return []
-        
+        # Look for PAD files directly in the base directory (not in a subdirectory)
         # Pattern to match PAD files: *_pad_{height}.0m.tif
         # Layer 0 is excluded, so layer 0 = 2m, layer 1 = 4m, layer 2 = 6m, etc.
         height_meters = (layer + 1) * 2  # Convert layer index to height in meters (skip 0m)
         pattern = f"*_pad_{height_meters}.0m.tif"
         
-        # Find files matching the pattern
-        layer_files = list(pad_rasters_dir.glob(pattern))
+        # Find files matching the pattern directly in base directory
+        layer_files = list(base_path.glob(pattern))
         
-        logger.info(f"Found {len(layer_files)} files for layer {layer} (height {height_meters}m) in {pad_rasters_dir}")
+        logger.info(f"Found {len(layer_files)} files for layer {layer} (height {height_meters}m) in {base_path}")
         
         return layer_files
     
@@ -1434,17 +1429,16 @@ class LiDARDataManager:
             Dictionary mapping layer indices to lists of file paths (excluding layer 0)
         """
         base_path = Path(base_dir)
-        pad_rasters_dir = base_path / "pad_rasters"
         
-        if not pad_rasters_dir.exists():
-            logger.warning(f"pad_rasters directory does not exist: {pad_rasters_dir}")
+        if not base_path.exists():
+            logger.warning(f"Base directory does not exist: {base_path}")
             return {}
         
         # Find all PAD files and group by layer
         layer_files = {}
         
         # Pattern to match all PAD files: *_pad_*.0m.tif
-        all_pad_files = list(pad_rasters_dir.glob("*_pad_*.0m.tif"))
+        all_pad_files = list(base_path.glob("*_pad_*.0m.tif"))
         
         for file_path in all_pad_files:
             # Extract height from filename: *_pad_{height}.0m.tif
