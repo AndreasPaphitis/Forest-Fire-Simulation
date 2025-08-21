@@ -760,15 +760,15 @@ class TenerifeFirePerimeterCalibrator:
             max_layers = lidar_manager.get_max_available_layers(self.lidar_dir)
             
             if max_layers == 0:
-                logger.warning("No PAD layers detected, using default of 11 layers")
-                return 11
+                logger.warning("No PAD layers detected, using default of 25 layers")
+                return 25
             
             logger.info(f"Detected {max_layers} available PAD layers in {self.lidar_dir}")
             return max_layers
             
         except Exception as e:
-            logger.warning(f"Failed to detect PAD layers: {e}, using default of 11 layers")
-            return 11
+            logger.warning(f"Failed to detect PAD layers: {e}, using default of 25 layers")
+            return 25
     
     def create_calibration_config(self, 
                                   training_data: List[FirePerimeterData],

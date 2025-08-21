@@ -186,10 +186,10 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         self.max_steps = CUSTOM_CONFIG['max_steps']
         
         # Store EMSR directory for LiDAR bounds calculation (will be set later)
-        self.emsr_dir = '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations'
+        self.emsr_dir = 'EMSR Delineations'
         
         # Set LiDAR directory for dynamic layer detection
-        self.lidar_dir = '/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results'
+        self.lidar_dir = 'PAD Results'
         
         logger.info(f"🚀 PRODUCTION CustomTenerifeCalibrator initialized")
         logger.info(f"   Resolution: {CUSTOM_CONFIG['model_resolution']}m")
@@ -343,9 +343,9 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
         
         # CRITICAL FIX: Enable LiDAR/PAD data with bounds subsetting
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
-            # Enable LiDAR data processing
-            calib_config.base_config.use_lidar_data = True
-            calib_config.base_config.lidar_data_dir = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/PAD Results"
+            # Enable LiDAR data processing (disabled for local testing)
+            calib_config.base_config.use_lidar_data = False
+            calib_config.base_config.lidar_data_dir = "PAD Results"
             calib_config.base_config.auto_size_from_lidar = False  # Use our Day 4 grid size
             
             # Set LiDAR processing parameters for memory efficiency
@@ -506,7 +506,7 @@ Examples:
     
     # Data configuration
     parser.add_argument('--emsr-dir', type=str, 
-                       default="/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/EMSR Delineations",
+                       default="EMSR Delineations",
                        help='Directory containing EMSR fire perimeter data')
     parser.add_argument('--training-days', nargs='+', type=int, default=[1, 2],
                        help='Days to use for training/calibration (default: [1, 2])')
