@@ -739,6 +739,37 @@ class TenerifeFirePerimeterCalibrator:
             logger.warning("⚠️  Using fallback grid size")
             return (1000, 1000)  # Much smaller fallback
     
+    def _detect_max_available_layers(self) -> int:
+        """
+        Detect the maximum number of available PAD layers in the LiDAR data.
+        
+        Returns:
+            Maximum number of available layers
+        """
+        try:
+            from src.utils.lidar_utils import LiDARDataManager
+            
+            # Create LiDAR manager to detect layers
+            lidar_manager = LiDARDataManager(
+                base_dir=self.lidar_dir,
+                resolution=20.0,  # Use 20m resolution
+                config=None
+            )
+            
+            # Detect maximum available layers
+            max_layers = lidar_manager.get_max_available_layers(self.lidar_dir)
+            
+            if max_layers == 0:
+                logger.warning("No PAD layers detected, using default of 11 layers")
+                return 11
+            
+            logger.info(f"Detected {max_layers} available PAD layers in {self.lidar_dir}")
+            return max_layers
+            
+        except Exception as e:
+            logger.warning(f"Failed to detect PAD layers: {e}, using default of 11 layers")
+            return 11
+    
     def create_calibration_config(self, 
                                   training_data: List[FirePerimeterData],
                                   top_5_parameters: Optional[List[str]] = None,
@@ -803,11 +834,17 @@ class TenerifeFirePerimeterCalibrator:
             print(f"🎯 Dynamic grid size calculated: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
             print(f"   Based on Day 4 fire perimeter + 10% buffer + 10% northern expansion")
         
+        # Detect maximum available PAD layers
+        max_available_layers = self._detect_max_available_layers()
+        actual_layers = min(25, max_available_layers)  # Cap at 25 layers maximum
+        
+        print(f"🔍 Detected {max_available_layers} available PAD layers, using {actual_layers} layers")
+        
         # Create base configuration with dynamic grid sizing
         base_config = ModelConfig(
             # DYNAMIC GRID SIZING BASED ON FIRE PERIMETER
             grid_size=optimal_grid_size,  # Dynamic sizing based on actual fire area
-            num_layers=11,             # Production: 11 PAD layers (0-10) for fuel/vegetation simulation
+            num_layers=actual_layers,     # Dynamic: Use detected PAD layers (0 to max_available-1)
             max_steps=100,             # Production: 100 timesteps for efficiency
             model_resolution=20.0,     # Production: 20m resolution for efficiency
             

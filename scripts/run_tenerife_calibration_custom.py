@@ -74,7 +74,7 @@ logger = get_logger(__name__)
 CUSTOM_CONFIG = {
     'model_resolution': 20.0,  # 20m resolution (minimum acceptable)
     'max_steps': 100,  # Full 100 timesteps
-    'num_layers': 11,  # PAD data provides 11 layers (0-10) for fuel/vegetation simulation
+    'num_layers': None,  # Dynamic: Will be detected from actual PAD data structure
     'grid_size': None,  # Use Day 4 dynamic grid size (345x345)
     'simulation_timeout_minutes': 45.0,  # Longer timeout for complex simulations
     'memory_optimization_level': 3,  # Maximum optimization
@@ -417,6 +417,33 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             # Apply shared terrain configuration from custom config
             calib_config.base_config.shared_terrain_info = self.custom_config['shared_terrain_info']
             logger.info(f"🔧 Shared terrain enabled: {calib_config.base_config.shared_terrain_info}")
+        
+        # DYNAMIC LAYER DETECTION: Update layer count based on actual PAD data
+        if hasattr(calib_config, 'base_config') and calib_config.base_config:
+            if self.custom_config['num_layers'] is None:
+                # Detect actual available layers
+                try:
+                    from src.utils.lidar_utils import LiDARDataManager
+                    
+                    lidar_manager = LiDARDataManager(
+                        base_dir=calib_config.base_config.lidar_data_dir,
+                        resolution=20.0,
+                        config=None
+                    )
+                    
+                    max_layers = lidar_manager.get_max_available_layers(calib_config.base_config.lidar_data_dir)
+                    actual_layers = min(25, max_layers)  # Cap at 25 layers maximum
+                    
+                    calib_config.base_config.num_layers = actual_layers
+                    logger.info(f"🔍 Dynamic layer detection: {max_layers} available, using {actual_layers} layers")
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to detect layers dynamically: {e}, using default of 11")
+                    calib_config.base_config.num_layers = 11
+            else:
+                # Use configured layer count
+                calib_config.base_config.num_layers = self.custom_config['num_layers']
+                logger.info(f"🔧 Using configured layer count: {calib_config.base_config.num_layers}")
         
         # Override with custom settings
         calib_config.grid_search_points = self.custom_config['grid_search_points']

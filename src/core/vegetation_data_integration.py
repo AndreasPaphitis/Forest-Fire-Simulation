@@ -606,20 +606,30 @@ class TiledLiDARIntegration:
                 logger.error(f"Error getting LiDAR extent: {e}")
                 return None
                 
-        # Find PAD files for each layer
-        pad_files_dict = {}
-        for layer in range(num_layers):
-            layer_files = lidar_manager._find_layer_files(pad_dir, layer)
-            if layer_files:
-                pad_files_dict[layer] = layer_files
-                logger.info(f"Found {len(layer_files)} files for layer {layer}")
-            else:
-                logger.warning(f"No PAD files found for layer {layer}")
-                
-        if not pad_files_dict:
-            logger.info(f"No PAD files found for any layer in {pad_dir}")
+        # Detect all available PAD layers and their files
+        available_layers = lidar_manager._detect_available_layers(pad_dir)
+        
+        if not available_layers:
+            logger.info(f"No PAD files found in {pad_dir}")
             logger.info("No LiDAR data available - creating bare area with default fuel")
             return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
+        
+        # Use available layers up to the requested num_layers
+        max_available_layer = max(available_layers.keys())
+        actual_layers_to_use = min(num_layers, max_available_layer + 1)
+        
+        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {max_available_layer + 1})")
+        
+        # Create pad_files_dict with available layers
+        pad_files_dict = {}
+        for layer in range(actual_layers_to_use):
+            if layer in available_layers:
+                pad_files_dict[layer] = available_layers[layer]
+                logger.info(f"Layer {layer} (height {layer * 2}m): {len(available_layers[layer])} files")
+            else:
+                logger.warning(f"No PAD files found for layer {layer} (height {layer * 2}m)")
+                # Create empty layer for missing data
+                pad_files_dict[layer] = []
             
         # Use the new resampling method with robust error handling
         model_grid_size = (x_end - x_start, y_end - y_start)
