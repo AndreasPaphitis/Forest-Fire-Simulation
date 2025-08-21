@@ -305,8 +305,12 @@ class CustomTenerifeCalibrator(TenerifeFirePerimeterCalibrator):
             # Don't artificially expand the grid - use the real fire area
             logger.info(f"🎯 Actual Day 4 fire area: {grid_width} × {grid_height} cells")
             
-            # Calculate total cells
-            total_cells = grid_width * grid_height * self.custom_config['num_layers']  # Use configured layers
+            # Calculate total cells - handle dynamic layer detection
+            num_layers = self.custom_config['num_layers']
+            if num_layers is None:
+                # Use a default for calculation purposes (will be detected dynamically later)
+                num_layers = 25  # Default to 25 layers for memory calculation
+            total_cells = grid_width * grid_height * num_layers  # Use configured layers
             
             # Calculate area for reference
             cell_size_m = self.custom_config['model_resolution']
@@ -664,7 +668,15 @@ Examples:
         if hasattr(calib_config, 'base_config') and calib_config.base_config:
             calib_config.base_config.model_resolution = CUSTOM_CONFIG['model_resolution']
             calib_config.base_config.max_steps = CUSTOM_CONFIG['max_steps']
-            calib_config.base_config.num_layers = CUSTOM_CONFIG['num_layers']
+            
+            # Handle dynamic layer detection
+            if CUSTOM_CONFIG['num_layers'] is None:
+                # Dynamic detection will happen during calibration setup
+                # Use a default for now, will be overridden by dynamic detection
+                calib_config.base_config.num_layers = 25  # Default, will be detected dynamically
+            else:
+                calib_config.base_config.num_layers = CUSTOM_CONFIG['num_layers']
+                
             if CUSTOM_CONFIG['grid_size'] is not None:
                 calib_config.base_config.grid_size = CUSTOM_CONFIG['grid_size']
             calib_config.base_config.simulation_timeout_minutes = CUSTOM_CONFIG['simulation_timeout_minutes']
