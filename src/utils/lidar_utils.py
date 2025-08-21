@@ -1366,15 +1366,14 @@ class LiDARDataManager:
         
     def _find_layer_files(self, base_dir: Union[str, Path], layer: int) -> List[Path]:
         """
-        Find PAD files for a specific layer in the given directory and its subdirectories.
-        Note: Layer 0 is excluded as it's usually noise.
+        Find PAD files for a specific layer across all PNOA datasets.
         
         Args:
-            base_dir: Base directory to search
+            base_dir: Base directory containing PNOA dataset folders
             layer: Layer number (0-based, but layer 0 is excluded, so 0=2m, 1=4m, 2=6m, etc.)
             
         Returns:
-            List of paths to PAD files for the specified layer
+            List of paths to PAD files for the specified layer from all datasets
         """
         base_path = Path(base_dir)
         
@@ -1383,16 +1382,30 @@ class LiDARDataManager:
             logger.warning(f"Base directory does not exist: {base_path}")
             return []
         
-        # Look for PAD files directly in the base directory (not in a subdirectory)
         # Pattern to match PAD files: *_pad_{height}.0m.tif
         # Layer 0 is excluded, so layer 0 = 2m, layer 1 = 4m, layer 2 = 6m, etc.
         height_meters = (layer + 1) * 2  # Convert layer index to height in meters (skip 0m)
         pattern = f"*_pad_{height_meters}.0m.tif"
         
-        # Find files matching the pattern directly in base directory
-        layer_files = list(base_path.glob(pattern))
+        # Find all PNOA dataset directories
+        pnoa_dirs = [d for d in base_path.iterdir() if d.is_dir() and d.name.startswith("PNOA")]
         
-        logger.info(f"Found {len(layer_files)} files for layer {layer} (height {height_meters}m) in {base_path}")
+        if not pnoa_dirs:
+            logger.warning(f"No PNOA dataset directories found in {base_path}")
+            return []
+        
+        # Collect files from all PNOA datasets
+        layer_files = []
+        for pnoa_dir in pnoa_dirs:
+            pad_rasters_dir = pnoa_dir / "pad_rasters"
+            if pad_rasters_dir.exists():
+                files = list(pad_rasters_dir.glob(pattern))
+                layer_files.extend(files)
+                logger.debug(f"Found {len(files)} files for layer {layer} (height {height_meters}m) in {pnoa_dir.name}")
+            else:
+                logger.debug(f"No pad_rasters directory in {pnoa_dir.name}")
+        
+        logger.info(f"Found {len(layer_files)} total files for layer {layer} (height {height_meters}m) across {len(pnoa_dirs)} PNOA datasets")
         
         return layer_files
     
@@ -1419,11 +1432,11 @@ class LiDARDataManager:
     
     def _detect_available_layers(self, base_dir: Union[str, Path]) -> Dict[int, List[Path]]:
         """
-        Detect all available PAD layers and their files across all datasets.
+        Detect all available PAD layers and their files across all PNOA datasets.
         Excludes layer 0 (0m height) as it's usually noise.
         
         Args:
-            base_dir: Base directory containing pad_rasters folder
+            base_dir: Base directory containing PNOA dataset folders
             
         Returns:
             Dictionary mapping layer indices to lists of file paths (excluding layer 0)
@@ -1434,46 +1447,61 @@ class LiDARDataManager:
             logger.warning(f"Base directory does not exist: {base_path}")
             return {}
         
+        # Find all PNOA dataset directories
+        pnoa_dirs = [d for d in base_path.iterdir() if d.is_dir() and d.name.startswith("PNOA")]
+        
+        if not pnoa_dirs:
+            logger.warning(f"No PNOA dataset directories found in {base_path}")
+            return {}
+        
+        logger.info(f"Found {len(pnoa_dirs)} PNOA dataset directories: {[d.name for d in pnoa_dirs]}")
+        
         # Find all PAD files and group by layer
         layer_files = {}
         
         # Pattern to match all PAD files: *_pad_*.0m.tif
-        all_pad_files = list(base_path.glob("*_pad_*.0m.tif"))
-        
-        for file_path in all_pad_files:
-            # Extract height from filename: *_pad_{height}.0m.tif
-            filename = file_path.name
-            try:
-                # Find the height value in the filename
-                import re
-                match = re.search(r'_pad_(\d+)\.0m\.tif$', filename)
-                if match:
-                    height_meters = int(match.group(1))
-                    layer_index = height_meters // 2  # Convert height to layer index (0m->0, 2m->1, 4m->2, etc.)
-                    
-                    # Exclude layer 0 (0m height) as it's usually noise
-                    if layer_index == 0:
-                        logger.info(f"Excluding layer 0 (0m height) from {filename} - typically noise")
-                        continue
-                    
-                    if layer_index not in layer_files:
-                        layer_files[layer_index] = []
-                    layer_files[layer_index].append(file_path)
-                    
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"Could not parse height from filename {filename}: {e}")
+        for pnoa_dir in pnoa_dirs:
+            pad_rasters_dir = pnoa_dir / "pad_rasters"
+            if not pad_rasters_dir.exists():
+                logger.debug(f"No pad_rasters directory in {pnoa_dir.name}")
                 continue
+                
+            all_pad_files = list(pad_rasters_dir.glob("*_pad_*.0m.tif"))
+            logger.debug(f"Found {len(all_pad_files)} PAD files in {pnoa_dir.name}")
+            
+            for file_path in all_pad_files:
+                # Extract height from filename: *_pad_{height}.0m.tif
+                filename = file_path.name
+                try:
+                    # Find the height value in the filename
+                    import re
+                    match = re.search(r'_pad_(\d+)\.0m\.tif$', filename)
+                    if match:
+                        height_meters = int(match.group(1))
+                        layer_index = height_meters // 2  # Convert height to layer index (0m->0, 2m->1, 4m->2, etc.)
+                        
+                        # Exclude layer 0 (0m height) as it's usually noise
+                        if layer_index == 0:
+                            logger.debug(f"Excluding layer 0 (0m height) from {filename} - typically noise")
+                            continue
+                        
+                        if layer_index not in layer_files:
+                            layer_files[layer_index] = []
+                        layer_files[layer_index].append(file_path)
+                        
+                except (ValueError, AttributeError) as e:
+                    logger.warning(f"Could not parse height from filename {filename}: {e}")
+                    continue
         
         # Log the detected layers (excluding layer 0)
         if layer_files:
             max_layer = max(layer_files.keys())
-            logger.info(f"Detected {len(layer_files)} layers (1 to {max_layer}, excluding layer 0) with {sum(len(files) for files in layer_files.values())} total files")
+            total_files = sum(len(files) for files in layer_files.values())
+            logger.info(f"Detected {len(layer_files)} layers (1 to {max_layer}, excluding layer 0) with {total_files} total files across {len(pnoa_dirs)} PNOA datasets")
             for layer_idx in sorted(layer_files.keys()):
                 height_meters = layer_idx * 2
                 logger.info(f"  Layer {layer_idx} (height {height_meters}m): {len(layer_files[layer_idx])} files")
         else:
             logger.warning("No PAD files detected (excluding layer 0)")
         
-        return layer_files
-
-# Ensure this is the end of the class definition or module 
+        return layer_files 
