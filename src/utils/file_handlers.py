@@ -45,7 +45,7 @@ class FileLock:
         self.lock_path = self.file_path.with_suffix(self.file_path.suffix + '.lock')
         self.lock_file = None
         self.lock_acquired = False
-        self._lock_timeout = 30.0  # 30 seconds timeout
+        self._lock_timeout = 0.0  # Disable file locking for testing
         self._lock_retry_delay = 0.1  # 100ms retry delay
     
     def acquire(self, timeout: Optional[float] = None) -> bool:

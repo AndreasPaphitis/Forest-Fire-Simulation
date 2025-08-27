@@ -275,6 +275,33 @@ class OptimizedMemoryOptimizedForestModel(MemoryOptimizedForestModel):
         logger.info(f"   Adaptive matrix formats: {self.use_adaptive_matrix_formats}")
         logger.info(f"   Optimized sparse ops: {self.use_optimized_sparse_ops}")
     
+    def set_ignition(self, x, y, z=0):
+        """
+        Set an ignition point in the optimized forest model.
+        
+        Args:
+            x: X-coordinate
+            y: Y-coordinate
+            z: Z-coordinate (layer index, defaults to ground layer)
+        """
+        if (0 <= x < self.width and 
+            0 <= y < self.height and 
+            0 <= z < self.num_layers):
+            
+            try:
+                # Set the state to burning
+                self.state[x, y, z] = 1  # BURNING state
+                
+                # Track ignition point for efficient active cell detection
+                if not hasattr(self, '_ignition_points'):
+                    self._ignition_points = []
+                self._ignition_points.append((x, y, z))
+                
+                logger.debug(f"✅ Optimized ignition set at ({x}, {y}, {z})")
+            except Exception as e:
+                logger.error(f"❌ Failed to set ignition at ({x}, {y}, {z}): {e}")
+                raise
+    
     def _initialize_sparse_storage(self):
         """
         Initialize optimized sparse storage.

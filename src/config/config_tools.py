@@ -47,7 +47,7 @@ class ModelConfig:
     grid_size: Union[int, Tuple[int, int]] = 100
     num_layers: int = 10
     layer_height: float = 2.0
-    model_resolution: float = 5.0
+    model_resolution: float = 20.0  # Changed from 5.0 to 20.0
     
     # === FIRE SPREAD PARAMETERS ===
     spread_probability: float = 0.7  # Higher for better sensitivity
@@ -124,6 +124,7 @@ class ModelConfig:
     use_lidar: bool = False
     auto_size_from_lidar: bool = False
     lidar_data_dir: Optional[str] = None
+    preprocessed_lidar_dir: Optional[str] = None  # Directory for preprocessed LiDAR data
     max_grid_size: Optional[int] = None  # No grid size limit by default
     max_vegetation_height_m: float = 50.0  # Maximum realistic vegetation height in meters
     
@@ -336,7 +337,7 @@ def create_config(**kwargs) -> ModelConfig:
     Example:
         config = create_config(
             config_name="My_Simulation",
-            model_resolution=5.0,
+            model_resolution=20.0,
             grid_size=(2000, 2000),
             num_layers=15,
             wind_speed=8.0,
@@ -492,7 +493,7 @@ if __name__ == "__main__":
     grid_size = (1000, 1000)
     num_layers = 10
     layer_height = 2.0
-    model_resolution = 5.0
+    model_resolution = 20.0  # Changed from 5.0 to 20.0
     
     # Fire spread parameters
     spread_probability = 0.8

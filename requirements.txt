@@ -186,8 +186,8 @@ memory-profiler>=0.60.0,<1.0.0
 # ===================================================================
 
 # Windows-specific (uncomment if deploying on Windows)
-# pywin32>=227; sys_platform == "win32"
-# Windows API access
+pywin32>=227; sys_platform == "win32"
+# Windows API access for better file locking
 
 # ===================================================================
 # VERSION CONSTRAINTS EXPLANATION

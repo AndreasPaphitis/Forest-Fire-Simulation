@@ -48,19 +48,10 @@ from src.utils.shared_utilities import (
 # Direct imports replacing import_with_fallback for utils
 try:
     from src.utils.tiling_utils import TilingManager
-except ImportError:
-    TilingManager = None
-    logger.warning("TilingManager not found from src.utils.tiling_utils. Tiling functionality will be unavailable.")
-try:
     from src.utils.file_handlers import FileManager
-except ImportError:
-    FileManager = None
-    logger.warning("FileManager not found from src.utils.file_handlers. File operations may be limited.")
-
-# Remove HAS_UTILS flag and logic
-# HAS_UTILS = all(v is not None for v in [
-#     TilingManager, FileManager, LiDARDataManager # Check LiDARDataManager from this block if it was intended as a general util check
-# ])
+except ImportError as e:
+    logger.error(f"Failed to import required utilities: {e}")
+    raise ImportError("Required utilities not available")
 
 # Try to import GDAL
 try:
@@ -280,6 +271,9 @@ class TiledLiDARIntegration:
             actual_resolution = self.config.model_resolution
             model_geo_bounds = self.config.geo_bounds
             model_simulation_type = self.config.simulation_type # Ensure we use simulation_type from config
+
+            # Layer configuration logging
+            logger.info(f"🔍 VEGETATION INTEGRATION: Using {model_num_layers} layers from config")
 
             # Log if any critical dimension is still None, indicating a potential config issue upstream
             if model_grid_size is None or model_num_layers is None or actual_resolution is None:
@@ -569,6 +563,14 @@ class TiledLiDARIntegration:
                 )
                 lidar_manager = self.lidar_manager
                 logger.info(f"Created LiDARDataManager for base_dir: {self.base_dir}")
+                
+                # CRITICAL FIX: Set geo_bounds on the new LiDAR manager to ensure consistent layer detection
+                if hasattr(self, 'geo_bounds') and self.geo_bounds is not None:
+                    lidar_manager.geo_bounds = self.geo_bounds
+                    logger.info(f"🔧 Set geo_bounds on new LiDAR manager: {self.geo_bounds}")
+                else:
+                    logger.warning(f"⚠️  No geo_bounds available for new LiDAR manager")
+                    
             except Exception as e:
                 logger.error(f"Failed to create LiDARDataManager: {e}")
                 return None
@@ -617,25 +619,43 @@ class TiledLiDARIntegration:
         # Use available layers up to the requested num_layers
         # Note: Layer 0 is excluded, so we start from layer 1
         num_available_layers = len(available_layers)  # Use count of available layers, not max index
+        
+        # CRITICAL FIX: Accept that geographic bounds filtering may result in fewer layers
+        # than the global detection found. This is normal behavior.
         actual_layers_to_use = min(num_layers, num_available_layers)
         
-        logger.info(f"Using {actual_layers_to_use} layers (requested: {num_layers}, available: {num_available_layers}, max layer index: {max_available_layer}, excluding layer 0)")
+        if num_available_layers < num_layers:
+            logger.info(f"Geographic bounds filtering: {num_available_layers} layers available (requested {num_layers})")
+        
+        # REDUCED VERBOSITY: Simple layer mapping summary
+        logger.debug(f"Layer mapping: Using {actual_layers_to_use} layers (requested: {num_layers}, available: {num_available_layers})")
         
         # Create pad_files_dict with available layers (starting from layer 1)
         pad_files_dict = {}
         for layer in range(1, actual_layers_to_use + 1):  # Start from layer 1, exclude layer 0
             if layer in available_layers:
                 pad_files_dict[layer - 1] = available_layers[layer]  # Map layer 1->0, layer 2->1, etc.
-                logger.info(f"Layer {layer - 1} (height {layer * 2}m): {len(available_layers[layer])} files")
+                logger.debug(f"Layer {layer - 1} (height {layer * 2}m): {len(available_layers[layer])} files")
             else:
-                logger.warning(f"No PAD files found for layer {layer} (height {layer * 2}m)")
+                logger.debug(f"No PAD files found for layer {layer} (height {layer * 2}m)")
                 # Create empty layer for missing data
                 pad_files_dict[layer - 1] = []
-            
+        
+        # LAYER COUNT VALIDATION (reduced verbosity)
+        logger.debug(f"Layer mapping: PAD layers {list(available_layers.keys())} -> simulation layers {list(pad_files_dict.keys())}")
+        
+        if len(pad_files_dict) != actual_layers_to_use:
+            logger.debug(f"Layer count adjusted: expected {actual_layers_to_use}, got {len(pad_files_dict)} (normal due to geographic bounds)")
+            # Don't raise an error - this is expected behavior
+            # Just use the layers we actually have
+            actual_layers_to_use = len(pad_files_dict)
+        
+        logger.debug(f"Layer mapping completed: {len(pad_files_dict)} layers mapped")
+        
         # Use the new resampling method with robust error handling
         model_grid_size = (x_end - x_start, y_end - y_start)
         try:
-            logger.info(f"Attempting to resample {len(pad_files_dict)} layers for tile ({x_start},{y_start})-({x_end},{y_end})")
+            logger.debug(f"Resampling {len(pad_files_dict)} layers for tile ({x_start},{y_start})-({x_end},{y_end})")
             
             resampled_layers = lidar_manager.resample_pad_data_to_model_grid(
                 pad_files_dict=pad_files_dict,
@@ -646,11 +666,10 @@ class TiledLiDARIntegration:
             )
             
             if not resampled_layers:
-                logger.warning("No layers were successfully resampled.")
-                logger.info("No vegetation data available - creating bare area with default fuel")
+                logger.debug("No layers were successfully resampled - creating bare area")
                 return self._create_bare_area_data(x_start, y_start, x_end, y_end, num_layers)
                 
-            logger.info(f"Successfully resampled {len(resampled_layers)} layers for tile ({x_start},{y_start})-({x_end},{y_end})")
+            logger.debug(f"Successfully resampled {len(resampled_layers)} layers for tile ({x_start},{y_start})-({x_end},{y_end})")
             return resampled_layers
             
         except Exception as e:

@@ -53,6 +53,40 @@ class TilingManager:
     including overlap calculations and memory management.
     """
     
+    def optimize_tile_configuration(self, grid_size, available_memory_mb):
+        """Dynamically optimize tile size based on grid and memory."""
+        width, height = grid_size
+        
+        # Calculate optimal tile size based on grid dimensions
+        if width * height > 1_000_000:  # Large grid
+            # Use larger tiles for efficiency
+            optimal_tile_size = min(400, max(200, min(width, height) // 4))
+            overlap = max(10, optimal_tile_size // 20)  # 5% overlap
+        else:  # Small grid
+            # Use smaller tiles for memory efficiency
+            optimal_tile_size = min(200, max(100, min(width, height) // 3))
+            overlap = max(5, optimal_tile_size // 10)  # 10% overlap
+        
+        # Adjust based on available memory
+        estimated_memory_per_tile = (optimal_tile_size ** 2) * 4  # 4 bytes per cell
+        max_tiles_in_memory = available_memory_mb * 1024 * 1024 // estimated_memory_per_tile
+        
+        if max_tiles_in_memory < 4:
+            # Reduce tile size to fit more tiles in memory
+            optimal_tile_size = int(optimal_tile_size * 0.7)
+            overlap = max(5, optimal_tile_size // 10)
+        
+        self.tile_size = optimal_tile_size
+        self.overlap = overlap
+        
+        # Calculate number of tiles
+        effective_tile_size = optimal_tile_size - overlap
+        self.tiles_x = max(1, math.ceil(width / effective_tile_size))
+        self.tiles_y = max(1, math.ceil(height / effective_tile_size))
+        
+        logger.info(f"Optimized tiling: {optimal_tile_size}x{optimal_tile_size} tiles, "
+                   f"{self.tiles_x}x{self.tiles_y} grid, {overlap} overlap")
+
     def __init__(self, grid_size, tile_size, overlap_ratio, num_layers, config=None, **kwargs):
         self.config = config
 

@@ -23,12 +23,19 @@ logger = get_logger(__name__)
 # Import ModelConfig for type checking and isinstance
 # from src.config.config_tools import ModelConfig # Moved to be imported only where needed or under TYPE_CHECKING
 
-# Try to import GDAL
+# Try to import GDAL or rasterio
 try:
     from osgeo import gdal, osr
     GDAL_AVAILABLE = True
+    RASTERIO_AVAILABLE = False
 except ImportError:
-    GDAL_AVAILABLE = False
+    try:
+        import rasterio
+        GDAL_AVAILABLE = False
+        RASTERIO_AVAILABLE = True
+    except ImportError:
+        GDAL_AVAILABLE = False
+        RASTERIO_AVAILABLE = False
     
 try:
     from skimage.transform import resize
@@ -176,11 +183,13 @@ class LiDARDataManager:
             gdal.UseExceptions()
             gdal.PushErrorHandler('CPLQuietErrorHandler') # Suppress console warnings, rely on exceptions
             
-            # Set up IO optimizations using the shared utility
-            # Pass None for params that should use optimize_gdal_io's defaults or its own config access
-            self._configure_gdal_optimizations() 
+            # CRITICAL FIX: Skip GDAL optimization to prevent hanging
+            # The optimization was causing deadlocks in multi-threaded environments
+            logger.info("Skipping GDAL optimization to prevent hanging - using default settings")
+        elif RASTERIO_AVAILABLE:
+            logger.info("Using rasterio for LiDAR processing")
         else:
-            logger.warning("GDAL not available - LiDAR functionality will be limited")
+            logger.warning("Neither GDAL nor rasterio available - LiDAR functionality will be limited")
     
     def _configure_gdal_optimizations(self, cache_size_mb: Optional[int] = None, 
                                     thread_count: Optional[int] = None, 
@@ -731,8 +740,8 @@ class LiDARDataManager:
         Returns:
             Numpy array with raster data
         """
-        if not GDAL_AVAILABLE:
-            raise DataProcessingError("GDAL not available - cannot load raster data")
+        if not (GDAL_AVAILABLE or RASTERIO_AVAILABLE):
+            raise DataProcessingError("Neither GDAL nor rasterio available - cannot load raster data")
         
         file_path = str(file_path)  # Ensure string for GDAL
         
@@ -1155,8 +1164,8 @@ class LiDARDataManager:
         Raises:
             DataProcessingError: If resampling fails or CRS inconsistencies are detected
         """
-        if not GDAL_AVAILABLE:
-            raise DataProcessingError("GDAL not available - cannot resample PAD data")
+        if not (GDAL_AVAILABLE or RASTERIO_AVAILABLE):
+            raise DataProcessingError("Neither GDAL nor rasterio available - cannot resample PAD data")
         
         # Initialize results
         resampled_layers = {}
@@ -1409,39 +1418,75 @@ class LiDARDataManager:
         
         return layer_files
     
-    def get_max_available_layers(self, base_dir: Union[str, Path]) -> int:
+    def get_max_available_layers(self, base_dir: Union[str, Path] = None) -> int:
         """
         Get the maximum number of available layers in the PAD data.
         Excludes layer 0 (0m height) as it's usually noise.
+        Only includes layers that overlap with geographic bounds.
         
         Args:
-            base_dir: Base directory containing pad_rasters folder
+            base_dir: Base directory containing pad_rasters folder (optional, uses self.base_dir if None)
             
         Returns:
-            Maximum layer index (total number of layers, excluding layer 0)
+            Number of available layers (count of layers within geographic bounds, excluding layer 0)
         """
+        # Use provided base_dir or fall back to self.base_dir
+        if base_dir is None:
+            base_dir = self.base_dir
+        
         available_layers = self._detect_available_layers(base_dir)
         if not available_layers:
             return 0
         
-        max_layer = max(available_layers.keys())
-        total_layers = max_layer  # Layer indices are 0-based, but we exclude layer 0
+        # FIXED: Return the count of available layers, not the maximum layer index
+        # This ensures consistency with the layer processing pipeline
+        total_layers = len(available_layers)  # Count of available layers within bounds
         
-        logger.info(f"Maximum available layers: {total_layers} (layers 1 to {max_layer}, excluding layer 0)")
+        if available_layers:
+            max_layer = max(available_layers.keys())
+            layer_indices = sorted(available_layers.keys())
+            logger.info(f"Available layers within geographic bounds: {total_layers} (layers {layer_indices}, excluding layer 0)")
+        else:
+            logger.info(f"No layers available within geographic bounds")
+        
         return total_layers
     
-    def _detect_available_layers(self, base_dir: Union[str, Path]) -> Dict[int, List[Path]]:
+    def _detect_available_layers(self, geo_bounds_or_dir=None):
         """
-        Detect all available PAD layers and their files across all PNOA datasets.
-        Excludes layer 0 (0m height) as it's usually noise.
+        Detect available LiDAR layers with proper geographic filtering.
         
         Args:
-            base_dir: Base directory containing PNOA dataset folders
-            
-        Returns:
-            Dictionary mapping layer indices to lists of file paths (excluding layer 0)
+            geo_bounds_or_dir: Either geographic bounds (dict/tuple) or LiDAR directory path (str)
         """
-        base_path = Path(base_dir)
+        # Check if the parameter is a string (directory path) or geographic bounds
+        if isinstance(geo_bounds_or_dir, str) or (isinstance(geo_bounds_or_dir, Path)):
+            # It's a directory path - check if it's preprocessed data first
+            dir_path = Path(geo_bounds_or_dir)
+            if self._is_preprocessed_data(dir_path):
+                logger.info("✅ Detected preprocessed LiDAR data - using preprocessed layer detection")
+                return self._detect_preprocessed_layers(dir_path)
+            else:
+                logger.warning("⚠️ Directory path provided instead of geo_bounds - using basic layer detection")
+                return self._basic_layer_detection()
+        
+        # Use provided geo_bounds or fall back to self.geo_bounds
+        geo_bounds = geo_bounds_or_dir if geo_bounds_or_dir is not None else self.geo_bounds
+        
+        # If still None, use basic detection
+        if geo_bounds is None:
+            logger.warning("⚠️ No geographic bounds provided - using basic layer detection")
+            return self._basic_layer_detection()
+        
+        # Use proper geographic filtering
+        return self._geographic_layer_detection(geo_bounds)
+    
+    def _basic_layer_detection(self) -> Dict[int, List[Path]]:
+        """
+        Fallback for layer detection if geographic bounds are not available.
+        This method is kept for robustness but will not filter by geographic bounds.
+        """
+        logger.warning("Using basic layer detection (no geographic bounds available).")
+        base_path = Path(self.base_dir)
         
         if not base_path.exists():
             logger.warning(f"Base directory does not exist: {base_path}")
@@ -1454,10 +1499,12 @@ class LiDARDataManager:
             logger.warning(f"No PNOA dataset directories found in {base_path}")
             return {}
         
-        logger.info(f"Found {len(pnoa_dirs)} PNOA dataset directories: {[d.name for d in pnoa_dirs]}")
+        logger.debug(f"Found {len(pnoa_dirs)} PNOA dataset directories")
         
         # Find all PAD files and group by layer
         layer_files = {}
+        total_files_checked = 0
+        total_files_overlapping = 0
         
         # Pattern to match all PAD files: *_pad_*.0m.tif
         for pnoa_dir in pnoa_dirs:
@@ -1470,15 +1517,46 @@ class LiDARDataManager:
             logger.debug(f"Found {len(all_pad_files)} PAD files in {pnoa_dir.name}")
             
             for file_path in all_pad_files:
+                total_files_checked += 1
+                
+                # Check if file overlaps with geographic bounds
+                if self.geo_bounds is not None:
+                    try:
+                        from rasterio import open as rio_open
+                        with rio_open(file_path) as src:
+                            file_bounds = src.bounds
+                            
+                            # Check if bounds overlap
+                            overlap = (
+                                file_bounds.left < self.geo_bounds[2] and
+                                file_bounds.right > self.geo_bounds[0] and
+                                file_bounds.bottom < self.geo_bounds[3] and
+                                file_bounds.top > self.geo_bounds[1]
+                            )
+                            
+                            if not overlap:
+                                logger.debug(f"File {file_path.name} outside geographic bounds, skipping")
+                                continue
+                                
+                    except ImportError:
+                        # If rasterio is not available, include all files (fallback)
+                        logger.debug(f"Rasterio not available - including {file_path.name} without bounds check")
+                        pass
+                    except Exception as e:
+                        logger.warning(f"Could not read bounds from {file_path.name}: {e}")
+                        continue
+                
+                total_files_overlapping += 1
+                
                 # Extract height from filename: *_pad_{height}.0m.tif
                 filename = file_path.name
                 try:
                     # Find the height value in the filename
                     import re
-                    match = re.search(r'_pad_(\d+)\.0m\.tif$', filename)
+                    match = re.search(r'_pad_(\d+\.?\d*)\.0m\.tif$', filename)
                     if match:
-                        height_meters = int(match.group(1))
-                        layer_index = height_meters // 2  # Convert height to layer index (0m->0, 2m->1, 4m->2, etc.)
+                        height_meters = float(match.group(1)) # Convert to float for decimal heights
+                        layer_index = int(height_meters / 2)  # Convert height to layer index (0m->0, 2m->1, 4m->2, etc.)
                         
                         # Exclude layer 0 (0m height) as it's usually noise
                         if layer_index == 0:
@@ -1497,11 +1575,234 @@ class LiDARDataManager:
         if layer_files:
             max_layer = max(layer_files.keys())
             total_files = sum(len(files) for files in layer_files.values())
+            logger.debug(f"Checked {total_files_checked} PAD files, {total_files_overlapping} overlap with bounds")
             logger.info(f"Detected {len(layer_files)} layers (1 to {max_layer}, excluding layer 0) with {total_files} total files across {len(pnoa_dirs)} PNOA datasets")
             for layer_idx in sorted(layer_files.keys()):
                 height_meters = layer_idx * 2
                 logger.info(f"  Layer {layer_idx} (height {height_meters}m): {len(layer_files[layer_idx])} files")
         else:
-            logger.warning("No PAD files detected (excluding layer 0)")
+            logger.warning(f"No PAD files detected within geographic bounds (checked {total_files_checked} files)")
         
         return layer_files 
+
+    def _geographic_layer_detection(self, geo_bounds) -> Dict[int, List[Path]]:
+        """
+        Detect available PAD layers within geographic bounds.
+        
+        Args:
+            geo_bounds: Either a dictionary with 'min_lon', 'min_lat', 'max_lon', 'max_lat'
+                       OR a tuple (min_x, min_y, max_x, max_y)
+        
+        Returns:
+            Dictionary mapping layer indices to file paths
+        """
+        logger.info(f"🔍 Detecting PAD layers within geographic bounds: {geo_bounds}")
+        
+        # Handle both tuple and dictionary formats
+        if isinstance(geo_bounds, tuple) and len(geo_bounds) == 4:
+            # Convert tuple to dictionary format
+            min_x, min_y, max_x, max_y = geo_bounds
+            geo_bounds_dict = {
+                'min_lon': min_x,
+                'min_lat': min_y,
+                'max_lon': max_x,
+                'max_lat': max_y
+            }
+        elif isinstance(geo_bounds, dict):
+            geo_bounds_dict = geo_bounds
+        else:
+            logger.error(f"Invalid geo_bounds format: {type(geo_bounds)} - {geo_bounds}")
+            return {}
+        
+        base_path = Path(self.base_dir)
+        if not base_path.exists():
+            logger.warning(f"Base directory does not exist: {base_path}")
+            return {}
+        
+        # Find all PNOA dataset directories
+        pnoa_dirs = [d for d in base_path.iterdir() if d.is_dir() and d.name.startswith("PNOA")]
+        
+        if not pnoa_dirs:
+            logger.warning(f"No PNOA dataset directories found in {base_path}")
+            return {}
+        
+        logger.debug(f"Found {len(pnoa_dirs)} PNOA dataset directories")
+        
+        # Find all PAD files and group by layer
+        layer_files = {}
+        total_files_checked = 0
+        total_files_overlapping = 0
+        
+        # Pattern to match all PAD files: *_pad_*.0m.tif
+        for pnoa_dir in pnoa_dirs:
+            pad_rasters_dir = pnoa_dir / "pad_rasters"
+            if not pad_rasters_dir.exists():
+                logger.debug(f"No pad_rasters directory in {pnoa_dir.name}")
+                continue
+                
+            all_pad_files = list(pad_rasters_dir.glob("*_pad_*.0m.tif"))
+            logger.debug(f"Found {len(all_pad_files)} PAD files in {pnoa_dir.name}")
+            
+            for file_path in all_pad_files:
+                total_files_checked += 1
+                
+                # Check if file overlaps with geographic bounds
+                try:
+                    from rasterio import open as rio_open
+                    with rio_open(file_path) as src:
+                        file_bounds = src.bounds
+                        
+                        # Check if bounds overlap using dictionary format
+                        overlap = (
+                            file_bounds.left < geo_bounds_dict['max_lon'] and
+                            file_bounds.right > geo_bounds_dict['min_lon'] and
+                            file_bounds.bottom < geo_bounds_dict['max_lat'] and
+                            file_bounds.top > geo_bounds_dict['min_lat']
+                        )
+                        
+                        if not overlap:
+                            logger.debug(f"File {file_path.name} outside geographic bounds, skipping")
+                            continue
+                            
+                except Exception as e:
+                    logger.warning(f"Could not read bounds from {file_path.name}: {e}")
+                    continue
+                
+                total_files_overlapping += 1
+                
+                # Extract height from filename: *_pad_{height}.0m.tif
+                filename = file_path.name
+                try:
+                    # Find the height value in the filename
+                    import re
+                    match = re.search(r'_pad_(\d+\.?\d*)\.0m\.tif$', filename)
+                    if match:
+                        height_meters = float(match.group(1))
+                        layer_index = int(height_meters / 2)  # Convert height to layer index
+                        
+                        # Exclude layer 0 (0m height) as it's usually noise
+                        if layer_index == 0:
+                            logger.debug(f"Excluding layer 0 (0m height) from {filename}")
+                            continue
+                        
+                        if layer_index not in layer_files:
+                            layer_files[layer_index] = []
+                        layer_files[layer_index].append(file_path)
+                        
+                except (ValueError, AttributeError) as e:
+                    logger.warning(f"Could not parse height from filename {filename}: {e}")
+                    continue
+        
+        # Log the detected layers
+        if layer_files:
+            max_layer = max(layer_files.keys())
+            total_files = sum(len(files) for files in layer_files.values())
+            logger.info(f"Checked {total_files_checked} PAD files, {total_files_overlapping} overlap with bounds")
+            logger.info(f"Detected {len(layer_files)} layers (1 to {max_layer}) with {total_files} total files")
+        else:
+            logger.warning("No PAD layers detected within geographic bounds")
+        
+        return layer_files
+    
+    def _is_preprocessed_data(self, dir_path: Path) -> bool:
+        """
+        Check if a directory contains preprocessed LiDAR data.
+        
+        Args:
+            dir_path: Directory to check
+            
+        Returns:
+            True if preprocessed data is detected, False otherwise
+        """
+        try:
+            # Check for preprocessed data indicators
+            metadata_file = dir_path / "lidar_metadata.json"
+            file_paths_file = dir_path / "file_paths.json"
+            
+            # Check if metadata file exists and contains expected structure
+            if metadata_file.exists():
+                import json
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                
+                # Check for expected keys in metadata
+                expected_keys = ['fire_bounds', 'grid_size', 'resolution', 'num_layers', 'available_layers']
+                if all(key in metadata for key in expected_keys):
+                    logger.debug(f"✅ Preprocessed data detected in {dir_path}")
+                    return True
+            
+            # Check for file_paths.json
+            if file_paths_file.exists():
+                import json
+                with open(file_paths_file, 'r') as f:
+                    file_paths = json.load(f)
+                
+                # Check if it contains layer mappings
+                if any(key.startswith('layer_') for key in file_paths.keys()):
+                    logger.debug(f"✅ Preprocessed data detected in {dir_path} (file_paths.json)")
+                    return True
+            
+            # Check for .npy files with layer naming pattern
+            npy_files = list(dir_path.glob("layer_*.npy"))
+            if len(npy_files) > 0:
+                logger.debug(f"✅ Preprocessed data detected in {dir_path} ({len(npy_files)} .npy files)")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Error checking for preprocessed data in {dir_path}: {e}")
+            return False
+    
+    def _detect_preprocessed_layers(self, dir_path: Path) -> Dict[int, List[Path]]:
+        """
+        Detect available layers from preprocessed LiDAR data.
+        
+        Args:
+            dir_path: Directory containing preprocessed data
+            
+        Returns:
+            Dictionary mapping layer indices to file paths
+        """
+        try:
+            layer_files = {}
+            
+            # Try to load metadata first
+            metadata_file = dir_path / "lidar_metadata.json"
+            if metadata_file.exists():
+                import json
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                
+                # Get available layers from metadata
+                available_layers = metadata.get('available_layers', [])
+                
+                # Check if layers exist as .npy files
+                for layer_idx in available_layers:
+                    layer_file = dir_path / f"layer_{layer_idx:02d}.npy"
+                    if layer_file.exists():
+                        layer_files[layer_idx] = [layer_file]
+                        logger.debug(f"Found preprocessed layer {layer_idx}: {layer_file}")
+                    else:
+                        logger.warning(f"Layer {layer_idx} listed in metadata but file not found: {layer_file}")
+                
+                logger.info(f"✅ Detected {len(layer_files)} preprocessed layers from metadata")
+                return layer_files
+            
+            # Fallback: scan for .npy files directly
+            npy_files = list(dir_path.glob("layer_*.npy"))
+            for npy_file in npy_files:
+                # Extract layer number from filename: layer_XX.npy
+                import re
+                match = re.search(r'layer_(\d+)\.npy$', npy_file.name)
+                if match:
+                    layer_idx = int(match.group(1))
+                    layer_files[layer_idx] = [npy_file]
+                    logger.debug(f"Found preprocessed layer {layer_idx}: {npy_file}")
+            
+            logger.info(f"✅ Detected {len(layer_files)} preprocessed layers from file scan")
+            return layer_files
+            
+        except Exception as e:
+            logger.error(f"Error detecting preprocessed layers in {dir_path}: {e}")
+            return {}

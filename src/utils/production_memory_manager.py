@@ -128,7 +128,7 @@ class ProductionMemoryManager:
         
         # Memory optimization state
         self.last_gc_time = time.time()
-        self.gc_interval = 60.0  # Force GC every minute
+        self.gc_interval = float('inf')  # Disable forced GC
         self.last_cleanup_time = time.time()
         self.cleanup_interval = 300.0  # Cleanup every 5 minutes
         

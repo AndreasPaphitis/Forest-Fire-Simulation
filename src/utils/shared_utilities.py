@@ -383,7 +383,8 @@ def optimize_gdal_io(cache_size_mb: int = 256, thread_count: Optional[int] = Non
         gdal.UseExceptions()
         gdal.PushErrorHandler('CPLQuietErrorHandler')
         
-        config = get_global_config() # Get the global config instance
+        # CRITICAL FIX: Handle case where get_global_config is None
+        config = get_global_config() if get_global_config is not None else None
 
         # Use parameters from ModelConfig, allowing overrides via function arguments
         effective_cache_size_mb = cache_size_mb if cache_size_mb is not None else (getattr(config, 'gdal_cache_mb', 256) if config else 256)
@@ -462,3 +463,167 @@ def get_forest_model_factory() -> Callable[..., Any]:
     logger.info("Successfully imported primary_factory (create_forest_model) from src.core.forest_model.")
     return create_forest_model
     # Fallback logic removed - if create_forest_model is not found, it's a critical issue. 
+
+def calculate_wind_factor(terrain_elevation, terrain_slope, terrain_aspect, x, y, z):
+    """
+    Calculate wind factor based on terrain characteristics.
+    Works with both dense arrays and sparse matrices.
+    
+    Args:
+        terrain_elevation: Elevation data (dense array or sparse matrix)
+        terrain_slope: Slope data (dense array or sparse matrix)  
+        terrain_aspect: Aspect data (dense array or sparse matrix)
+        x, y, z: Cell coordinates
+        
+    Returns:
+        Wind factor (float) - multiplier for wind effects
+    """
+    try:
+        # Check if terrain data is available
+        if (terrain_elevation is None or terrain_slope is None or terrain_aspect is None):
+            return 1.0  # Default wind factor when terrain data unavailable
+        
+        # Handle sparse matrices vs dense arrays
+        def get_terrain_value(terrain_data, x, y):
+            if terrain_data is None:
+                return 0.0
+            try:
+                # Check if it's a sparse matrix
+                if hasattr(terrain_data, 'toarray'):
+                    # Sparse matrix - convert to dense for this calculation
+                    dense_data = terrain_data.toarray()
+                    if x < dense_data.shape[0] and y < dense_data.shape[1]:
+                        return dense_data[x, y]
+                    else:
+                        return 0.0
+                else:
+                    # Dense array
+                    if x < terrain_data.shape[0] and y < terrain_data.shape[1]:
+                        return terrain_data[x, y]
+                    else:
+                        return 0.0
+            except:
+                return 0.0
+        
+        # Get terrain values
+        elevation = get_terrain_value(terrain_elevation, x, y)
+        slope = get_terrain_value(terrain_slope, x, y)
+        aspect = get_terrain_value(terrain_aspect, x, y)
+        
+        # Calculate wind factor based on terrain
+        # Higher elevation = stronger winds
+        elevation_factor = 1.0 + (elevation / 1000.0) * 0.1  # 10% increase per 1000m
+        
+        # Steeper slopes = wind channeling
+        slope_factor = 1.0 + slope * 0.5  # 50% increase for steep slopes
+        
+        # Aspect affects wind direction (simplified)
+        aspect_factor = 1.0  # Could be enhanced with wind direction
+        
+        # Combine factors
+        wind_factor = elevation_factor * slope_factor * aspect_factor
+        
+        # Clamp to reasonable range
+        wind_factor = max(0.5, min(2.0, wind_factor))
+        
+        return wind_factor
+        
+    except Exception as e:
+        # Log error and return default
+        logger.warning(f"Wind factor calculation failed: {e}")
+        return 1.0 
+
+def get_terrain_value(terrain_data, x, y, default=0.0):
+    """
+    Safely get terrain value from sparse or dense arrays.
+    
+    Args:
+        terrain_data: Sparse matrix or dense array
+        x, y: Coordinates
+        default: Default value if data unavailable
+        
+    Returns:
+        Terrain value at (x, y)
+    """
+    if terrain_data is None:
+        return default
+    
+    try:
+        # Check if it's a sparse matrix
+        if hasattr(terrain_data, 'toarray'):
+            # Sparse matrix - convert to dense for this calculation
+            dense_data = terrain_data.toarray()
+            if x < dense_data.shape[0] and y < dense_data.shape[1]:
+                return dense_data[x, y]
+        else:
+            # Dense array
+            if x < terrain_data.shape[0] and y < terrain_data.shape[1]:
+                return terrain_data[x, y]
+    except:
+        pass
+    return default
+
+def get_terrain_statistics(terrain_data, operation='min'):
+    """
+    Get statistics from sparse or dense terrain data.
+    
+    Args:
+        terrain_data: Sparse matrix or dense array
+        operation: 'min', 'max', 'mean', 'sum', 'any'
+        
+    Returns:
+        Statistical value
+    """
+    if terrain_data is None:
+        return 0.0
+    
+    try:
+        # Convert sparse to dense for statistics
+        if hasattr(terrain_data, 'toarray'):
+            dense_data = terrain_data.toarray()
+        else:
+            dense_data = terrain_data
+        
+        if operation == 'min':
+            return np.min(dense_data)
+        elif operation == 'max':
+            return np.max(dense_data)
+        elif operation == 'mean':
+            return np.mean(dense_data)
+        elif operation == 'sum':
+            return np.sum(dense_data)
+        elif operation == 'any':
+            return np.any(dense_data)
+        else:
+            return 0.0
+    except:
+        return 0.0
+
+def create_sparse_terrain_array(shape, value=0.0, dtype=np.float32):
+    """
+    Create a sparse terrain array compatible with our system.
+    
+    Args:
+        shape: Array shape (width, height)
+        value: Default value
+        dtype: Data type
+        
+    Returns:
+        Sparse matrix or dense array depending on size
+    """
+    try:
+        from scipy.sparse import lil_matrix
+        # Use sparse for large arrays
+        if shape[0] * shape[1] > 1_000_000:  # 1M+ cells
+            sparse_array = lil_matrix(shape, dtype=dtype)
+            if value != 0.0:
+                # Fill with value (not memory efficient, but maintains compatibility)
+                dense_temp = np.full(shape, value, dtype=dtype)
+                sparse_array = lil_matrix(dense_temp)
+            return sparse_array
+        else:
+            # Use dense for smaller arrays
+            return np.full(shape, value, dtype=dtype)
+    except ImportError:
+        # Fallback to dense if SciPy not available
+        return np.full(shape, value, dtype=dtype) 

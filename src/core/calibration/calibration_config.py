@@ -66,36 +66,31 @@ class CalibrationConfig:
     
     # === PARAMETER SELECTION ===
     calibration_parameters: List[str] = field(default_factory=lambda: [
-        # ✅ DEFINITIVE LIST OF IMPLEMENTED PARAMETERS - Line-by-line analysis
+        # ✅ VERIFIED IMPLEMENTED PARAMETERS (confirmed in fire_simulation_engine.py)
         # Core Fire Mechanics
-        'spread_probability',      # ✅ Line 906 - Base fire spread probability
-        'fuel_consumption_rate',   # ✅ Line 824 - Fuel consumption rate
-        'ignition_threshold',      # ✅ Line 1050 - Ignition probability threshold
-        'min_fuel_value',          # ✅ Lines 825, 883, 1369 - Minimum fuel for burning
-        'max_fuel_value',          # ✅ Lines 1014, 1377 - Maximum fuel normalization
+        'spread_probability',      # Base fire spread probability
+        'fuel_consumption_rate',   # Fuel consumption rate
+        'ignition_threshold',      # Ignition probability threshold
+        'min_fuel_value',          # Minimum fuel for burning
+        'max_fuel_value',          # Maximum fuel normalization
         
         # Environmental Interactions
-        'wind_influence_on_spread', # ✅ Line 990 - Wind effect on fire spread
-        'slope_influence',         # ✅ Line 1114 - Terrain slope effect
-        'reference_wind_speed',    # ✅ Line 989 - Reference wind speed for scaling
-        'fuel_moisture_baseline',  # ✅ Line 1387 - Baseline fuel moisture
+        'wind_influence_on_spread', # Wind effect on fire spread
+        'slope_influence',         # Terrain slope effect
+        'reference_wind_speed',    # Reference wind speed for scaling
+        'fuel_moisture_baseline',  # Baseline fuel moisture
         
-        # Wind Parameters (Main Fire Spread)
-        'wind_speed',              # ✅ Lines 920-994 - Wind speed via get_wind_speed_at_cell()
-        'wind_direction',          # ✅ Lines 926-994 - Wind direction via get_wind_direction_at_cell()
+        # Wind Parameters
+        'wind_speed',              # Wind speed
+        'wind_direction',          # Wind direction
         
         # Ember Mechanics
-        'ember_probability',       # ✅ Line 1250 - Ember generation probability
-        'ember_distance',          # ✅ Lines 1284, 1401 - Ember travel distance
-        'ember_ignition',          # ✅ Line 1374 - Ember ignition probability
-        'ember_height_factor',     # ✅ Line 1254 - Height factor for ember generation
-        'ember_wind_factor',       # ✅ Line 1301 - Wind influence on ember direction
-        'ember_rise'               # ✅ Line 1314 - Ember height change range
-        
-        # ❌ REMOVED UNIMPLEMENTED PARAMETERS:
-        # 'terrain_effect_strength' - NOT FOUND in any fire spread calculation
-        # 'barranco_amplification' - NOT FOUND in any fire spread calculation  
-        # 'barranco_direction_weight' - NOT FOUND in any fire spread calculation
+        'ember_probability',       # Ember generation probability
+        'ember_distance',          # Ember travel distance
+        'ember_ignition',          # Ember ignition probability
+        'ember_height_factor',     # Height factor for ember generation
+        'ember_wind_factor',       # Wind influence on ember direction
+        'ember_rise'               # Ember height change range
     ])
     
     # === CALIBRATION TARGETS ===
@@ -114,8 +109,7 @@ class CalibrationConfig:
     spatial_similarity_weight: float = 0.6
     fire_behavior_weight: float = 0.4
     jaccard_weight: float = 0.4
-    dice_weight: float = 0.3
-    sorensen_weight: float = 0.3
+    dice_weight: float = 0.6  # Increased since sorensen is removed
     
     # === VALIDATION SETTINGS ===
     validation_split: float = 0.2
@@ -133,7 +127,7 @@ class CalibrationConfig:
     parallel_execution: bool = True
     max_workers: int = 28  # Default to 28 for HPC consistency
     memory_limit_gb: float = 8.0
-    simulation_timeout_minutes: float = 30.0
+    simulation_timeout_minutes: float = 60.0
     
     # === SHARED TERRAIN CONFIGURATION ===
     shared_terrain_info: Optional[Dict[str, Any]] = None  # CRITICAL: Shared terrain data for memory efficiency
@@ -144,7 +138,7 @@ class CalibrationConfig:
     # Coordinate reference system (e.g., "EPSG:25828" for Tenerife)
     crs: str = "EPSG:32628"
     # Model resolution in meters per grid cell
-    model_resolution: float = 5.0
+    model_resolution: float = 20.0  # Changed from 5.0 to 20.0
     
     # LiDAR data configuration
     use_lidar_data: bool = False
@@ -156,10 +150,10 @@ class CalibrationConfig:
     max_vegetation_height_m: float = 50.0
     
     # Terrain file parameters
-    use_terrain: bool = True  # Changed from False to True - terrain effects are essential for realistic fire simulation
-    dem_file: Optional[str] = "Data/DTM/Merged_DTM.tif"
-    use_preprocessed_terrain: bool = True  # Changed from False to True - use preprocessed terrain by default
-    preprocessed_terrain_dir: Optional[str] = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain"  # HPC path for preprocessed terrain
+    use_terrain: bool = True
+    dem_file: Optional[str] = None  # Will be set based on environment
+    use_preprocessed_terrain: bool = True
+    preprocessed_terrain_dir: Optional[str] = None  # Will be set based on environment
     
     # Memory and processing for LiDAR calibration
     tile_size: int = 200
@@ -171,6 +165,9 @@ class CalibrationConfig:
     experiment_name: str = "calibration_experiment"
     experiment_description: str = ""
     experiment_tags: List[str] = field(default_factory=list)
+    
+    # Shared LiDAR configuration
+    shared_lidar_info: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         """Initialize and validate configuration after creation."""
@@ -428,6 +425,17 @@ class CalibrationConfig:
         if self.base_config:
             config_dict['base_config'] = asdict(self.base_config)
         
+        # Handle calibration targets
+        if 'calibration_targets' in config_dict:
+            targets = []
+            for target_dict in config_dict['calibration_targets']:
+                targets.append(CalibrationTarget(**target_dict))
+            config_dict['calibration_targets'] = targets
+        
+        # Handle shared LiDAR info
+        if 'shared_lidar_info' in config_dict:
+            config_dict['shared_lidar_info'] = self.shared_lidar_info
+        
         # Save to file
         with open(filepath, 'w') as f:
             json.dump(config_dict, f, indent=2, default=str)
@@ -469,6 +477,10 @@ class CalibrationConfig:
             for target_dict in config_dict['calibration_targets']:
                 targets.append(CalibrationTarget(**target_dict))
             config_dict['calibration_targets'] = targets
+        
+        # Handle shared LiDAR info
+        if 'shared_lidar_info' in config_dict:
+            config_dict['shared_lidar_info'] = config_dict['shared_lidar_info']
         
         logger.info(f"Loaded calibration configuration from {filepath}")
         return cls(**config_dict)
@@ -568,7 +580,7 @@ def create_calibration_from_production_config(
         config = create_calibration_from_production_config(
             production_config_path="hpc_deployment/Forest_Fire_Simulation_production_test.json",
             experiment_name="tenerife_calibration",
-            calibration_parameters=['fuel_consumption_rate', 'terrain_effect_strength']
+            calibration_parameters=['fuel_consumption_rate', 'spread_probability']
         )
     """
     production_config_path = Path(production_config_path)
@@ -586,19 +598,17 @@ def create_calibration_from_production_config(
     # Set default calibration parameters if not provided
     if calibration_parameters is None:
             calibration_parameters = [
-                'wind_influence_on_spread',
-                'fuel_consumption_rate',
-                'terrain_effect_strength',
-                'barranco_amplification',
-                'barranco_direction_weight',
-                'slope_influence',
-                'ember_height_factor',
-                'wind_speed',
-                'wind_direction',
-                'ember_distance',
-                'ember_probability',
-                'ember_ignition',
-                'ember_generation'
+                # ✅ VERIFIED IMPLEMENTED PARAMETERS ONLY
+                'spread_probability',      # Base fire spread probability
+                'fuel_consumption_rate',   # Fuel consumption rate
+                'ignition_threshold',      # Ignition probability threshold
+                'wind_influence_on_spread', # Wind effect on fire spread
+                'slope_influence',         # Terrain slope effect
+                'ember_probability',       # Ember generation probability
+                'ember_distance',          # Ember travel distance
+                'ember_ignition',          # Ember ignition probability
+                'wind_speed',              # Wind speed
+                'wind_direction'           # Wind direction
             ]
     
     # Extract key configuration elements from production config

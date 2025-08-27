@@ -532,7 +532,7 @@ class SensitivityAnalyzer:
                 completed = 0
                 for future in as_completed(future_to_eval, timeout=3600):  # 1-hour total timeout
                     try:
-                        result = future.result(timeout=600)  # 10 minute timeout per evaluation
+                        result = future.result(timeout=5400)  # 1.5 hour timeout per evaluation
                         evaluation_results.append(result)
                         completed += 1
                         

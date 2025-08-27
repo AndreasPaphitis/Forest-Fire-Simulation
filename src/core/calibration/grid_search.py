@@ -35,14 +35,13 @@ from functools import lru_cache
 
 try:
     from src.utils.logging_utils import get_logger
-    from src.core.fire_simulation_engine import FireSimulationEngine
-    from src.core.forest_model import create_forest_model
+    from src.core.forest_model import create_forest_model, MemoryOptimizedForestModel
     from src.core.calibration.objective_functions import ObjectiveResult
 except ImportError:
     try:
         from utils.logging_utils import get_logger
-        from core.fire_simulation_engine import FireSimulationEngine
-        from core.forest_model import create_forest_model
+        from core.forest_model import create_forest_model, MemoryOptimizedForestModel
+        from core.calibration.objective_functions import ObjectiveResult
     except ImportError:
         import logging
         logging.basicConfig(level=logging.INFO)
@@ -52,14 +51,23 @@ logger = get_logger(__name__)
 # Set main logger level to WARNING to reduce verbosity
 logger.setLevel(logging.WARNING)
 
+# Set worker logger level to WARNING to reduce verbose output
+def get_worker_logger(name):
+    worker_logger = logging.getLogger(name)
+    worker_logger.setLevel(logging.WARNING)
+    return worker_logger
 
-@dataclass
+
 class GridSearchResult:
     """Single result from grid search evaluation."""
-    parameter_values: Dict[str, float]
-    objective_result: 'ObjectiveResult'  # Use composition instead of duplication
-    simulation_stats: Dict[str, Any]
-    evaluation_time: float
+    
+    def __init__(self, parameter_values: Dict[str, float], objective_result: 'ObjectiveResult', 
+                 simulation_stats: Dict[str, Any], evaluation_time: float, vertical_fire_spread: Optional[Dict[str, Any]] = None):
+        self.parameter_values = parameter_values
+        self.objective_result = objective_result
+        self.simulation_stats = simulation_stats
+        self.evaluation_time = evaluation_time
+        self.vertical_fire_spread = vertical_fire_spread
     
     # Convenience properties for backward compatibility
     @property
@@ -122,7 +130,8 @@ class GridSearchResults:
             parameter_values={},
             objective_result=error_objective,
             simulation_stats={},
-            evaluation_time=0.0
+            evaluation_time=0.0,
+            vertical_fire_spread=None
         )
         self.results.append(error_result)
         self._update_statistics()
@@ -139,7 +148,8 @@ class GridSearchResults:
             parameter_values={},
             objective_result=timeout_objective,
             simulation_stats={},
-            evaluation_time=0.0
+            evaluation_time=0.0,
+            vertical_fire_spread=None
         )
         self.results.append(timeout_result)
         self._update_statistics()
@@ -214,6 +224,7 @@ class GridSearchResults:
                     'objective_value': r.objective_value,
                     'objective_components': r.objective_components,
                     'simulation_stats': r.simulation_stats,
+                    'vertical_fire_spread': getattr(r, 'vertical_fire_spread', None),
                     'evaluation_time': r.evaluation_time,
                     'is_valid': r.is_valid,
                     'error_message': r.error_message
@@ -457,14 +468,28 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     
     This function is designed to be picklable and run in separate processes.
     """
-    # CRITICAL FIX: Import all required modules at the top to avoid scoping issues
+    # CRITICAL FIX: Add import synchronization to prevent deadlock
+    import threading
     import time
-    import logging
-    import gc
-    import sys
-    from src.core.forest_model import ForestModel, create_forest_model
-    from src.config.config_tools import ModelConfig
-    from src.core.fire_simulation_engine import FireSimulationEngine
+    
+    # Global import lock to prevent multiple workers importing simultaneously
+    if not hasattr(evaluate_worker_function, '_import_lock'):
+        evaluate_worker_function._import_lock = threading.Lock()
+    
+    # Wait for import lock with timeout to prevent infinite hanging
+    if not evaluate_worker_function._import_lock.acquire(timeout=30):
+        print(f"⚠️  Worker {worker_id}: Import lock timeout - proceeding anyway")
+    else:
+        try:
+            # CRITICAL FIX: Import all required modules at the top to avoid scoping issues
+            import logging
+            import gc
+            import sys
+            from src.core.forest_model import ForestModel, create_forest_model
+            from src.config.config_tools import ModelConfig
+            from src.core.fire_simulation_engine import FireSimulationEngine
+        finally:
+            evaluate_worker_function._import_lock.release()
     
     # CRITICAL FIX: Add function to get objective function by name
     def get_objective_function_by_name(name):
@@ -496,40 +521,40 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
     forest_model = None
     engine = None
     
-    # Set up logging for worker process - COMPREHENSIVE FIX
-    # Completely isolate worker logging to prevent duplicates
+    # Set up logging for worker process - MINIMAL OUTPUT
     worker_logger = logging.getLogger(f"worker_{time.time()}")
-    worker_logger.setLevel(logging.ERROR)  # REDUCED VERBOSITY: Only show errors
+    worker_logger.setLevel(logging.WARNING)  # Reduced to WARNING to minimize output
     
     # Clear any existing handlers
     for handler in worker_logger.handlers[:]:
         worker_logger.removeHandler(handler)
     
-    # Add a single handler with unique formatting
+    # Add a single handler with minimal formatting
     handler = logging.StreamHandler()
-    formatter = logging.Formatter('[WORKER] %(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('[WORKER] %(levelname)s: %(message)s')
     handler.setFormatter(formatter)
     worker_logger.addHandler(handler)
     
     # Critical: Prevent propagation to avoid duplicate logging
     worker_logger.propagate = False
     
-    # CRITICAL DEBUG: Log all input types to identify the source of the list (REDUCED VERBOSITY)
-    # Only log first worker to avoid spam
+    # Only log critical errors from first worker
     if worker_id < 1:
-        worker_logger.info(f"🎯 WORKER {worker_id}: parameters: {parameter_values}")
+        worker_logger.error(f"Worker {worker_id} started")
     
     # CRITICAL FIX: Validate that we have actual parameters
     if not parameter_values:
         worker_logger.error(f"🎯 WORKER {worker_id}: No parameters provided!")
         return {
             'parameter_values': {},
-            'objective_value': 0.0,
-            'objective_components': {},
+            'objective_result': ObjectiveResult(
+                value=0.0,
+                components={},
+                is_valid=False,
+                error_message="No parameters provided"
+            ),
             'simulation_stats': {},
-            'evaluation_time': 0.0,
-            'is_valid': False,
-            'error_message': f"No parameters provided"
+            'evaluation_time': 0.0
         }
     
     try:
@@ -585,8 +610,58 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 # CRITICAL: Each worker tests DIFFERENT parameter combinations for grid search
                 # This ensures we explore the full parameter space systematically
                 
+                # CRITICAL FIX: Debug the worker_config_dict before filtering
+                worker_logger.debug(f"🔍 worker_config_dict keys before filtering: {list(worker_config_dict.keys())}")
+                if 'grid_size' in worker_config_dict:
+                    worker_logger.debug(f"🔍 worker_config_dict grid_size: {worker_config_dict['grid_size']}")
+                else:
+                    worker_logger.debug(f"🔍 grid_size NOT in worker_config_dict")
+                
+                # CRITICAL FIX: Only keep valid ModelConfig parameters
+                valid_params = [
+                    'grid_size', 'num_layers', 'layer_height', 'model_resolution', 'max_steps', 'random_seed',
+                    'debug', 'store_full_states', 'stop_when_fire_extinguished', 'spread_probability',
+                    'fuel_consumption_rate', 'ignition_threshold', 'min_fuel_value', 'max_fuel_value',
+                    'initial_fuel_load', 'fuel_moisture_baseline', 'wind_speed', 'wind_direction', 'temperature',
+                    'humidity', 'reference_wind_speed', 'wind_influence_on_spread', 'slope_influence',
+                    'terrain_effect_strength', 'barranco_threshold', 'barranco_amplification',
+                    'barranco_direction_weight', 'min_depression_depth', 'min_depression_area',
+                    'ember_probability', 'ember_distance', 'ember_ignition', 'ember_height_factor',
+                    'ember_rise', 'ember_wind_factor', 'memory_optimization_level', 'use_disk_storage',
+                    'use_sparse_storage', 'disk_storage_dir', 'bytes_per_cell', 'tile_size', 'chunk_size',
+                    'simulation_type', 'output_dir', 'results_output_dir', 'logs_output_dir',
+                    'checkpoints_output_dir', 'monitoring_output_dir', 'temp_storage_dir',
+                    'history_keyframe_interval', 'engine_logging_interval', 'ignition_points',
+                    'config_name', 'config_version', 'extinction_coefficient', 'pad_bin_size',
+                    'exclude_ground_layer', 'use_lidar', 'auto_size_from_lidar', 'max_grid_size',
+                    'max_vegetation_height_m', 'lidar_load_max_retries', 'lidar_load_retry_delay_seconds',
+                    'lidar_data_dir', 'preprocessed_lidar_dir', 'use_terrain', 'dem_file', 'use_preprocessed_terrain', 'preprocessed_terrain_dir',
+                    'terrain_preprocessing_config', 'hpc_io_block_size', 'hpc_memory_limit_per_node',
+                    'hpc_mode_gdal', 'gdal_cache_mb', 'gdal_thread_count', 'max_parallel_tiles',
+                    'reserve_cpus', 'save_interval'
+                ]
+                
+                # Keep only valid parameters
+                filtered_config = {}
+                for param in valid_params:
+                    if param in worker_config_dict:
+                        filtered_config[param] = worker_config_dict[param]
+                
+                worker_config_dict = filtered_config
+                
                 model_config = ModelConfig(**worker_config_dict)
                 worker_logger.debug(f"✅ ModelConfig created successfully with worker seed: {worker_seed}")
+                worker_logger.debug(f"🔍 ModelConfig grid_size: {model_config.grid_size}")
+                
+                # CRITICAL FIX: Apply parameter values to ModelConfig
+                for param_name, param_value in parameter_values.items():
+                    if hasattr(model_config, param_name):
+                        setattr(model_config, param_name, param_value)
+                        worker_logger.debug(f"   🔧 Applied {param_name} = {param_value}")
+                    else:
+                        worker_logger.warning(f"   ⚠️ Parameter {param_name} not found in ModelConfig")
+                
+                worker_logger.debug(f"🔍 ModelConfig grid_size after parameter application: {model_config.grid_size}")
                 
                 # Store timeout for later use
                 if timeout_minutes is not None:
@@ -674,34 +749,16 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 def create_forest_with_timeout():
                     nonlocal forest_model, forest_error
                     try:
-                        worker_logger.debug("Creating forest model...")
+                        worker_logger.info(f"🌲 Worker {worker_id}: Starting forest model creation...")
+                        worker_logger.info(f"🌲 Worker {worker_id}: Grid size: {model_config.grid_size}")
+                        worker_logger.info(f"🌲 Worker {worker_id}: LiDAR enabled: {getattr(model_config, 'use_lidar', False)}")
                         
                         forest_model = create_forest_model(
                             model_type=simulation_type,
                             config=model_config
                         )
                         
-                        worker_logger.debug(f"Forest model created successfully: {type(forest_model)}")
-                        
-                        # CRITICAL FIX: Set ignition point to Arafa highlands (2023 Tenerife fire location)
-                        try:
-                            grid_size = model_config.grid_size
-                            if isinstance(grid_size, (tuple, list)) and len(grid_size) >= 2:
-                                # Get Arafa highlands coordinates
-                                arafo_x = int(grid_size[0] * 0.65)   # 65% across (southeastern)
-                                arafo_y = int(grid_size[1] * 0.62)   # 62% down (southeastern highlands)
-                                
-                                # Ensure coordinates are within bounds
-                                arafo_x = max(0, min(arafo_x, grid_size[0] - 1))
-                                arafo_y = max(0, min(arafo_y, grid_size[1] - 1))
-                                
-                                logger.info(f"🔥 Setting ignition point to Arafa highlands: ({arafo_x}, {arafo_y})")
-                                forest_model.set_ignition(arafo_x, arafo_y, 0)
-                                logger.info(f"✅ Ignition point set successfully")
-                            else:
-                                logger.warning(f"⚠️  Invalid grid size for ignition point setting: {grid_size}")
-                        except Exception as ignition_error:
-                            logger.warning(f"⚠️  Failed to set ignition point: {ignition_error}")
+                        worker_logger.info(f"✅ Worker {worker_id}: Forest model created successfully: {type(forest_model)}")
                         
                         forest_ready.set()
                     except Exception as e:
@@ -718,39 +775,45 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 grid_size = model_config.grid_size
                 if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
                     total_cells = grid_size[0] * grid_size[1]
-                    if total_cells > 20_000_000:  # 20M+ cells
-                        forest_timeout = 300.0  # 5 minutes for massive grids
+                    if total_cells > 50_000_000:  # 50M+ cells
+                        forest_timeout = 5400.0  # 1.5 hours for massive grids
+                    elif total_cells > 20_000_000:  # 20M+ cells
+                        forest_timeout = 5400.0  # 1.5 hours for large grids
                     elif total_cells > 10_000_000:  # 10M+ cells
-                        forest_timeout = 180.0  # 3 minutes for large grids
+                        forest_timeout = 5400.0  # 1.5 hours for medium grids
                     else:
-                        forest_timeout = 60.0   # 1 minute for smaller grids
+                        forest_timeout = 5400.0   # 1.5 hours for smaller grids
                 else:
-                    forest_timeout = 60.0  # Default 1 minute
+                    forest_timeout = 5400.0  # Default 1.5 hours
                 
                 worker_logger.debug(f"⏱️  Forest model creation timeout: {forest_timeout} seconds")
                 
                 # Wait for forest model creation with dynamic timeout
                 if not forest_ready.wait(timeout=forest_timeout):
-                    worker_logger.error(f"❌ Forest model creation timed out after {forest_timeout} seconds")
-                    return {
-                        'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
-                        'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': f"Forest model creation timed out after {forest_timeout} seconds"
-                    }
+                     worker_logger.warning(f"⏰ Forest model creation timed out after {forest_timeout} seconds")
+                     return {
+                         'parameter_values': parameter_values,
+                         'objective_result': ObjectiveResult(
+                             value=0.0,
+                             components={},
+                             is_valid=False,
+                             error_message=f"Forest model creation timed out after {forest_timeout} seconds - no partial results available"
+                         ),
+                         'simulation_stats': {'forest_model_timeout': True},
+                         'evaluation_time': time.time()
+                     }
                 if forest_error:
                     worker_logger.error(f"❌ Forest model creation failed: {forest_error}")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message=f"Forest model creation failed: {forest_error}"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': f"Forest model creation failed: {forest_error}"
+                        'evaluation_time': time.time()
                     }
 
                 
@@ -758,12 +821,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     worker_logger.error("❌ Forest model is None after creation")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message="Forest model is None after creation"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': "Forest model is None after creation"
+                        'evaluation_time': time.time()
                     }
                 
                 # Create simulation engine with timeout protection
@@ -795,39 +860,66 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # Wait for engine creation with timeout (30 seconds)
                 if not engine_ready.wait(timeout=30.0):
-                    worker_logger.error("❌ Engine creation timed out after 30 seconds")
-                    return {
-                        'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
-                        'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': "Engine creation timed out after 30 seconds"
-                    }
+                     worker_logger.warning("⏰ Engine creation timed out after 30 seconds")
+                     return {
+                         'parameter_values': parameter_values,
+                         'objective_result': ObjectiveResult(
+                             value=0.0,
+                             components={},
+                             is_valid=False,
+                             error_message="Engine creation timed out after 30 seconds - no partial results available"
+                         ),
+                         'simulation_stats': {'engine_creation_timeout': True},
+                         'evaluation_time': time.time()
+                     }
                 if engine_error:
                     worker_logger.error(f"❌ Engine creation failed: {engine_error}")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message=f"Engine creation failed: {engine_error}"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': f"Engine creation failed: {engine_error}"
+                        'evaluation_time': time.time()
                     }
                 
                 if engine is None:
                     worker_logger.error("❌ Engine is None after creation")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message="Engine is None after creation"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': "Engine is None after creation"
+                        'evaluation_time': time.time()
                     }
+                
+                # Set ignition point AFTER simulation engine is created
+                worker_logger.debug("Setting ignition point to Arafo highlands...")
+                try:
+                    # Set ignition point to Arafo highlands (65%, 62% of grid)
+                    grid_width = forest_model.width
+                    grid_height = forest_model.height
+                    arafo_x = int(grid_width * 0.65)  # 65% of grid width
+                    arafo_y = int(grid_height * 0.62)  # 62% of grid height
+                    
+                    # Set the ignition point in the forest model
+                    forest_model.set_ignition(arafo_x, arafo_y, 0)  # Ground layer
+                    worker_logger.debug(f"✅ Ignition point set to Arafo highlands: ({arafo_x}, {arafo_y})")
+                    
+                    # Also set it in the simulation engine's active cells
+                    if hasattr(engine, 'active_cells'):
+                        engine.active_cells.add((arafo_x, arafo_y, 0))
+                        worker_logger.debug(f"✅ Added ignition point to engine active cells: ({arafo_x}, {arafo_y}, 0)")
+                    
+                except Exception as ignition_error:
+                    worker_logger.warning(f"⚠️ Failed to set ignition point: {ignition_error}")
                 
                 # Run simulation with timeout protection
                 worker_logger.debug("Starting simulation run...")
@@ -868,13 +960,13 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                     else:
                         # Fallback to grid-size based timeout
                         if total_cells > 50_000_000:  # 50M+ cells
-                            timeout_seconds = 1800.0  # 30 minutes for massive grids
+                            timeout_seconds = 3600.0  # 1 hour for massive grids
                         elif total_cells > 20_000_000:  # 20M+ cells
-                            timeout_seconds = 900.0   # 15 minutes for large grids
+                            timeout_seconds = 3600.0   # 1 hour for large grids
                         elif total_cells > 10_000_000:  # 10M+ cells
-                            timeout_seconds = 600.0   # 10 minutes for medium grids
+                            timeout_seconds = 3600.0   # 1 hour for medium grids
                         else:
-                            timeout_seconds = 300.0   # 5 minutes for smaller grids
+                            timeout_seconds = 3600.0   # 1 hour for smaller grids
                         worker_logger.debug(f"⏱️  Using grid-size based timeout: {timeout_seconds} seconds for {total_cells:,} cells")
                 else:
                     timeout_seconds = 300.0  # Default 5 minutes
@@ -882,40 +974,128 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # Wait for simulation with dynamic timeout
                 if not simulation_ready.wait(timeout=timeout_seconds):
-                    worker_logger.error(f"❌ Simulation timed out after {timeout_seconds} seconds")
-                    return {
-                        'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
-                        'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': f"Simulation timed out after {timeout_seconds} seconds"
-                    }
+                     worker_logger.warning(f"⏰ Simulation timed out after {timeout_seconds} seconds - storing partial results")
+                     
+                     # Try to get partial results from the simulation engine if available
+                     partial_stats = {}
+                     partial_objective = None
+                     
+                     if engine is not None:
+                         try:
+                             # Get current state from engine
+                             if hasattr(engine, 'active_cells') and hasattr(engine, 'burned_cells'):
+                                 active_count = len(engine.active_cells)
+                                 burned_count = len(engine.burned_cells)
+                                 partial_stats = {
+                                     'total_burned_cells': burned_count,
+                                     'final_active_cells': active_count,
+                                     'steps': getattr(engine, 'current_step', 0),
+                                     'timeout_occurred': True,
+                                     'partial_results': True
+                                 }
+                                 
+                                 # Create a partial fire perimeter for objective calculation
+                                 if hasattr(engine, 'forest_model') and engine.forest_model is not None:
+                                     try:
+                                         # Get current state from forest model
+                                         current_state = engine.forest_model.get_state()
+                                         
+                                         # Create partial simulation result
+                                         partial_simulation_result = {
+                                             'fire_perimeter': current_state,
+                                             'stats': partial_stats,
+                                             'partial_results': True
+                                         }
+                                         
+                                         # Calculate objective with partial results
+                                         objective_function = get_objective_function_by_name(objective_function_name)
+                                         partial_objective = objective_function(partial_simulation_result, target_data)
+                                         
+                                         worker_logger.info(f"✅ Stored partial results: {active_count} burning + {burned_count} burned cells")
+                                         
+                                     except Exception as obj_error:
+                                         worker_logger.warning(f"⚠️ Could not calculate objective for partial results: {obj_error}")
+                                         partial_objective = ObjectiveResult(
+                                             value=0.0,
+                                             components={},
+                                             is_valid=False,
+                                             error_message=f"Partial results available but objective calculation failed: {obj_error}"
+                                         )
+                                 else:
+                                     partial_objective = ObjectiveResult(
+                                         value=0.0,
+                                         components={},
+                                         is_valid=False,
+                                         error_message=f"Simulation timed out after {timeout_seconds} seconds - partial results available"
+                                     )
+                             else:
+                                 partial_objective = ObjectiveResult(
+                                     value=0.0,
+                                     components={},
+                                     is_valid=False,
+                                     error_message=f"Simulation timed out after {timeout_seconds} seconds - no partial results available"
+                                 )
+                         except Exception as partial_error:
+                             worker_logger.warning(f"⚠️ Error getting partial results: {partial_error}")
+                             partial_objective = ObjectiveResult(
+                                 value=0.0,
+                                 components={},
+                                 is_valid=False,
+                                 error_message=f"Simulation timed out after {timeout_seconds} seconds - error getting partial results: {partial_error}"
+                             )
+                     else:
+                         partial_objective = ObjectiveResult(
+                             value=0.0,
+                             components={},
+                             is_valid=False,
+                             error_message=f"Simulation timed out after {timeout_seconds} seconds - no engine available"
+                         )
+                     
+                     worker_logger.warning(f"⏰ Returning partial results after {timeout_seconds} second timeout")
+                     return {
+                         'parameter_values': parameter_values,
+                         'objective_result': partial_objective,
+                         'simulation_stats': partial_stats,
+                         'evaluation_time': time.time(),
+                         'vertical_fire_spread': None
+                     }
                 if simulation_error:
                     worker_logger.error(f"❌ Simulation failed: {simulation_error}")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message=f"Simulation failed: {simulation_error}"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': f"Simulation failed: {simulation_error}"
+                        'evaluation_time': time.time()
                     }
                 
                 if simulation_result is None:
                     worker_logger.error("❌ Simulation result is None")
                     return {
                         'parameter_values': parameter_values,
-                        'objective_value': 0.0,
-                        'objective_components': {},
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message="Simulation result is None"
+                        ),
                         'simulation_stats': {},
-                        'evaluation_time': time.time(),
-                        'is_valid': False,
-                        'error_message': "Simulation result is None"
+                        'evaluation_time': time.time()
                     }
-        
+                
+                # Log simulation results for debugging
+                stats = simulation_result.get('stats', {})
+                burned_cells = stats.get('total_burned_cells', 0)
+                burning_cells = stats.get('final_active_cells', 0)  # Add this line
+                steps_completed = stats.get('steps', 0)
+                max_steps = config_dict.get('max_steps', 'N/A')
+                
+                print(f"🔥 Simulation completed: {burning_cells} burning + {burned_cells} burned = {burning_cells + burned_cells} total cells, ended at step {steps_completed}/{max_steps}")
+                
         # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
                 objective_result = objective_function(simulation_result, target_data)
@@ -924,15 +1104,77 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 objective_value = objective_result.value if objective_result.is_valid else 0.0
                 objective_components = objective_result.components if objective_result.is_valid else {}
                 
+                # Extract vertical fire spread statistics
+                vertical_spread_stats = None
+                if forest_model and hasattr(forest_model, 'spread_stats') and forest_model.spread_stats:
+                    stats = forest_model.spread_stats
+                    
+                    # Calculate key metrics
+                    total_spread = sum(stats.values())
+                    vertical_spread = stats.get('vertical_spread', 0)
+                    horizontal_spread = stats.get('horizontal_spread', 0)
+                    ember_spread = stats.get('ember_spread', 0)
+                    total_ignitions = stats.get('total_ignitions', 0)
+                    
+                    # Calculate percentages
+                    vertical_percentage = (vertical_spread / total_spread * 100) if total_spread > 0 else 0
+                    horizontal_percentage = (horizontal_spread / total_spread * 100) if total_spread > 0 else 0
+                    ember_percentage = (ember_spread / total_spread * 100) if total_spread > 0 else 0
+                    
+                    # Calculate efficiency
+                    vertical_efficiency = (vertical_spread / total_ignitions * 100) if total_ignitions > 0 else 0
+                    
+                    # Calculate ratio
+                    vertical_horizontal_ratio = vertical_spread / horizontal_spread if horizontal_spread > 0 else 0
+                    
+                    # Classify vertical spread behavior
+                    if vertical_horizontal_ratio > 0.1:
+                        spread_classification = "High vertical spread - strong convection"
+                    elif vertical_horizontal_ratio > 0.05:
+                        spread_classification = "Moderate vertical spread - normal behavior"
+                    else:
+                        spread_classification = "Low vertical spread - primarily horizontal"
+                    
+                    vertical_spread_stats = {
+                        'total_spread_events': total_spread,
+                        'vertical_spread_events': vertical_spread,
+                        'vertical_spread_percentage': vertical_percentage,
+                        'horizontal_spread_events': horizontal_spread,
+                        'horizontal_spread_percentage': horizontal_percentage,
+                        'ember_spread_events': ember_spread,
+                        'ember_spread_percentage': ember_percentage,
+                        'total_ignitions': total_ignitions,
+                        'vertical_efficiency': vertical_efficiency,
+                        'vertical_horizontal_ratio': vertical_horizontal_ratio,
+                        'spread_classification': spread_classification
+                    }
+                
                 worker_result = {
                     'parameter_values': parameter_values,
-                    'objective_value': objective_value,
-                    'objective_components': objective_components,
-            'simulation_stats': simulation_result.get('stats', {}),
-                    'evaluation_time': time.time(),
-                    'is_valid': True,
-                    'error_message': None
+                    'objective_result': objective_result,
+                    'simulation_stats': simulation_result.get('stats', {}),
+                    'vertical_fire_spread': vertical_spread_stats,
+                    'evaluation_time': time.time()
                 }
+                
+                # Validate that we have a proper result before returning
+                if worker_result is None:
+                    worker_logger.error("❌ CRITICAL: worker_result is None - this should never happen")
+                    worker_result = {
+                        'parameter_values': parameter_values,
+                        'objective_result': ObjectiveResult(
+                            value=0.0,
+                            components={},
+                            is_valid=False,
+                            error_message="Worker result is None - critical error"
+                        ),
+                        'simulation_stats': {},
+                        'vertical_fire_spread': None,
+                        'evaluation_time': time.time()
+                    }
+                
+                worker_logger.info(f"✅ Worker completed successfully - returning result with objective value: {objective_result.value}")
+                return worker_result
                 
             except Exception as e:
                 worker_logger.error(f"🔍 DEBUG: Simulation failed with error: {type(e)} = {e}")
@@ -959,12 +1201,15 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 worker_error = e
                 worker_result = {
                     'parameter_values': parameter_values,
-                    'objective_value': 0.0,
-                    'objective_components': {},
+                    'objective_result': ObjectiveResult(
+                        value=0.0,
+                        components={},
+                        is_valid=False,
+                        error_message=str(e)
+                    ),
                     'simulation_stats': {},
-                    'evaluation_time': time.time(),
-                    'is_valid': False,
-                    'error_message': str(e)
+                    'vertical_fire_spread': None,
+                    'evaluation_time': time.time()
                 }
             
             finally:
@@ -980,31 +1225,103 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         if isinstance(grid_size, (tuple, list)) and len(grid_size) == 2:
             total_cells = grid_size[0] * grid_size[1]
             if total_cells > 50_000_000:  # 50M+ cells
-                worker_timeout = 1800.0  # 30 minutes for massive grids
+                worker_timeout = 5400.0  # 1.5 hours for massive grids
             elif total_cells > 20_000_000:  # 20M+ cells
-                worker_timeout = 1200.0  # 20 minutes for large grids
+                worker_timeout = 5400.0  # 1.5 hours for large grids
             elif total_cells > 10_000_000:  # 10M+ cells
-                worker_timeout = 900.0   # 15 minutes for medium grids
+                worker_timeout = 5400.0   # 1.5 hours for medium grids
             else:
-                worker_timeout = 600.0   # 10 minutes for smaller grids
+                worker_timeout = 5400.0   # 1.5 hours for smaller grids
         else:
-            worker_timeout = 600.0  # Default 10 minutes
+            worker_timeout = 5400.0  # Default 1.5 hours
         
         worker_logger.debug(f"⏱️  Setting worker execution timeout to {worker_timeout} seconds for {total_cells:,} cells")
         
         # Wait for worker completion with dynamic timeout
         if not worker_ready.wait(timeout=worker_timeout):
-            worker_logger.error(f"❌ Worker execution timed out after {worker_timeout} seconds")
-            worker_logger.error("🚨 EMERGENCY: Worker completely stuck - returning error result")
-            return {
-                'parameter_values': parameter_values,
-                'objective_value': 0.0,
-                'objective_components': {},
-                'simulation_stats': {},
-                'evaluation_time': time.time(),
-                'is_valid': False,
-                'error_message': f"Worker execution timed out after {worker_timeout} seconds - EMERGENCY TIMEOUT"
-            }
+             worker_logger.warning(f"⏰ Worker execution timed out after {worker_timeout} seconds - attempting to recover partial results")
+             
+             # Try to get partial results if available
+             partial_stats = {}
+             partial_objective = None
+             
+             if worker_result is not None:
+                 # Worker completed but we didn't get the result in time
+                 worker_logger.info("✅ Worker completed but result retrieval timed out - using available result")
+                 return worker_result
+             elif engine is not None:
+                 # Try to get partial results from engine
+                 try:
+                     if hasattr(engine, 'active_cells') and hasattr(engine, 'burned_cells'):
+                         active_count = len(engine.active_cells)
+                         burned_count = len(engine.burned_cells)
+                         partial_stats = {
+                             'total_burned_cells': burned_count,
+                             'final_active_cells': active_count,
+                             'steps': getattr(engine, 'current_step', 0),
+                             'worker_timeout_occurred': True,
+                             'partial_results': True
+                         }
+                         
+                         # Try to get current state for objective calculation
+                         if hasattr(engine, 'forest_model') and engine.forest_model is not None:
+                             try:
+                                 current_state = engine.forest_model.get_state()
+                                 partial_simulation_result = {
+                                     'fire_perimeter': current_state,
+                                     'stats': partial_stats,
+                                     'partial_results': True
+                                 }
+                                 
+                                 objective_function = get_objective_function_by_name(objective_function_name)
+                                 partial_objective = objective_function(partial_simulation_result, target_data)
+                                 
+                                 worker_logger.info(f"✅ Recovered partial results from worker timeout: {active_count} burning + {burned_count} burned cells")
+                                 
+                             except Exception as obj_error:
+                                 worker_logger.warning(f"⚠️ Could not calculate objective for recovered partial results: {obj_error}")
+                                 partial_objective = ObjectiveResult(
+                                     value=0.0,
+                                     components={},
+                                     is_valid=False,
+                                     error_message=f"Worker timeout - partial results available but objective calculation failed: {obj_error}"
+                                 )
+                         else:
+                             partial_objective = ObjectiveResult(
+                                 value=0.0,
+                                 components={},
+                                 is_valid=False,
+                                 error_message=f"Worker execution timed out after {worker_timeout} seconds - partial results available"
+                             )
+                     else:
+                         partial_objective = ObjectiveResult(
+                             value=0.0,
+                             components={},
+                             is_valid=False,
+                             error_message=f"Worker execution timed out after {worker_timeout} seconds - no partial results available"
+                         )
+                 except Exception as partial_error:
+                     worker_logger.warning(f"⚠️ Error recovering partial results from worker timeout: {partial_error}")
+                     partial_objective = ObjectiveResult(
+                         value=0.0,
+                         components={},
+                         is_valid=False,
+                         error_message=f"Worker execution timed out after {worker_timeout} seconds - error recovering partial results: {partial_error}"
+                     )
+             else:
+                 partial_objective = ObjectiveResult(
+                     value=0.0,
+                     components={},
+                     is_valid=False,
+                     error_message=f"Worker execution timed out after {worker_timeout} seconds - no engine available for partial results"
+                 )
+             
+             return {
+                 'parameter_values': parameter_values,
+                 'objective_result': partial_objective,
+                 'simulation_stats': partial_stats,
+                 'evaluation_time': time.time()
+             }
         
         if worker_error:
             worker_logger.error(f"❌ Worker execution failed: {worker_error}")
@@ -1012,14 +1329,18 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         
         if worker_result is None:
             worker_logger.error("❌ Worker result is None - returning error result")
+            none_objective = ObjectiveResult(
+                value=0.0,
+                components={},
+                is_valid=False,
+                error_message="Worker result is None"
+            )
+            
             return {
                 'parameter_values': parameter_values,
-                'objective_value': 0.0,
-                'objective_components': {},
+                'objective_result': none_objective,  # ← FIXED!
                 'simulation_stats': {},
-                'evaluation_time': time.time(),
-                'is_valid': False,
-                'error_message': "Worker result is None"
+                'evaluation_time': time.time()
             }
         
         return worker_result
@@ -1028,12 +1349,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         worker_logger.error(f"❌ Critical error in worker function: {e}")
         return {
             'parameter_values': parameter_values,
-            'objective_value': 0.0,
-            'objective_components': {},
+            'objective_result': ObjectiveResult(
+                value=0.0,
+                components={},
+                is_valid=False,
+                error_message=f"Critical error: {str(e)}"
+            ),
             'simulation_stats': {},
-            'evaluation_time': time.time(),
-            'is_valid': False,
-            'error_message': f"Critical error: {str(e)}"
+            'evaluation_time': time.time()
         }
 
 class GridSearchCalibrator:
@@ -1080,7 +1403,7 @@ class GridSearchCalibrator:
         self.parameter_bounds = parameter_bounds
         self.objective_function = objective_function
         self.parallel_execution = parallel_execution
-        self.max_workers = max_workers or min(70, mp.cpu_count() or 1)
+        self.max_workers = max_workers or min(4, mp.cpu_count() or 1)  # REDUCED to prevent hanging  # Reduced from 70 to 16
         self.bypass_worker_limit = bypass_worker_limit
         
         # Track if user explicitly specified workers (for respecting user choice)
@@ -1299,6 +1622,26 @@ class GridSearchCalibrator:
                 forest_model = self._create_forest_model_with_optimized_config(parameter_values)
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
             
+            # Set ignition point BEFORE running simulation
+            try:
+                # Set ignition point to Arafo highlands (65%, 62% of grid)
+                grid_width = forest_model.width
+                grid_height = forest_model.height
+                arafo_x = int(grid_width * 0.65)  # 65% of grid width
+                arafo_y = int(grid_height * 0.62)  # 62% of grid height
+                
+                # Set the ignition point in the forest model
+                forest_model.set_ignition(arafo_x, arafo_y, 0)  # Ground layer
+                logger.debug(f"✅ Ignition point set to Arafo highlands: ({arafo_x}, {arafo_y})")
+                
+                # Also set it in the simulation engine's active cells
+                if hasattr(engine, 'active_cells'):
+                    engine.active_cells.add((arafo_x, arafo_y, 0))
+                    logger.debug(f"✅ Added ignition point to engine active cells: ({arafo_x}, {arafo_y}, 0)")
+                
+            except Exception as ignition_error:
+                logger.warning(f"⚠️ Failed to set ignition point: {ignition_error}")
+            
             # Run simulation
             simulation_result = engine.run_simulation()
             
@@ -1313,12 +1656,58 @@ class GridSearchCalibrator:
             
             evaluation_time = time.time() - start_time
             
+            # Extract vertical fire spread statistics
+            vertical_spread_stats = None
+            if forest_model and hasattr(forest_model, 'spread_stats') and forest_model.spread_stats:
+                stats = forest_model.spread_stats
+                
+                # Calculate key metrics
+                total_spread = sum(stats.values())
+                vertical_spread = stats.get('vertical_spread', 0)
+                horizontal_spread = stats.get('horizontal_spread', 0)
+                ember_spread = stats.get('ember_spread', 0)
+                total_ignitions = stats.get('total_ignitions', 0)
+                
+                # Calculate percentages
+                vertical_percentage = (vertical_spread / total_spread * 100) if total_spread > 0 else 0
+                horizontal_percentage = (horizontal_spread / total_spread * 100) if total_spread > 0 else 0
+                ember_percentage = (ember_spread / total_spread * 100) if total_spread > 0 else 0
+                
+                # Calculate efficiency
+                vertical_efficiency = (vertical_spread / total_ignitions * 100) if total_ignitions > 0 else 0
+                
+                # Calculate ratio
+                vertical_horizontal_ratio = vertical_spread / horizontal_spread if horizontal_spread > 0 else 0
+                
+                # Classify vertical spread behavior
+                if vertical_horizontal_ratio > 0.1:
+                    spread_classification = "High vertical spread - strong convection"
+                elif vertical_horizontal_ratio > 0.05:
+                    spread_classification = "Moderate vertical spread - normal behavior"
+                else:
+                    spread_classification = "Low vertical spread - primarily horizontal"
+                
+                vertical_spread_stats = {
+                    'total_spread_events': total_spread,
+                    'vertical_spread_events': vertical_spread,
+                    'vertical_spread_percentage': vertical_percentage,
+                    'horizontal_spread_events': horizontal_spread,
+                    'horizontal_spread_percentage': horizontal_percentage,
+                    'ember_spread_events': ember_spread,
+                    'ember_spread_percentage': ember_percentage,
+                    'total_ignitions': total_ignitions,
+                    'vertical_efficiency': vertical_efficiency,
+                    'vertical_horizontal_ratio': vertical_horizontal_ratio,
+                    'spread_classification': spread_classification
+                }
+            
             # Create result using composition
             result = GridSearchResult(
                 parameter_values=parameter_values.copy(),
                 objective_result=objective_result,  # Use the ObjectiveResult directly
                 simulation_stats=simulation_result.get('stats', {}),
-                evaluation_time=evaluation_time
+                evaluation_time=evaluation_time,
+                vertical_fire_spread=vertical_spread_stats
             )
             
             # Clean up
@@ -1362,7 +1751,8 @@ class GridSearchCalibrator:
                 parameter_values=parameter_values.copy(),
                 objective_result=error_objective,
                 simulation_stats={},
-                evaluation_time=evaluation_time
+                evaluation_time=evaluation_time,
+                vertical_fire_spread=None
             )
         
         finally:
@@ -1389,7 +1779,31 @@ class GridSearchCalibrator:
             # Set target data for multiprocessing access using shared memory
             if target_data is not None:
                 set_shared_target_data(target_data)
-                logger.debug(f"📦 Set shared target data for multiprocessing (size: {len(target_data.get('fire_perimeter', [])) if 'fire_perimeter' in target_data else 0} cells)")
+                
+                # CRITICAL FIX: Handle sparse arrays properly
+                if 'fire_perimeter' in target_data:
+                    fire_perimeter = target_data['fire_perimeter']
+                    try:
+                        from scipy.sparse import issparse
+                        if issparse(fire_perimeter):
+                            # For sparse arrays, use getnnz() to get number of non-zero elements
+                            size_info = f"{fire_perimeter.getnnz()} non-zero cells (sparse)"
+                        else:
+                            # For dense arrays, use len() or shape
+                            if hasattr(fire_perimeter, 'shape'):
+                                size_info = f"{fire_perimeter.shape[0] * fire_perimeter.shape[1]} cells (dense)"
+                            else:
+                                size_info = f"{len(fire_perimeter)} cells"
+                    except ImportError:
+                        # Fallback if scipy is not available
+                        if hasattr(fire_perimeter, 'shape'):
+                            size_info = f"{fire_perimeter.shape[0] * fire_perimeter.shape[1]} cells"
+                        else:
+                            size_info = f"{len(fire_perimeter)} cells"
+                else:
+                    size_info = "0 cells"
+                
+                logger.debug(f"📦 Set shared target data for multiprocessing (size: {size_info})")
             
             logger.info(f"Starting grid search calibration with {self.total_combinations} combinations")
             self.start_time = time.time()  # Store start time for ETA calculations
@@ -1437,8 +1851,8 @@ class GridSearchCalibrator:
                 else:
                     # Auto-detection mode - use intelligent thresholds
                     if available_memory_gb >= 120:  # High-memory HPC environment
-                        # Allow parallel processing even for very large grids (up to 20B cells)
-                        if total_model_cells > 20_000_000_000:
+                        # REDUCED: Allow parallel processing for large grids (up to 5B cells)
+                        if total_model_cells > 5_000_000_000:
                             logger.warning(f"Extreme grid size ({total_model_cells:,} cells) - forcing sequential execution")
                             should_run_parallel = False
                         else:
@@ -1461,7 +1875,7 @@ class GridSearchCalibrator:
             logger.info(f"Grid search completed in {total_time:.2f} seconds")
             best_value = results.get_best_objective_value()
             if best_value is not None:
-                logger.info(f"Best objective value: {best_value:.4f}")
+                logger.info(f"Best objective value: {best_value:.8f}")
             else:
                 logger.info(f"Best objective value: None (no valid results)")
             # Don't duplicate best parameters - they're shown by the calling script
@@ -1531,13 +1945,13 @@ class GridSearchCalibrator:
                         memory_gb = psutil.virtual_memory().total / (1024**3)
                         
                         if memory_gb >= 200:  # High-memory HPC (200GB+)
-                            max_workers_for_grid = 64  # Allow up to 64 workers
+                            max_workers_for_grid = 16  # Reduced from 64 to 16
                         elif memory_gb >= 100:  # Medium-high memory HPC (100-200GB)
-                            max_workers_for_grid = 48  # Allow up to 48 workers
+                            max_workers_for_grid = 12  # Reduced from 48 to 12
                         elif memory_gb >= 60:   # Medium memory HPC (60-100GB)
-                            max_workers_for_grid = 32  # Allow up to 32 workers
+                            max_workers_for_grid = 8   # Reduced from 32 to 8
                         else:  # Lower memory systems
-                            max_workers_for_grid = 16  # Conservative limit
+                            max_workers_for_grid = 4   # Reduced from 16 to 4
                         
                         # RESPECT USER CHOICE: Only adjust if user didn't explicitly specify workers
                         if hasattr(self, '_user_specified_workers') and self._user_specified_workers:
@@ -1548,7 +1962,7 @@ class GridSearchCalibrator:
                             logger.warning(f"🚨 Adjusted workers to {optimal_workers} for massive grid (max allowed: {max_workers_for_grid} for {memory_gb:.1f}GB system)")
                     except Exception as e:
                         # Fallback if psutil fails
-                        optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
+                        optimal_workers = min(optimal_workers, 16)  # Reduced from 64 to 16
                         logger.warning(f"🚨 Using conservative worker limit: {optimal_workers} (psutil error: {e})")
             
             # CRITICAL FIX: Only apply HPC optimization if user didn't explicitly specify workers
@@ -1581,7 +1995,7 @@ class GridSearchCalibrator:
         
         # CRITICAL FIX: Move pre-optimization AFTER generating combinations list
         # This prevents the generator from being consumed before the main processing
-        self._pre_optimize_for_workers_from_list(combinations_list[:10])  # Only pre-optimize first 10
+        # self._pre_optimize_for_workers_from_list(combinations_list[:10])  # Skip pre-optimization to fix hang
         
         # CRITICAL FIX: Validate parameter space BEFORE starting workers
         if len(combinations_list) == 0:
@@ -1620,20 +2034,24 @@ class GridSearchCalibrator:
         # Prepare configuration and objective function name for workers
         # CRITICAL FIX: Ensure config_dict is properly created
         try:
+            logger.info(f"🔍 Creating base_config_variant...")
             base_config_variant = self.config.create_config_variant({})
+            logger.info(f"🔍 base_config_variant type: {type(base_config_variant)}")
+            logger.info(f"🔍 base_config_variant: {base_config_variant}")
             
-            # CRITICAL FIX: Handle different return types from create_config_variant
-            if isinstance(base_config_variant, dict):
-                config_dict = base_config_variant
-            elif hasattr(base_config_variant, '__dict__'):
+            # CRITICAL FIX: Handle ModelConfig object returned by create_config_variant
+            if hasattr(base_config_variant, '__dict__'):
                 # If it's a ModelConfig object, use asdict() to convert to dictionary
                 try:
                     from dataclasses import asdict
                     config_dict = asdict(base_config_variant)
-                    logger.debug(f"Converted ModelConfig to dictionary using asdict()")
+                    logger.info(f"✅ Converted ModelConfig to dictionary using asdict()")
+                    logger.info(f"✅ ModelConfig grid_size: {base_config_variant.grid_size}")
                 except Exception as asdict_error:
                     logger.warning(f"asdict() failed, using __dict__: {asdict_error}")
-                config_dict = base_config_variant.__dict__
+                    config_dict = base_config_variant.__dict__
+            elif isinstance(base_config_variant, dict):
+                config_dict = base_config_variant
             elif isinstance(base_config_variant, (list, tuple)) and len(base_config_variant) > 0:
                 # If it's a list/tuple, take the first item if it's a dict
                 if isinstance(base_config_variant[0], dict):
@@ -1702,7 +2120,50 @@ class GridSearchCalibrator:
                 'fuel_consumption_rate': 0.01,
                 'ignition_threshold': 0.1,
                 'stop_when_fire_extinguished': False,
-                'simulation_timeout_minutes': 30.0  # Default 30 minutes
+                'simulation_timeout_minutes': 60.0,  # Default 60 minutes
+                # Add missing required parameters
+                'ember_probability': 0.3,
+                'ember_ignition': 0.3,
+                'slope_influence': 0.3,
+                'wind_influence_on_spread': 0.5,
+                'min_fuel_value': 0.02,
+                'fuel_moisture_baseline': 0.3,
+                'wind_speed': 5.0,
+                'wind_direction': 0.0,
+                'temperature': 25.0,
+                'humidity': 30.0,
+                'reference_wind_speed': 10.0,
+                'terrain_effect_strength': 0.6,
+                'barranco_threshold': 30.0,
+                'barranco_amplification': 2.0,
+                'barranco_direction_weight': 0.8,
+                'min_depression_depth': 5.0,
+                'min_depression_area': 4,
+                'ember_distance': 5,
+                'ember_height_factor': 0.2,
+                'ember_rise': 2,
+                'ember_wind_factor': 0.4,
+                'memory_optimization_level': 0,
+                'use_disk_storage': False,
+                'use_sparse_storage': True,
+                'disk_storage_dir': "temp_simulation_states",
+                'bytes_per_cell': 10,
+                'tile_size': 200,
+                'chunk_size': 1000,
+                'history_keyframe_interval': 10,
+                'engine_logging_interval': 100,
+                'crs': "EPSG:32628",
+                'extinction_coefficient': 0.5,
+                'pad_bin_size': 2.0,
+                'exclude_ground_layer': True,
+                'use_lidar': False,
+                'auto_size_from_lidar': False,
+                'max_vegetation_height_m': 50.0,
+                'use_tiling': False,
+                'use_parallel': True,
+                'tile_overlap_ratio': 0.1,
+                'fuel_load_method': "random",
+                'save_visualizations': True
             }
             logger.debug(f"Using fallback config_dict with {len(config_dict)} keys")
         
@@ -1720,7 +2181,13 @@ class GridSearchCalibrator:
             nonlocal executor, executor_error
             try:
                 logger.info(f"🚀 Creating ProcessPoolExecutor with {self.max_workers} workers...")
-                executor = ProcessPoolExecutor(max_workers=self.max_workers)
+                # CRITICAL FIX: Force exact user-specified worker count
+                if self._user_specified_workers:
+                    logger.info(f'  FORCING USER-SPECIFIED WORKER COUNT: {self.max_workers}')
+                    actual_workers = self.max_workers
+                else:
+                    actual_workers = self.max_workers
+                executor = ProcessPoolExecutor(max_workers=actual_workers)
                 logger.info(f"✅ ProcessPoolExecutor created successfully")
                 executor_ready.set()
             except Exception as e:
@@ -1733,9 +2200,9 @@ class GridSearchCalibrator:
         executor_thread.daemon = True
         executor_thread.start()
         
-        # Wait for executor creation with timeout (60 seconds)
-        if not executor_ready.wait(timeout=60.0):
-            logger.error("❌ ProcessPoolExecutor creation timed out after 60 seconds")
+        # Wait for executor creation with timeout (30 seconds) - REDUCED
+        if not executor_ready.wait(timeout=30.0):
+            logger.error("❌ ProcessPoolExecutor creation timed out after 30 seconds")
             logger.error("🚨 EMERGENCY: Falling back to sequential execution")
             return self._run_sequential_calibration(target_data, progress_callback, results)
         
@@ -1759,7 +2226,7 @@ class GridSearchCalibrator:
                     batch_size = max(1, min(5, self.max_workers // workers_per_sim))
                 else:
                     # Submit jobs in batches to prevent resource contention
-                    batch_size = min(10, self.max_workers)
+                    batch_size = min(2, self.max_workers)  # REDUCED to prevent hanging
                 all_futures = []
                 
                 # CRITICAL FIX: Assign unique worker IDs and ensure each worker gets different parameter combinations
@@ -1814,7 +2281,7 @@ class GridSearchCalibrator:
                     # CRITICAL FIX: Ensure each worker gets a unique combination by adding worker_id to the combo
                     batch_futures = {}
                     for batch_idx, combo in enumerate(batch):
-                        worker_id = worker_counter + batch_idx
+                        worker_id = ((worker_counter + batch_idx) % self.max_workers) + 1  # Cycle through actual worker processes
                         
                         # CRITICAL FIX: DO NOT modify the parameter combination - pass it as-is
                         # Each worker should test DIFFERENT parameter combinations for grid search
@@ -1824,6 +2291,9 @@ class GridSearchCalibrator:
                         if worker_id < 1:
                             logger.info(f"🔍 DEBUG: Worker {worker_id} gets combination: {combo}")
                         
+                        # Add small delay to prevent simultaneous imports
+                        if worker_id > 0:
+                            time.sleep(0.1)  # 100ms delay between workers
                         future = executor.submit(evaluate_worker_function, combo, target_data, config_dict, objective_function_name, worker_id)
                         batch_futures[future] = combo
                     worker_counter += len(batch)
@@ -1844,15 +2314,22 @@ class GridSearchCalibrator:
                 completed = 0
                 for future in as_completed(all_futures):
                     try:
+                        # Get result with timeout - this is where worker results are retrieved
                         result_dict = future.result(timeout=300)  # 5 minute timeout per evaluation
+                        
+                        # Check if result_dict is None (worker crashed or returned None)
+                        if result_dict is None:
+                            logger.error("❌ Worker result is None - worker likely crashed or timed out")
+                            results.add_timeout()
+                            continue
                         
                         # Convert dictionary result to GridSearchResult
                         result = GridSearchResult(**result_dict)
                         results.add_result(result)
                         completed += 1
                         
-                        # Progress updates every 5% or every 10 evaluations (simplified)
-                        if completed % progress_interval == 0 or completed % 10 == 0:
+                        # Progress updates every 2% or every 5 evaluations (more frequent)
+                        if completed % progress_interval == 0 or completed % 5 == 0:
                             progress_percent = (completed / total_combinations) * 100
                             logger.info(f"📊 Progress: {progress_percent:.1f}% ({completed}/{total_combinations})")
                         
@@ -1867,8 +2344,23 @@ class GridSearchCalibrator:
                                 logger.debug(f"🧹 Periodic cleanup freed {collected} objects after {completed} evaluations")
                         
                     except TimeoutError:
-                        logger.error("❌ Evaluation timed out")
-                        results.add_timeout()
+                        logger.warning("⏰ Evaluation timed out - partial results may be available")
+                        # The worker function now returns partial results instead of timing out completely
+                        # So we should still process the result
+                        try:
+                            # Try to get the result anyway - it might contain partial data
+                            result_dict = future.result(timeout=60)  # Short timeout for result retrieval
+                            if result_dict is None:
+                                logger.error("❌ Worker result is None after timeout - worker crashed")
+                                results.add_timeout()
+                            else:
+                                result = GridSearchResult(**result_dict)
+                                results.add_result(result)
+                                completed += 1
+                                logger.info(f"✅ Retrieved partial results from timed out evaluation")
+                        except Exception as timeout_error:
+                            logger.error(f"❌ Could not retrieve partial results: {timeout_error}")
+                            results.add_timeout()
                     except Exception as e:
                         logger.error(f"❌ Evaluation failed: {e}")
                         results.add_error()
@@ -2055,7 +2547,7 @@ class GridSearchCalibrator:
             optimal_workers = min(memory_based_workers, cpu_based_workers, numa_workers)
             
             # Cap at reasonable maximum
-            optimal_workers = min(optimal_workers, 64)  # Increased from 32 for NUMA systems
+            optimal_workers = min(optimal_workers, 16)  # Reduced from 64 to 16
             
             logger.debug(f"🧠 HPC worker calculation: memory={memory_based_workers}, cpu={cpu_based_workers}, numa={numa_workers} -> optimal={optimal_workers}")
             

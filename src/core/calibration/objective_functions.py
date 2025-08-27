@@ -20,6 +20,29 @@ from typing import Dict, List, Any, Union, Optional, Tuple, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+# Import cell state constants
+try:
+    from src.core.core_simulation_framework import CellState
+    FrameworkCellState = CellState  # Alias for compatibility
+except ImportError:
+    try:
+        from core_simulation_framework import CellState
+        FrameworkCellState = CellState
+    except ImportError:
+        # Fallback: define constants directly
+        class FrameworkCellState:
+            UNBURNED = 0
+            BURNING = 1
+            BURNED = 2
+
+try:
+    from scipy.sparse import csr_matrix, issparse
+    SCIPY_SPARSE_AVAILABLE = True
+except ImportError:
+    SCIPY_SPARSE_AVAILABLE = False
+    def issparse(obj):
+        return False
+
 try:
     from src.utils.logging_utils import get_logger
 except ImportError:
@@ -46,6 +69,12 @@ def calculate_jaccard_index(predicted: np.ndarray, actual: np.ndarray) -> float:
     Returns:
         Jaccard index value between 0 and 1 (1 = perfect match)
     """
+    # CRITICAL FIX: Handle sparse arrays
+    if SCIPY_SPARSE_AVAILABLE and issparse(predicted):
+        predicted = predicted.toarray()
+    if SCIPY_SPARSE_AVAILABLE and issparse(actual):
+        actual = actual.toarray()
+    
     # Convert to boolean arrays
     pred_bool = predicted.astype(bool)
     actual_bool = actual.astype(bool)
@@ -88,20 +117,6 @@ def calculate_dice_coefficient(predicted: np.ndarray, actual: np.ndarray) -> flo
         return 1.0 if intersection == 0 else 0.0
     
     return (2.0 * float(intersection)) / float(pred_size + actual_size)
-
-
-def calculate_sorensen_coefficient(predicted: np.ndarray, actual: np.ndarray) -> float:
-    """
-    Calculate the Sørensen similarity coefficient (same as Dice coefficient).
-    
-    Args:
-        predicted: Binary array of predicted fire locations
-        actual: Binary array of actual fire locations
-        
-    Returns:
-        Sørensen coefficient value between 0 and 1 (1 = perfect match)
-    """
-    return calculate_dice_coefficient(predicted, actual)
 
 
 def calculate_hausdorff_distance(predicted: np.ndarray, actual: np.ndarray) -> float:
@@ -166,13 +181,14 @@ def calculate_area_ratio(predicted: np.ndarray, actual: np.ndarray) -> float:
     return float(pred_area) / float(actual_area)
 
 
-@dataclass
 class ObjectiveResult:
     """Result of an objective function evaluation."""
-    value: float
-    components: Dict[str, float]
-    is_valid: bool = True
-    error_message: str = ""
+    
+    def __init__(self, value: float, components: Dict[str, float], is_valid: bool = True, error_message: str = ""):
+        self.value = value
+        self.components = components
+        self.is_valid = is_valid
+        self.error_message = error_message
     
     def __lt__(self, other):
         """Compare ObjectiveResult objects by their value."""
@@ -287,8 +303,7 @@ class SpatialSimilarityObjective(ObjectiveFunction):
     
     def __init__(self, 
                  jaccard_weight: float = 0.4,
-                 dice_weight: float = 0.3,
-                 sorensen_weight: float = 0.3,
+                 dice_weight: float = 0.6,
                  include_hausdorff: bool = False,
                  hausdorff_weight: float = 0.0):
         """
@@ -297,112 +312,136 @@ class SpatialSimilarityObjective(ObjectiveFunction):
         Args:
             jaccard_weight: Weight for Jaccard index
             dice_weight: Weight for Dice coefficient
-            sorensen_weight: Weight for Sørensen coefficient
             include_hausdorff: Whether to include Hausdorff distance
             hausdorff_weight: Weight for Hausdorff distance (if included)
         """
         super().__init__("spatial_similarity", higher_is_better=True)
         
         # Normalize weights
-        total_weight = jaccard_weight + dice_weight + sorensen_weight + hausdorff_weight
+        total_weight = jaccard_weight + dice_weight + hausdorff_weight
         self.jaccard_weight = jaccard_weight / total_weight
         self.dice_weight = dice_weight / total_weight
-        self.sorensen_weight = sorensen_weight / total_weight
         self.hausdorff_weight = hausdorff_weight / total_weight
         self.include_hausdorff = include_hausdorff
     
     def evaluate(self, 
-                 simulation_result: Dict[str, Any], 
+                 simulation_result: Union[Dict[str, Any], np.ndarray], 
                  target_data: Optional[Dict[str, Any]] = None) -> ObjectiveResult:
         """Evaluate spatial similarity between simulation and target."""
         try:
-            # Extract simulation results
-            if 'forest_model' not in simulation_result:
-                return ObjectiveResult(
-                    value=0.0,
-                    components={},
-                    is_valid=False,
-                    error_message="No forest_model in simulation result"
-                )
-            
-            forest_model = simulation_result['forest_model']
-            
-            # Get predicted fire state (combine all layers)
-            if hasattr(forest_model, 'state'):
-                # Debug: Check the shape and type of the state (only log once per evaluation)
-                state_shape = forest_model.state.shape if hasattr(forest_model.state, 'shape') else 'no shape'
-                state_type = type(forest_model.state)
-                # Only log detailed state info in debug mode to reduce verbosity
-                if logger.isEnabledFor(logging.DEBUG):
-                    state_repr = str(forest_model.state)[:200]  # First 200 chars
-                    logger.debug(f"Forest model state: shape={state_shape}, type={state_type}, repr={state_repr}")
-                else:
-                    logger.debug(f"Forest model state: shape={state_shape}, type={state_type}")
-                
-                # Handle different state formats
-                if hasattr(forest_model.state, 'shape') and len(forest_model.state.shape) == 3:
-                    # Ultra-efficient handling for SparseLayerAccessor - no conversion at all
-                    if 'SparseLayerAccessor' in str(type(forest_model.state)):
-                        # Direct sparse access - check if any layer has burning cells
-                        width, height, num_layers = forest_model.state.shape
-                        predicted_2d = np.zeros((width, height), dtype=float)
-                        
-                        # Access sparse layers directly without any conversion
-                        for layer_idx in range(num_layers):
-                            try:
-                                # Get the sparse matrix directly from the accessor
-                                try:
-                                    # CRITICAL FIX: Handle both list and dictionary access patterns
-                                    if isinstance(forest_model.state.sparse_layers, list) and 0 <= layer_idx < len(forest_model.state.sparse_layers):
-                                        sparse_matrix = forest_model.state.sparse_layers[layer_idx]
-                                    else:
-                                        # Fallback to dictionary access
-                                        sparse_matrix = forest_model.state.sparse_layers[layer_idx]
-                                except (KeyError, IndexError) as e:
-                                    # Handle both KeyError and IndexError cases
-                                    if isinstance(e, KeyError):
-                                        key_value = e.args[0] if e.args else 'unknown'
-                                        error_type = f"KeyError {key_value}"
-                                    else:
-                                        error_type = f"IndexError {e}"
-                                    logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
-                                    logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(forest_model.state.sparse_layers)-1})")
-                                    continue  # Skip this layer
-                                
-                                # Check if this layer has any non-zero elements (burning cells)
-                                if sparse_matrix.nnz > 0:
-                                    # Get the coordinates of non-zero elements directly
-                                    rows, cols = sparse_matrix.nonzero()
-                                    
-                                    # Mark these positions as burning in our 2D array
-                                    for row, col in zip(rows, cols):
-                                        if 0 <= row < width and 0 <= col < height:
-                                            predicted_2d[row, col] = 1.0
-                                            
-                            except Exception as e:
-                                logger.warning(f"Error accessing layer {layer_idx}: {e}")
-                                continue
-                        
-                        # Any layer burning means the cell is burning (already handled above)
-                    else:
-                        # Regular 3D array: sum across layers to get 2D fire map
-                        predicted_2d = np.sum(forest_model.state == 1, axis=2) > 0  # Any layer burning
-                        predicted_2d = predicted_2d.astype(float)
-                elif hasattr(forest_model.state, 'shape') and len(forest_model.state.shape) == 2:
-                    # 2D array: use directly
-                    predicted_2d = (forest_model.state == 1).astype(float)
-                else:
-                    # Fallback: create empty 2D array
-                    logger.warning(f"Unexpected forest model state format: {state_shape}, creating fallback")
-                    grid_size = getattr(forest_model, 'grid_size', (100, 100))
-                    predicted_2d = np.zeros(grid_size, dtype=float)
+            # Handle both simulation result dictionaries and direct arrays
+            if isinstance(simulation_result, dict):
+                # Extract simulation results from dictionary
+                if 'forest_model' not in simulation_result:
+                    return ObjectiveResult(
+                        value=0.0,
+                        components={},
+                        is_valid=False,
+                        error_message="No forest_model in simulation result"
+                    )
+                forest_model = simulation_result['forest_model']
+            elif isinstance(simulation_result, np.ndarray):
+                # Direct array input - use as predicted fire state
+                predicted_2d = simulation_result.astype(float)
+                forest_model = None
             else:
                 return ObjectiveResult(
                     value=0.0,
                     components={},
                     is_valid=False,
-                    error_message="Forest model has no state attribute"
+                    error_message=f"Invalid simulation_result type: {type(simulation_result)}"
                 )
+            
+            # Handle forest model vs direct array
+            if forest_model is not None:
+                # Extract from forest model
+                if hasattr(forest_model, 'state'):
+                    # Debug: Check the shape and type of the state (only log once per evaluation)
+                    state_shape = forest_model.state.shape if hasattr(forest_model.state, 'shape') else 'no shape'
+                    state_type = type(forest_model.state)
+                    # Only log detailed state info in debug mode to reduce verbosity
+                    if logger.isEnabledFor(logging.DEBUG):
+                        state_repr = str(forest_model.state)[:200]  # First 200 chars
+                        logger.debug(f"Forest model state: shape={state_shape}, type={state_type}, repr={state_repr}")
+                    else:
+                        logger.debug(f"Forest model state: shape={state_shape}, type={state_type}")
+                    
+                    # Handle different state formats
+                    if hasattr(forest_model.state, 'shape') and len(forest_model.state.shape) == 3:
+                        # Ultra-efficient handling for SparseLayerAccessor - no conversion at all
+                        if 'SparseLayerAccessor' in str(type(forest_model.state)):
+                            # Direct sparse access - check if any layer has burning cells
+                            width, height, num_layers = forest_model.state.shape
+                            predicted_2d = np.zeros((width, height), dtype=float)
+                            
+                            # Access sparse layers directly without any conversion
+                            for layer_idx in range(num_layers):
+                                try:
+                                    # Get the sparse matrix directly from the accessor
+                                    try:
+                                        # CRITICAL FIX: Handle both list and dictionary access patterns
+                                        if isinstance(forest_model.state.sparse_layers, list) and 0 <= layer_idx < len(forest_model.state.sparse_layers):
+                                            sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                        else:
+                                            # Fallback to dictionary access
+                                            sparse_matrix = forest_model.state.sparse_layers[layer_idx]
+                                    except (KeyError, IndexError) as e:
+                                        # Handle both KeyError and IndexError cases
+                                        if isinstance(e, KeyError):
+                                            key_value = e.args[0] if e.args else 'unknown'
+                                            error_type = f"KeyError {key_value}"
+                                        else:
+                                            error_type = f"IndexError {e}"
+                                        logger.warning(f"⚠️  Sparse access failed after 3 attempts: {error_type}")
+                                        logger.warning(f"⚠️  Layer {layer_idx} not found in sparse_layers (available: 0-{len(forest_model.state.sparse_layers)-1})")
+                                        continue  # Skip this layer
+                                    
+                                    # Check if this layer has any non-zero elements (burning or burned cells)
+                                    if sparse_matrix.nnz > 0:
+                                        # Get the coordinates of non-zero elements directly
+                                        rows, cols = sparse_matrix.nonzero()
+                                        
+                                        # Mark these positions as fire-affected in our 2D array
+                                        # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                                        for row, col in zip(rows, cols):
+                                            if 0 <= row < width and 0 <= col < height:
+                                                cell_state = sparse_matrix[row, col]
+                                                # Count both burning and burned cells as part of fire perimeter
+                                                if cell_state in [FrameworkCellState.BURNING.value, FrameworkCellState.BURNED.value]:
+                                                    predicted_2d[row, col] = 1.0
+                                                
+                                except Exception as e:
+                                    logger.warning(f"Error accessing layer {layer_idx}: {e}")
+                                    continue
+                            
+                            # Any layer burning or burned means the cell is fire-affected (already handled above)
+                        else:
+                            # Regular 3D array: sum across layers to get 2D fire map
+                            # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                            burning_cells = np.sum(forest_model.state == FrameworkCellState.BURNING.value, axis=2)
+                            burned_cells = np.sum(forest_model.state == FrameworkCellState.BURNED.value, axis=2)
+                            predicted_2d = (burning_cells + burned_cells) > 0  # Any layer burning or burned
+                            predicted_2d = predicted_2d.astype(float)
+                    elif hasattr(forest_model.state, 'shape') and len(forest_model.state.shape) == 2:
+                        # 2D array: use directly
+                        # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                        predicted_2d = ((forest_model.state == FrameworkCellState.BURNING.value) | 
+                                       (forest_model.state == FrameworkCellState.BURNED.value)).astype(float)
+                    else:
+                        # Fallback: create empty 2D array
+                        logger.warning(f"Unexpected forest model state format: {state_shape}, creating fallback")
+                        grid_size = getattr(forest_model, 'grid_size', (100, 100))
+                        predicted_2d = np.zeros(grid_size, dtype=float)
+                else:
+                    return ObjectiveResult(
+                        value=0.0,
+                        components={},
+                        is_valid=False,
+                        error_message="Forest model has no state attribute"
+                    )
+            else:
+                # Direct array case - predicted_2d is already set
+                pass
             
             # Get target data
             if target_data is None or 'fire_perimeter' not in target_data:
@@ -411,6 +450,23 @@ class SpatialSimilarityObjective(ObjectiveFunction):
                 target_2d = self._create_synthetic_target(predicted_2d.shape)
             else:
                 target_2d = target_data['fire_perimeter']
+                
+                # CRITICAL FIX: Handle sparse fire perimeters
+                if SCIPY_SPARSE_AVAILABLE and issparse(target_2d):
+                    # Convert sparse fire perimeter to dense for comparison
+                    logger.debug("Converting sparse fire perimeter to dense for objective calculation")
+                    target_2d = target_2d.toarray()
+                    
+                    # Log memory usage for debugging
+                    dense_size_mb = target_2d.nbytes / 1024 / 1024
+                    logger.debug(f"Converted sparse fire perimeter to dense: {dense_size_mb:.1f} MB")
+                elif not SCIPY_SPARSE_AVAILABLE and hasattr(target_2d, 'toarray'):
+                    # Fallback for when SciPy is not available but object has toarray method
+                    logger.warning("SciPy not available but sparse object detected - attempting toarray()")
+                    target_2d = target_2d.toarray()
+                else:
+                    # Already dense or not sparse
+                    logger.debug("Using fire perimeter as-is (dense format)")
             
             # CRITICAL: Never resize target data - it represents real fire perimeter coordinates
             if predicted_2d.shape != target_2d.shape:
@@ -438,7 +494,7 @@ class SpatialSimilarityObjective(ObjectiveFunction):
             components['dice_coefficient'] = dice
             
             # Sørensen coefficient (same as Dice)
-            sorensen = calculate_sorensen_coefficient(predicted_2d, target_2d)
+            sorensen = calculate_dice_coefficient(predicted_2d, target_2d)
             components['sorensen_coefficient'] = sorensen
             
             # Optional: Hausdorff distance
@@ -451,8 +507,7 @@ class SpatialSimilarityObjective(ObjectiveFunction):
             # Calculate weighted combination
             weighted_value = (
                 self.jaccard_weight * jaccard +
-                self.dice_weight * dice +
-                self.sorensen_weight * sorensen
+                self.dice_weight * dice
             )
             
             if self.include_hausdorff:
@@ -575,8 +630,7 @@ def create_default_spatial_objective() -> SpatialSimilarityObjective:
     """Create a default spatial similarity objective with balanced weights."""
     return SpatialSimilarityObjective(
         jaccard_weight=0.4,
-        dice_weight=0.3,
-        sorensen_weight=0.3
+        dice_weight=0.6
     )
 
 
@@ -599,7 +653,7 @@ if __name__ == "__main__":
     print("Individual Metrics:")
     print(f"Jaccard Index: {calculate_jaccard_index(predicted, actual):.3f}")
     print(f"Dice Coefficient: {calculate_dice_coefficient(predicted, actual):.3f}")
-    print(f"Sørensen Coefficient: {calculate_sorensen_coefficient(predicted, actual):.3f}")
+    print(f"Sørensen Coefficient: {calculate_dice_coefficient(predicted, actual):.3f}")
     print(f"Area Ratio: {calculate_area_ratio(predicted, actual):.3f}")
     
     # Test objective function

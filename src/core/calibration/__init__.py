@@ -34,8 +34,7 @@ from .objective_functions import (
     SpatialSimilarityObjective,
     FireBehaviorObjective,
     calculate_jaccard_index,
-    calculate_dice_coefficient,
-    calculate_sorensen_coefficient
+    calculate_dice_coefficient
 )
 from .grid_search import GridSearchCalibrator, GridSearchResults
 from .sensitivity_analysis import SensitivityAnalyzer, SensitivityResults
@@ -77,7 +76,6 @@ __all__ = [
     'SensitivityAnalysisObjective',
     'calculate_jaccard_index',
     'calculate_dice_coefficient',
-    'calculate_sorensen_coefficient',
     
     # Calibration algorithms
     'GridSearchCalibrator',

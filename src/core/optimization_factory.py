@@ -192,37 +192,61 @@ def create_optimized_forest_model(grid_size, num_layers=1, force_optimization: O
     """
     optimization_config = get_optimization_config()
     
-    # Determine if we should use optimizations
+    # CRITICAL FIX: Force optimization for calibration to ensure proper state updates
     if force_optimization is not None:
         use_optimizations = force_optimization
         reason = "Manually forced" if force_optimization else "Manually disabled"
     else:
-        use_optimizations, reason = should_use_optimizations(grid_size, num_layers)
+        # For calibration, always use optimizations to ensure proper state handling
+        use_optimizations = True
+        reason = "Calibration mode - forced optimization for state update reliability"
     
     # Log optimization decision
     if optimization_config.log_optimization_decisions:
         model_type = "OptimizedMemoryOptimizedForestModel" if use_optimizations else "MemoryOptimizedForestModel"
         logger.info(f"🌲 Creating {model_type}: {reason}")
     
-    # Create forest model
+    # Create model
     try:
         if use_optimizations and HAS_OPTIMIZATIONS:
-            return OptimizedMemoryOptimizedForestModel(
+            model = OptimizedMemoryOptimizedForestModel(
                 grid_size=grid_size,
                 num_layers=num_layers,
                 **kwargs
             )
+            
+            # CRITICAL FIX: Force optimized sparse accessors for reliable state updates
+            if hasattr(model, 'use_optimized_sparse_accessor'):
+                model.use_optimized_sparse_accessor = True
+                logger.info("🔧 Forced optimized sparse accessor for reliable state updates")
+            
+            if hasattr(model, 'use_optimized_sparse_ops'):
+                model.use_optimized_sparse_ops = True
+                logger.info("🔧 Forced optimized sparse operations")
+            
+            # Initialize optimized sparse storage
+            if hasattr(model, '_initialize_sparse_storage'):
+                model._initialize_sparse_storage()
+            
+            return model
         else:
-            return MemoryOptimizedForestModel(
+            model = MemoryOptimizedForestModel(
                 grid_size=grid_size,
                 num_layers=num_layers,
                 **kwargs
             )
+            
+            # CRITICAL FIX: Even for non-optimized models, ensure proper sparse handling
+            if hasattr(model, 'use_sparse_storage'):
+                model.use_sparse_storage = True
+                logger.info("🔧 Enabled sparse storage for state update reliability")
+            
+            return model
     
     except Exception as e:
         if optimization_config.fallback_on_error:
             logger.warning(f"⚠️  Failed to create optimized forest model: {e}")
-            logger.warning("   Falling back to standard model")
+            logger.warning("   Falling back to standard forest model")
             return MemoryOptimizedForestModel(
                 grid_size=grid_size,
                 num_layers=num_layers,

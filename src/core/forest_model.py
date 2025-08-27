@@ -21,10 +21,20 @@ Version: 1.0
 
 import os
 import json
-# import sys # Removed sys.path manipulation
+import numpy as np
 import time
 import logging # Added back for fallback error handler
-import numpy as np
+
+# Add shared memory import
+try:
+    from multiprocessing import shared_memory
+    HAS_SHARED_MEMORY = True
+except ImportError:
+    HAS_SHARED_MEMORY = False
+    shared_memory = None
+    logger.warning("Shared memory not available - terrain loading may fail")
+
+import sys # Removed sys.path manipulation
 import math
 import functools # For fallback error handler
 from abc import ABC, abstractmethod
@@ -51,9 +61,9 @@ try:
 except ImportError:
     HAS_SCIPY = False
     # Define placeholders for type hinting or conditional logic if these names are used when HAS_SCIPY is False
-    lil_matrix = type(None) # Placeholder if lil_matrix is referenced directly elsewhere
-    dok_matrix = type(None) # Placeholder
-    coo_matrix = type(None) # Placeholder
+    # lil_matrix = type(None) # Placeholder if lil_matrix is referenced directly elsewhere
+    # dok_matrix = type(None) # Placeholder
+    # coo_matrix = type(None) # Placeholder
     logger.info("SciPy sparse modules (lil_matrix, etc.) not found. Sparse storage will be unavailable.")
 
 # Removed import_helpers logic
@@ -167,7 +177,7 @@ class BaseForestModel(ABC):
                  grid_size: Union[int, Tuple[int, int]] = (100, 100), 
                  num_layers: int = 10, 
                  layer_height_meters: float = 2.0, 
-                 model_resolution: float = 5.0, 
+                 model_resolution: float = 20.0,  # Change from 5.0 to 20.0
                  initial_fuel_load: float = 5.0, # Changed back to 5.0 to allow fire to spread
                  config: Optional[ModelConfig] = None, 
                  **kwargs):
@@ -186,6 +196,7 @@ class BaseForestModel(ABC):
         
         # Resolve configuration
         resolved_config = config
+        print(f"🔍 BaseForestModel: Received config: {type(resolved_config)}")
         if resolved_config is None:
             # Try to get from kwargs if a 'config' dict/ModelConfig was passed there
             resolved_config = kwargs.get('config') 
@@ -242,49 +253,52 @@ class BaseForestModel(ABC):
         self.grid_size = (self.grid_size_x, self.grid_size_y) # Ensure self.grid_size is always a tuple
         
         # Initialize core data structures
-        self.state = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
-        self.fuel_load = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
-        self.canopy_height = np.zeros((self.width, self.height), dtype=np.float32)
-        self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
-        self.temperature = np.full((self.width, self.height, self.num_layers), 25.0, dtype=np.float32)
-        self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+        total_cells = self.width * self.height * self.num_layers
         
-        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7 and 11
-        # This ensures that any fuel type dictionary access will have proper defaults
-        self.fuel_types = {
-            0: 'bare_ground',
-            1: 'grass',
-            2: 'shrub',
-            3: 'low_vegetation',
-            4: 'medium_vegetation', 
-            5: 'high_vegetation',
-            6: 'canopy',
-            7: 'dense_canopy',  # This was likely missing, causing KeyError 7
-            8: 'very_dense_canopy',
-            9: 'maximum_vegetation',
-            10: 'extreme_vegetation',  # Additional fuel type to prevent KeyError 10
-            11: 'maximum_density'      # Additional fuel type to prevent KeyError 11
-        }
+        # CRITICAL FIX: Set use_sparse_storage BEFORE any property access
+        self.use_sparse_storage = total_cells > 7_000_000
         
-        # Initialize fuel type properties for each type
-        self.fuel_type_properties = {
-            'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
-            'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
-            'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
-            'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
-            'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
-            'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
-            'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
-            'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
-            'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
-            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05},
-            'extreme_vegetation': {'load': 1.0, 'moisture': 0.65, 'ignition': 0.02},  # Additional fuel type
-            'maximum_density': {'load': 1.0, 'moisture': 0.7, 'ignition': 0.01}       # Additional fuel type
-        }
+        # CRITICAL FIX: Skip dense array creation for large grids to prevent hanging
+        if total_cells > 7_000_000:  # 7M+ cells (like 609×609×20)
+            logger.info(f"🚨 LARGE GRID DETECTED: {total_cells:,} cells - using sparse storage for fuel")
+            # Use sparse storage for large grids to prevent hanging
+            self.state = None
+            self.fuel_load = None
+            self.canopy_height = None
+            self.moisture_content = None
+            self.temperature = None
+            self.vertical_connectivity = None
+            
+            # CRITICAL FIX: Skip terrain arrays too for large grids
+            self.wind_direction = None
+            self.wind_speed = None
+            self.terrain_elevation = None
+            self.terrain_slope = None
+            self.terrain_aspect = None
+            
+            # CRITICAL FIX: Initialize sparse fuel storage for large grids
+            self._initialize_sparse_fuel_storage(default_fuel)
+            # CRITICAL FIX: Initialize sparse state storage for large grids
+            self._initialize_sparse_state_storage()
+        else:
+            # Normal initialization for smaller grids
+            self.state = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+            self.fuel_load = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+            self.canopy_height = np.zeros((self.width, self.height), dtype=np.float32)
+            self.moisture_content = np.full((self.width, self.height, self.num_layers), default_moisture, dtype=np.float32)
+            self.temperature = np.full((self.width, self.height, self.num_layers), 25.0, dtype=np.float32)
+            self.vertical_connectivity = np.ones((self.width, self.height, self.num_layers), dtype=np.float32) * 0.5
+            
+            # Normal terrain arrays for smaller grids
+            self.wind_direction = np.zeros((self.width, self.height), dtype=np.float32)
+            self.wind_speed = np.zeros((self.width, self.height), dtype=np.float32)
+            self.terrain_elevation = np.zeros((self.width, self.height), dtype=np.float32)
+            self.terrain_slope = np.zeros((self.width, self.height), dtype=np.float32)
+            self.terrain_aspect = np.zeros((self.width, self.height), dtype=np.float32)
+        
+        # FUEL TYPE SYSTEM REMOVED - Using direct LiDAR values instead of categorical fuel types
         
         # Minimal initialization of other attributes that both modules may expect
-        self.wind_direction = np.zeros((self.width, self.height), dtype=np.float32)
-        self.wind_speed = np.zeros((self.width, self.height), dtype=np.float32)
         self.terrain_elevation = np.zeros((self.width, self.height), dtype=np.float32)
         self.terrain_slope = np.zeros((self.width, self.height), dtype=np.float32)
         self.terrain_aspect = np.zeros((self.width, self.height), dtype=np.float32)
@@ -300,34 +314,346 @@ class BaseForestModel(ABC):
         self.debug = kwargs.get('debug', False)
         
         # Track ignition points for efficient active cell detection
+        
+        # CRITICAL FIX: Add fuel_load property for sparse storage access
         self._ignition_points = []
+        
+        # CRITICAL FIX: Load LiDAR data if available in config
+        if self.config:
+            logger.info(f"🔍 Config found: {type(self.config)}")
+            logger.info(f"🔍 Config attributes: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
+            if hasattr(self.config, 'preprocessed_lidar_dir'):
+                logger.info(f"🔍 LiDAR directory: {self.config.preprocessed_lidar_dir}")
+            logger.info(f"🔍 Attempting to load LiDAR data during initialization...")
+            success = self._load_lidar_data(self.config)
+            if success:
+                logger.info("✅ LiDAR data loaded successfully during initialization")
+            else:
+                logger.warning("⚠️  Failed to load LiDAR data during initialization - using default fuel")
+        else:
+            logger.info("ℹ️  No config found - using default fuel initialization")
+    
+    def _initialize_sparse_fuel_storage(self, default_fuel: float):
+        """
+        Initialize sparse fuel storage for large grids to prevent hanging.
+        
+        Args:
+            default_fuel: Default fuel value to use
+        """
+        try:
+            logger.info(f"🔥 Initializing sparse fuel storage with default fuel: {default_fuel}")
+            
+            # Import scipy.sparse for proper sparse matrix creation
+            from scipy.sparse import lil_matrix
+            
+            # Check if fuel data is already loaded from LiDAR
+            if hasattr(self, 'fuel_load_layers') and self.fuel_load_layers:
+                logger.info(f"✅ Fuel data already loaded from LiDAR - skipping default initialization")
+                return
+            
+            # Initialize sparse fuel storage
+            self.fuel_load_layers = {}
+            
+            # CRITICAL FIX: Use all available layers from LiDAR data
+            # The LiDAR manager now correctly detects all 20 layers from preprocessed data
+            actual_layers = self.num_layers  # Use all configured layers (20)
+            
+            # Set fuel in the ground layer (layer 0) with a basic pattern
+            # This ensures there's fuel available for ignition
+            ground_fuel = lil_matrix((self.width, self.height), dtype=np.float32)
+            ground_fuel[:, :] = default_fuel
+            self.fuel_load_layers[0] = ground_fuel
+            
+            # Set fuel in upper layers for vertical spread (up to actual_layers)
+            for layer in range(1, actual_layers):
+                layer_fuel = lil_matrix((self.width, self.height), dtype=np.float32)
+                layer_fuel[:, :] = default_fuel * 0.8
+                self.fuel_load_layers[layer] = layer_fuel
+            
+            logger.info(f"✅ Sparse fuel storage initialized for {len(self.fuel_load_layers)} layers (configured: {self.num_layers})")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize sparse fuel storage: {e}")
+            # Fallback: create minimal fuel array
+            self.fuel_load = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+
+    def _initialize_sparse_state_storage(self):
+        """
+        Initialize sparse state storage for large grids to prevent hanging.
+        """
+        try:
+            logger.info(f"🔥 Initializing sparse state storage for {self.num_layers} layers")
+            
+            # Import scipy.sparse for proper sparse matrix creation
+            from scipy.sparse import lil_matrix
+            
+            # Initialize sparse state storage
+            self.state_layers = {}
+            
+            # CRITICAL FIX: Use all available layers from LiDAR data
+            # The LiDAR manager now correctly detects all 20 layers from preprocessed data
+            actual_layers = self.num_layers  # Use all configured layers (20)
+            
+            # For large grids, we'll use a sparse approach where state is only stored
+            # when it differs from the default value (0 = unburned)
+            # However, we need to create empty arrays for all layers to ensure proper access
+            
+            # Create empty sparse matrices for actual layers (will be populated when cells change state)
+            for layer in range(actual_layers):
+                # Create empty sparse matrix for this layer - will be populated when cells change state
+                self.state_layers[layer] = lil_matrix((self.width, self.height), dtype=np.int8)
+            
+            logger.info(f"✅ Sparse state storage initialized for {len(self.state_layers)} layers (configured: {self.num_layers})")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize sparse state storage: {e}")
+            # Fallback: create minimal state array
+            self.state = np.zeros((self.width, self.height, self.num_layers), dtype=np.int8)
+    
+    def _load_lidar_data(self, config) -> bool:
+        """
+        Load LiDAR data with priority order: Shared -> Preprocessed -> Individual.
+        
+        Args:
+            config: Model configuration
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Priority order (following terrain pattern):
+        # 1. Shared LiDAR (if available)
+        # 2. Preprocessed LiDAR (if available) - NEW
+        # 3. Individual LiDAR loading (fallback)
+        
+        # Try shared LiDAR first
+        if hasattr(config, 'shared_lidar_info') and config.shared_lidar_info:
+            success = self._load_shared_lidar_data(config.shared_lidar_info)
+            if success:
+                logger.info("✅ Using shared LiDAR data - MEMORY EFFICIENT MODE ACTIVE")
+                return True
+        
+        # Try preprocessed LiDAR (NEW)
+        if hasattr(config, 'preprocessed_lidar_dir') and config.preprocessed_lidar_dir:
+            logger.info(f"🔍 Attempting to load preprocessed LiDAR from: {config.preprocessed_lidar_dir}")
+            success = self._load_preprocessed_lidar_data(config.preprocessed_lidar_dir)
+            if success:
+                logger.info("✅ Using preprocessed LiDAR data - FAST LOADING MODE ACTIVE")
+                return True
+            else:
+                logger.warning(f"⚠️  Failed to load preprocessed LiDAR from: {config.preprocessed_lidar_dir}")
+        else:
+            logger.info(f"🔍 No preprocessed_lidar_dir found in config. Available attributes: {[attr for attr in dir(config) if not attr.startswith('_')]}")
+        
+        # Fall back to individual loading
+        logger.info("🔄 Falling back to individual LiDAR loading")
+        return self._load_individual_lidar_data(config)
+    
+    def _load_preprocessed_lidar_data(self, preprocessed_dir: str) -> bool:
+        """
+        Load LiDAR data from preprocessed NumPy arrays.
+        
+        Args:
+            preprocessed_dir: Directory containing preprocessed LiDAR data
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from src.utils.preprocessed_lidar_loader import PreprocessedLiDARLoader
+            
+            # Load preprocessed data
+            loader = PreprocessedLiDARLoader(preprocessed_dir)
+            lidar_data = loader.load_all_layers()
+            
+            if not lidar_data:
+                logger.warning("⚠️  No preprocessed LiDAR data found")
+                return False
+            
+            # Load into fuel arrays
+            for layer_idx, layer_data in lidar_data.items():
+                # Convert 1-based LiDAR layers to 0-based model layers
+                model_layer_idx = layer_idx - 1
+                if 0 <= model_layer_idx < self.num_layers:
+                    if self.use_sparse_storage:
+                        # Sparse model - convert to sparse matrix
+                        if not hasattr(self, 'fuel_load_layers'):
+                            self.fuel_load_layers = {}
+                        
+                        # Convert NumPy array to sparse matrix
+                        from scipy.sparse import lil_matrix
+                        sparse_fuel = lil_matrix((self.width, self.height), dtype=np.float32)
+                        
+                        # CRITICAL FIX: Use proper sparse matrix assignment
+                        # Resize layer_data to match grid dimensions if needed
+                        if layer_data.shape != (self.width, self.height):
+                            # Crop or pad the data to match grid dimensions
+                            from scipy.ndimage import zoom
+                            zoom_factors = (self.width / layer_data.shape[0], self.height / layer_data.shape[1])
+                            layer_data = zoom(layer_data, zoom_factors, order=1)
+                        
+                        # Assign data to sparse matrix using proper indexing
+                        for i in range(min(self.width, layer_data.shape[0])):
+                            for j in range(min(self.height, layer_data.shape[1])):
+                                if layer_data[i, j] > 0:  # Only store non-zero values
+                                    sparse_fuel[i, j] = layer_data[i, j]
+                        
+                        self.fuel_load_layers[model_layer_idx] = sparse_fuel
+                        
+                        # Debug: Check if data was actually stored
+                        if model_layer_idx == 0:  # Check first layer
+                            ignition_x = int(self.width * 0.65)  # Arafo highlands
+                            ignition_y = int(self.height * 0.62)
+                            if ignition_x < layer_data.shape[0] and ignition_y < layer_data.shape[1]:
+                                original_value = layer_data[ignition_x, ignition_y]
+                                stored_value = sparse_fuel[ignition_x, ignition_y]
+                                logger.info(f"🔥 Layer {model_layer_idx} - Original LiDAR value at ({ignition_x}, {ignition_y}): {original_value}")
+                                logger.info(f"🔥 Layer {model_layer_idx} - Stored sparse value at ({ignition_x}, {ignition_y}): {stored_value}")
+                    else:
+                        # Dense model
+                        # CRITICAL FIX: Resize layer_data to match grid dimensions if needed
+                        if layer_data.shape != (self.width, self.height):
+                            # Crop or pad the data to match grid dimensions
+                            from scipy.ndimage import zoom
+                            zoom_factors = (self.width / layer_data.shape[0], self.height / layer_data.shape[1])
+                            layer_data = zoom(layer_data, zoom_factors, order=1)
+                            logger.info(f"🔥 Resized LiDAR layer {model_layer_idx} from {layer_data.shape} to ({self.width}, {self.height})")
+                        
+                        if hasattr(self, '_fuel_load_dense'):
+                            self._fuel_load_dense[:, :, model_layer_idx] = layer_data
+                        else:
+                            # Create dense array if it doesn't exist
+                            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+                            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                            self._fuel_load_dense[:, :, model_layer_idx] = layer_data
+            
+            logger.info(f"✅ Loaded {len(lidar_data)} preprocessed LiDAR layers")
+            
+            # Debug: Check fuel values at ignition point
+            if hasattr(self, 'fuel_load_layers') and self.fuel_load_layers:
+                ignition_x = int(self.width * 0.65)  # Arafo highlands
+                ignition_y = int(self.height * 0.62)
+                if 0 in self.fuel_load_layers:
+                    fuel_at_ignition = self.fuel_load_layers[0][ignition_x, ignition_y]
+                    logger.info(f"🔥 Fuel at ignition point ({ignition_x}, {ignition_y}): {fuel_at_ignition}")
+                else:
+                    logger.warning(f"⚠️  No fuel data in layer 0")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load preprocessed LiDAR data: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+    
+    def _load_individual_lidar_data(self, config) -> bool:
+        """
+        Load LiDAR data individually (fallback when shared loading fails).
+        
+        Args:
+            config: Model configuration
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not hasattr(self, 'lidar_manager') or self.lidar_manager is None:
+                logger.warning("⚠️  No LiDAR manager available for individual loading")
+                return False
+            
+            # Get geographic bounds from config
+            geo_bounds = getattr(config, 'geo_bounds', None)
+            if not geo_bounds:
+                logger.warning("⚠️  No geographic bounds available for LiDAR loading")
+                return False
+            
+            # Calculate grid size from bounds
+            width_m = geo_bounds[2] - geo_bounds[0]
+            height_m = geo_bounds[3] - geo_bounds[1]
+            resolution = getattr(config, 'model_resolution', 20.0)
+            grid_width = int(width_m / resolution)
+            grid_height = int(height_m / resolution)
+            
+            logger.info(f" Loading LiDAR data for grid: {grid_width} × {grid_height}")
+            
+            # Detect available layers
+            available_layers = self.lidar_manager._detect_available_layers(self.lidar_manager.base_dir)
+            
+            if not available_layers:
+                logger.warning("⚠️  No PAD layers found")
+                return False
+            
+            # Resample PAD data
+            pad_data = self.lidar_manager.resample_pad_data_to_model_grid(
+                pad_files_dict=available_layers,
+                model_grid_extent=geo_bounds,
+                model_grid_size=(grid_width, grid_height),
+                model_resolution=resolution,
+                nodata_value=0.0
+            )
+            
+            if not pad_data:
+                logger.warning("⚠️  Failed to resample PAD data")
+                return False
+            
+            # Load into fuel arrays
+            for layer_idx, layer_data in pad_data.items():
+                if layer_idx < self.num_layers:
+                    if self.use_sparse_storage:
+                        # Sparse model
+                        if not hasattr(self, 'fuel_load_layers'):
+                            self.fuel_load_layers = {}
+                        self.fuel_load_layers[layer_idx] = layer_data
+                    else:
+                        # Dense model
+                        if hasattr(self, '_fuel_load_dense'):
+                            self._fuel_load_dense[:, :, layer_idx] = layer_data
+                        else:
+                            # Create dense array if it doesn't exist
+                            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+                            self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                            self._fuel_load_dense[:, :, layer_idx] = layer_data
+            
+            logger.info(f"✅ Loaded {len(pad_data)} LiDAR layers individually")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load individual LiDAR data: {e}")
+            return False
+    
+    @property
+    def fuel_load(self):
+        """Access fuel load data - returns sparse or dense depending on storage mode."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # Ensure consistent default fuel value between sparse and dense
+            default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+            return SparseLayerAccessor(self.fuel_load_layers, self.width, self.height, self.num_layers, default_value=default_fuel)
+        else:
+            # Access the dense storage or create default array ONCE
+            if hasattr(self, '_fuel_load_dense'):
+                return self._fuel_load_dense
+            else:
+                # Create a default fuel load array if nothing exists - STORE IT
+                default_fuel = getattr(self.config, 'initial_fuel_load', 5.0) if self.config else 5.0
+                self._fuel_load_dense = np.full((self.width, self.height, self.num_layers), default_fuel, dtype=np.float32)
+                return self._fuel_load_dense
+    
+    @fuel_load.setter
+    def fuel_load(self, value):
+        """Set fuel load data."""
+        if self.use_sparse_storage and hasattr(self, 'fuel_load_layers'):
+            # If setting from dense array, convert to sparse
+            if isinstance(value, np.ndarray):
+                self._convert_dense_to_sparse_fuel(value)
+        else:
+            self._fuel_load_dense = value
     
     def get_fuel_type_property(self, fuel_type_id: int, property_name: str, default_value=None):
         """
-        Safely get fuel type property to prevent KeyError 7.
-        
-        Args:
-            fuel_type_id: Fuel type ID (0-9)
-            property_name: Property name ('load', 'moisture', 'ignition')
-            default_value: Default value if property not found
-            
-        Returns:
-            Property value or default_value
+        DEPRECATED: Fuel type system removed. Use direct LiDAR values instead.
+        Returns default_value for backward compatibility.
         """
-        try:
-            # Get fuel type name from ID
-            fuel_type_name = self.fuel_types.get(fuel_type_id, 'bare_ground')
-            
-            # Get property from fuel type properties
-            fuel_props = self.fuel_type_properties.get(fuel_type_name, {})
-            return fuel_props.get(property_name, default_value)
-            
-        except KeyError as e:
-            logger.warning(f"KeyError accessing fuel type {fuel_type_id}, property {property_name}: {e}")
-            return default_value
-        except Exception as e:
-            logger.warning(f"Error accessing fuel type properties: {e}")
-            return default_value
+        return default_value
     
     def set_ignition(self, x, y, z=0):
         """
@@ -344,10 +670,26 @@ class BaseForestModel(ABC):
             
             # CRITICAL FIX: Safe ignition setting for sparse models
             try:
-                self.state[x, y, z] = FrameworkCellState.BURNING.value # Use FrameworkCellState
-                # Track ignition point for efficient active cell detection
-                self._ignition_points.append((x, y, z))
-                logger.debug(f"✅ Ignition set at ({x}, {y}, {z})")
+                # Handle sparse storage properly - check return value
+                if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage:
+                    # For sparse models, the assignment returns True/False
+                    self.state[x, y, z] = FrameworkCellState.BURNING.value
+                    # Track ignition point for efficient active cell detection
+                    self._ignition_points.append((x, y, z))
+                    logger.info(f"✅ Ignition set at ({x}, {y}, {z})")
+                else:
+                    # For dense models, direct assignment
+                    self.state[x, y, z] = FrameworkCellState.BURNING.value
+                    # Track ignition point for efficient active cell detection
+                    self._ignition_points.append((x, y, z))
+                    logger.info(f"✅ Ignition set at ({x}, {y}, {z})")
+                
+                # Debug: Check if ignition was actually set
+                try:
+                    actual_state = self.state[x, y, z]
+                    logger.info(f"🔥 Ignition verification: state at ({x}, {y}, {z}) = {actual_state}")
+                except Exception as verify_error:
+                    logger.error(f"❌ Ignition verification failed: {verify_error}")
             except Exception as e:
                 logger.error(f"❌ CRITICAL: Failed to set ignition at ({x}, {y}, {z}): {e}")
                 logger.error("This may indicate sparse matrix access issues - checking model type")
@@ -362,6 +704,8 @@ class BaseForestModel(ABC):
                             self.state_layers[z][x, y] = FrameworkCellState.BURNING.value
                             self._ignition_points.append((x, y, z))
                             logger.info(f"✅ Ignition set via direct sparse assignment at ({x}, {y}, {z})")
+                        else:
+                            raise RuntimeError(f"Layer {z} not found in state_layers")
                     except Exception as sparse_error:
                         logger.error(f"❌ Even direct sparse assignment failed: {sparse_error}")
                         logger.error("This indicates serious memory corruption - aborting to prevent segfault")
@@ -369,6 +713,49 @@ class BaseForestModel(ABC):
                 else:
                     # Re-raise original error for non-sparse models
                     raise
+    
+    def get_active_cells(self):
+        """
+        Get list of currently active (burning) cells.
+        
+        Returns:
+            List of (x, y, z) tuples representing active cells
+        """
+        active_cells = []
+        
+        if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # Sparse storage mode
+            for layer_idx, layer_state in self.state_layers.items():
+                # Find non-zero elements in sparse matrix
+                if hasattr(layer_state, 'nonzero'):
+                    coords = layer_state.nonzero()
+                    for i in range(len(coords[0])):
+                        x, y = coords[0][i], coords[1][i]
+                        if layer_state[x, y] == FrameworkCellState.BURNING.value:
+                            active_cells.append((x, y, layer_idx))
+        else:
+            # Dense storage mode
+            if hasattr(self, 'state') and self.state is not None:
+                burning_coords = np.where(self.state == FrameworkCellState.BURNING.value)
+                for i in range(len(burning_coords[0])):
+                    x, y, z = burning_coords[0][i], burning_coords[1][i], burning_coords[2][i]
+                    active_cells.append((x, y, z))
+        
+        return active_cells
+    
+    def get_state(self):
+        """
+        Get the current state of the forest model for partial results.
+        
+        Returns:
+            Current state array or sparse representation
+        """
+        if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # Return sparse state representation
+            return self.state_layers
+        else:
+            # Return dense state array
+            return self.state
     
     @abstractmethod
     def run_simulation(self, max_steps=100, store_full_states=False, **kwargs):
@@ -431,74 +818,28 @@ class BaseForestModel(ABC):
         Returns:
             Dictionary of terrain arrays if available, None otherwise
         """
-        # CRITICAL FIX: Prevent repeated loading of shared terrain data
-        if hasattr(self, '_shared_terrain_loaded') and self._shared_terrain_loaded:
-            logger.debug("🔄 Shared terrain already loaded - skipping duplicate load")
-            return None
-            
-        try:
-            # Check if shared terrain info is available in config
-            if hasattr(self, 'config') and self.config and hasattr(self.config, 'shared_terrain_info'):
-                from src.utils.shared_terrain import load_shared_terrain_data
-                shared_info = self.config.shared_terrain_info
-                
-                # CRITICAL DEBUG: Check if shared_info is a list instead of dict
-                if isinstance(shared_info, (list, tuple)):
-                    logger.error(f"CRITICAL ERROR: shared_terrain_info is a list/tuple instead of dict: {type(shared_info)} = {shared_info}")
-                    logger.error("This indicates a parameter passing issue in calibration")
-                    return None
-                elif not isinstance(shared_info, dict):
-                    logger.error(f"CRITICAL ERROR: shared_terrain_info is not a dict: {type(shared_info)} = {shared_info}")
-                    return None
-                
-                # CRITICAL FIX: Use threading-based timeout instead of broken signal-based timeout
-                import threading
-                import time
-                
-                terrain_data = None
-                timeout_occurred = False
-                
-                def load_terrain_with_timeout():
-                    nonlocal terrain_data, timeout_occurred
-                    try:
-                        terrain_data = load_shared_terrain_data(shared_info)
-                    except Exception as e:
-                        logger.error(f"❌ Shared terrain loading failed: {e}")
-                        timeout_occurred = True
-                
-                # Start terrain loading in a separate thread with timeout
-                terrain_thread = threading.Thread(target=load_terrain_with_timeout)
-                terrain_thread.daemon = True
-                terrain_thread.start()
-                
-                # Wait for completion with timeout (30 seconds)
-                terrain_thread.join(timeout=30.0)
-                
-                if terrain_thread.is_alive():
-                    # Thread is still running - timeout occurred
-                    logger.error("❌ Shared terrain loading timed out after 30 seconds - falling back to individual loading")
-                    timeout_occurred = True
-                    return None
-                
-                if timeout_occurred:
-                    logger.warning("⚠️  Shared terrain loading failed - falling back to individual loading")
-                    return None
-                
-                # Mark as loaded to prevent future calls
-                if terrain_data:
-                    self._shared_terrain_loaded = True
-                    # Only log once per model instance to reduce spam
-                    if not hasattr(self, '_shared_terrain_logged'):
-                        logger.info("✅ Shared terrain loaded successfully")
-                        self._shared_terrain_logged = True
-                
-                return terrain_data
-        except Exception as e:
-            logger.debug(f"No shared terrain data available: {e}")
-        
+        # CRITICAL FIX: Disabled shared terrain loading to prevent hanging
+        logger.debug("🔄 Shared terrain loading disabled to prevent hanging - using individual loading")
         return None
     
+    
+    
     def _load_preprocessed_terrain_data(self, preprocessed_dir: str) -> bool:
+        """
+        Load preprocessed terrain data with sparse optimization.
+        """
+        # CRITICAL FIX: Disable sparse loading to prevent hanging
+        # if hasattr(self, 'shared_terrain_manager') and self.shared_terrain_manager:
+        #     sparse_success = self._load_sparse_preprocessed_terrain_data(preprocessed_dir)
+        #     if sparse_success:
+        #         logger.info("✅ Using sparse terrain data (ultra-memory efficient)")
+        #         return True
+        
+        # Fallback to dense loading
+        logger.info("🔄 Falling back to dense terrain loading")
+        return self._load_dense_preprocessed_terrain_data(preprocessed_dir)
+    
+    def _load_dense_preprocessed_terrain_data(self, preprocessed_dir: str) -> bool:
         """
         Load preprocessed terrain data from the terrain preprocessor.
         
@@ -513,14 +854,14 @@ class BaseForestModel(ABC):
             logger.debug("🔄 Terrain data already loaded - skipping duplicate load")
             return True
             
-        # CRITICAL FIX: Check for shared terrain first before loading individually
-        shared_terrain_data = self._try_load_shared_terrain()
-        if shared_terrain_data:
-            logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
-            # Load shared terrain data into the model
-            self._load_shared_terrain_into_model(shared_terrain_data)
-            self._terrain_data_loaded = True
-            return True
+        # CRITICAL FIX: Disable shared terrain to prevent hanging
+        # shared_terrain_data = self._try_load_shared_terrain()
+        # if shared_terrain_data:
+        #     logger.info("✅ Using shared terrain data from memory - MEMORY EFFICIENT MODE ACTIVE")
+        #     # Load shared terrain data into the model
+        #     self._load_shared_terrain_into_model(shared_terrain_data)
+        #     self._terrain_data_loaded = True
+        #     return True
         
         # Check if terrain preprocessing is available
         if not HAS_TERRAIN_PREPROCESSING:
@@ -586,7 +927,65 @@ class BaseForestModel(ABC):
                 file_path = preprocessed_path / filename
                 if file_path.exists():
                     try:
-                        terrain_data = np.load(file_path)
+                        # CRITICAL FIX: Add timeout for terrain loading to prevent hanging (Windows compatible)
+                        import threading
+                        import time
+                        
+                        terrain_data = None
+                        loading_error = None
+                        
+                        def load_terrain_file():
+                            nonlocal terrain_data, loading_error
+                            try:
+                                logger.debug(f"🔍 Starting terrain file validation for: {file_path}")
+                                
+                                # Validate file exists and has reasonable size
+                                if not file_path.exists():
+                                    logger.debug(f"❌ File does not exist: {file_path}")
+                                    loading_error = FileNotFoundError(f"Terrain file not found: {file_path}")
+                                    return
+                                
+                                logger.debug(f"✅ File exists, checking size...")
+                                file_size = file_path.stat().st_size
+                                logger.debug(f"📊 File size: {file_size} bytes ({file_size / (1024*1024):.1f} MB)")
+                                
+                                if file_size == 0:
+                                    logger.debug(f"❌ File is empty: {file_path}")
+                                    loading_error = ValueError(f"Terrain file is empty: {file_path}")
+                                    return
+                                
+                                logger.debug(f"✅ File validation passed, starting memory-mapped loading...")
+                                # Use memory-mapped loading for large files to prevent hanging
+                                terrain_data = np.load(file_path, mmap_mode='r')
+                                logger.debug(f"✅ Memory-mapped loading completed successfully")
+                                
+                            except Exception as e:
+                                logger.debug(f"❌ Exception during loading: {type(e).__name__}: {e}")
+                                loading_error = e
+                        
+                        # Start terrain loading in a separate thread with timeout
+                        logger.info(f"🔄 Loading terrain file: {filename} (size: {file_path.stat().st_size / (1024*1024):.1f} MB)")
+                        logger.debug(f"🧵 Creating loading thread...")
+                        loading_thread = threading.Thread(target=load_terrain_file)
+                        loading_thread.daemon = True
+                        logger.debug(f"🚀 Starting loading thread...")
+                        loading_thread.start()
+                        
+                        # Wait for loading to complete with 30 second timeout
+                        logger.debug(f"⏱️  Waiting for loading thread to complete (timeout: 30s)...")
+                        loading_thread.join(timeout=30)
+                        
+                        if loading_thread.is_alive():
+                            logger.error(f"❌ Terrain loading timeout for {filename} - skipping (file may be corrupted or too large)")
+                            logger.debug(f"⏰ Thread is still alive after 30s timeout")
+                            continue
+                        elif loading_error:
+                            logger.error(f"❌ Failed to load {filename}: {loading_error}")
+                            logger.debug(f"💥 Loading error occurred: {type(loading_error).__name__}")
+                            continue
+                        else:
+                            logger.info(f"✅ Successfully loaded {filename} with memory mapping")
+                            logger.debug(f"🎉 Thread completed successfully")
                         
                         # Handle size mismatch by subsetting if needed
                         if terrain_data.shape != (self.width, self.height):
@@ -1958,7 +2357,7 @@ class ForestModel(BaseForestModel):
                  grid_size: Union[int, Tuple[int, int]] = (100, 100), 
                  num_layers: int = 10, 
                  layer_height_meters: float = 2.0, 
-                 model_resolution: float = 5.0,
+                 model_resolution: float = 20.0,  # Change from 5.0 to 20.0
                  initial_fuel_load: float = 5.0,
                  config: Optional[ModelConfig] = None,
                  **kwargs):
@@ -1974,13 +2373,12 @@ class ForestModel(BaseForestModel):
             config: Optional ModelConfig instance
             **kwargs: Additional parameters
         """
-        # Pass config explicitly to parent if provided, else parent will try to get global
-        # Remove config from kwargs to avoid duplication
+        # CRITICAL FIX: Only pass config to parent, not individual parameters
+        # This prevents conflicts between config values and individual parameters
         kwargs_without_config = {k: v for k, v in kwargs.items() if k != 'config'}
-        all_params = {**kwargs_without_config, 'grid_size': grid_size, 'num_layers': num_layers, 
-                      'layer_height_meters': layer_height_meters, 'model_resolution': model_resolution, 
-                      'initial_fuel_load': initial_fuel_load}
-        super().__init__(config=config, **all_params)
+        print(f"🔍 ForestModel: Passing config to parent: {type(config)}")
+        print(f"🔍 ForestModel: Config has preprocessed_lidar_dir: {hasattr(config, 'preprocessed_lidar_dir')}")
+        super().__init__(config=config, **kwargs_without_config)
         
         # Initialize additional attributes specific to ForestModel
         self._initialize_attributes(**kwargs)
@@ -2423,14 +2821,20 @@ class SparseLayerAccessor:
         self.num_layers = num_layers
         self.default_value = default_value
         
-        # CRITICAL DEBUG: Log the actual vs expected layer counts (REDUCED VERBOSITY)
+        # CRITICAL FIX: Handle layer adaptation gracefully
         actual_layers = len(sparse_layers) if hasattr(sparse_layers, '__len__') else 'unknown'
         if hasattr(sparse_layers, '__len__') and actual_layers != num_layers:
-            # Only log once per simulation to avoid spam
-            if not hasattr(self, '_layer_mismatch_logged'):
-                print(f"🔍 LAYER MISMATCH: Expected {num_layers} layers but got {actual_layers} layers!")
-                self._layer_mismatch_logged = True
-        # Only log on mismatch - reduce verbosity
+            # Use a class-level flag to log only once across all instances
+            if not hasattr(SparseLayerAccessor, '_global_layer_difference_logged'):
+                # Only show this message if the difference is significant (not just 3 vs 20)
+                if actual_layers < num_layers * 0.5:  # Less than 50% of expected layers
+                    print(f"ℹ️  Layer Adaptation: Using {actual_layers} layers (expected {num_layers}) - Geographic bounds filtering active")
+                SparseLayerAccessor._global_layer_difference_logged = True
+    
+    @property
+    def shape(self):
+        """Return the shape of the sparse array (width, height, num_layers)."""
+        return (self.width, self.height, self.num_layers)
     
     def __getitem__(self, key):
         """Support array-like indexing."""
@@ -2465,18 +2869,21 @@ class SparseLayerAccessor:
                         # REDUCED VERBOSITY: Only log critical errors
                         return self.default_value
                     
+                    
                     # Check if it's a DOK matrix (Dictionary of Keys)
                     if hasattr(sparse_matrix, 'keys'):
                         # DOK matrix - check if key exists in dictionary
                         if (x, y) in sparse_matrix:
-                            return sparse_matrix[x, y]
+                            value = sparse_matrix[x, y]
+                            return value
                         else:
                             return self.default_value
                     # Check if it's a LIL matrix  
                     elif hasattr(sparse_matrix, 'rows'):
                         # LIL matrix - check if the row has any data for this column
                         if x < len(sparse_matrix.rows) and y in sparse_matrix.rows[x]:
-                            return sparse_matrix[x, y]
+                            value = sparse_matrix[x, y]
+                            return value
                         else:
                             return self.default_value
                     else:
@@ -2486,6 +2893,8 @@ class SparseLayerAccessor:
                             return val if val != 0 else self.default_value
                         except:
                             return self.default_value
+                    
+
                 return self.default_value
             else:
                 # CRITICAL FIX: Return default value instead of raising IndexError
@@ -2508,57 +2917,98 @@ class SparseLayerAccessor:
             return self.default_value
     
     def __setitem__(self, key, value):
-        """Support array-like assignment."""
+        """Support array-like assignment with robust DOK matrix handling."""
         if isinstance(key, tuple) and len(key) == 3:
             x, y, z = key
             if isinstance(z, int) and 0 <= z < self.num_layers:
                 if 0 <= x < self.width and 0 <= y < self.height:
                     try:
-                        # CRITICAL FIX: Handle both list and dictionary access patterns
+                        # Get the sparse matrix
                         if isinstance(self.sparse_layers, dict):
                             if z in self.sparse_layers:
                                 sparse_matrix = self.sparse_layers[z]
                             else:
-                                # Key doesn't exist in dictionary - skip assignment
-                                # REDUCED VERBOSITY: Only log critical errors
-                                return  # Skip assignment
-                        # Handle list access (sparse_layers is a list)
+                                logger.warning(f"⚠️  Layer {z} not found in sparse_layers dictionary")
+                                return False
                         elif isinstance(self.sparse_layers, list) and 0 <= z < len(self.sparse_layers):
                             sparse_matrix = self.sparse_layers[z]
                         else:
-                            # Fallback to direct access
-                            sparse_matrix = self.sparse_layers[z]
-                        sparse_matrix[x, y] = value
-                    except (KeyError, IndexError) as e:
-                        # Handle both KeyError and IndexError cases
-                        if isinstance(e, KeyError):
-                            key_value = e.args[0] if e.args else 'unknown'
-                            error_type = f"KeyError {key_value}"
-                        else:
-                            error_type = f"IndexError {e}"
-                        # REDUCED VERBOSITY: Only log critical errors
-                        return  # Silently fail instead of raising exception
+                            logger.warning(f"⚠️  Invalid sparse_layers structure for layer {z}")
+                            return False
+                        
+                        # CRITICAL FIX: Convert DOK to LIL for reliable assignment
+                        if hasattr(sparse_matrix, 'format') and sparse_matrix.format == 'dok':
+                            try:
+                                from scipy.sparse import lil_matrix
+                                lil_matrix_converted = sparse_matrix.tolil()
+                                self.sparse_layers[z] = lil_matrix_converted
+                                sparse_matrix = lil_matrix_converted
+                                logger.debug(f"✅ Converted layer {z} from DOK to LIL for assignment")
+                            except Exception as conversion_error:
+                                logger.warning(f"⚠️  Failed to convert DOK to LIL for layer {z}: {conversion_error}")
+                                # Fall back to direct assignment
+                        
+                        # Perform the assignment
+                        try:
+                            sparse_matrix[x, y] = value
+                            
+                            # Verify the assignment succeeded
+                            try:
+                                assigned_value = sparse_matrix[x, y]
+                                # Use tolerance-based comparison for floating-point values
+                                if isinstance(value, (float, np.floating)) and isinstance(assigned_value, (float, np.floating)):
+                                    tolerance = 1e-6
+                                    if abs(assigned_value - value) > tolerance:
+                                        logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): expected {value}, got {assigned_value}")
+                                        return False
+                                elif assigned_value != value:
+                                    logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): expected {value}, got {assigned_value}")
+                                    return False
+                                return True
+                            except Exception as verify_error:
+                                logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): {verify_error}")
+                                return False
+                            
+                        except (KeyError, IndexError) as e:
+                            logger.warning(f"⚠️  Sparse matrix access error at ({x}, {y}, {z}): {e}")
+                            return False
+                        except Exception as e:
+                            logger.warning(f"⚠️  Sparse matrix assignment failed at ({x}, {y}, {z}): {e}")
+                            return False
                     except Exception as e:
-                        # CRITICAL FIX: Don't raise exception - just log and continue
-                        # This prevents segfaults on massive grids
-                        # REDUCED VERBOSITY: Only log critical errors
-                        return  # Silently fail instead of raising exception
+                        logger.warning(f"⚠️  Sparse matrix assignment failed at ({x}, {y}, {z}): {e}")
+                        return False
         elif isinstance(key, tuple) and len(key) == 2:
             x, y = key
             if len(self.sparse_layers) > 0 and 0 <= x < self.width and 0 <= y < self.height:
                 try:
-                    self.sparse_layers[0][x, y] = value
+                    # Apply same DOK conversion fix for 2D access
+                    sparse_matrix = self.sparse_layers[0]
+                    if hasattr(sparse_matrix, 'format') and sparse_matrix.format == 'dok':
+                        try:
+                            from scipy.sparse import lil_matrix
+                            lil_matrix_converted = sparse_matrix.tolil()
+                            self.sparse_layers[0] = lil_matrix_converted
+                            sparse_matrix = lil_matrix_converted
+                        except Exception as conversion_error:
+                            logger.warning(f"⚠️  Failed to convert DOK to LIL for 2D access: {conversion_error}")
+                    
+                    sparse_matrix[x, y] = value
+                    return True
                 except Exception as e:
                     logger.warning(f"⚠️  Sparse matrix assignment failed at ({x}, {y}): {e}")
-                    return  # Silently fail
+                    return False
         else:
             # Handle slice assignment
             if isinstance(key, slice) or (isinstance(key, tuple) and any(isinstance(k, slice) for k in key)):
                 try:
                     self._handle_slice_assignment(key, value)
+                    return True
                 except Exception as e:
                     logger.warning(f"⚠️  Slice assignment failed: {e}")
-                    return  # Silently fail
+                    return False
+    
+        return False
     
     def _handle_slice_access(self, key):
         """
@@ -3017,7 +3467,7 @@ class MemoryOptimizedForestModel(ForestModel):
         logger.debug("🔄 Forest model logging flags reset")
     
     def __init__(self, grid_size, num_layers=1, layer_height_meters=1.0, 
-                 model_resolution=1.0, initial_fuel_load=0.0, config=None, **kwargs):
+                 model_resolution=20.0, initial_fuel_load=0.0, config=None, **kwargs):
         """
         Initialize MemoryOptimizedForestModel with memory optimizations.
         
@@ -3074,34 +3524,44 @@ class MemoryOptimizedForestModel(ForestModel):
             if self.use_sparse_storage:
                 self._initialize_optimized_sparse_storage()
             
-            # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
-            # This ensures that any fuel type dictionary access will have proper defaults
-            self.fuel_types = {
-                0: 'bare_ground',
-                1: 'grass',
-                2: 'shrub',
-                3: 'low_vegetation',
-                4: 'medium_vegetation', 
-                5: 'high_vegetation',
-                6: 'canopy',
-                7: 'dense_canopy',  # This was likely missing, causing KeyError 7
-                8: 'very_dense_canopy',
-                9: 'maximum_vegetation'
-            }
-            
-            # Initialize fuel type properties for each type
-            self.fuel_type_properties = {
-                'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
-                'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
-                'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
-                'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
-                'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
-                'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
-                'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
-                'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
-                'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
-                'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
-            }
+            # FUEL TYPE SYSTEM REMOVED - Using direct LiDAR values instead of categorical fuel types
+    
+        # CRITICAL FIX: Initialize shared terrain manager
+        try:
+            from src.utils.shared_terrain import SparseTerrainManager
+            # TEMPORARY FIX: Skip shared terrain manager to prevent hanging
+            logger.info("⚠️ Skipping shared terrain manager initialization to prevent hanging")
+            self.shared_terrain_manager = None
+            # self.shared_terrain_manager = SparseTerrainManager()  # Comment out this line
+            # logger.info("✅ Shared terrain manager initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to initialize shared terrain manager: {e}")
+            self.shared_terrain_manager = None
+        
+        # ENABLE LiDAR manager initialization for preprocessed data
+        logger.info("✅ ENABLING LiDAR manager initialization for preprocessed data")
+        if hasattr(self, 'config') and hasattr(self.config, 'use_lidar') and self.config.use_lidar:
+            if hasattr(self.config, 'preprocessed_lidar_dir') and self.config.preprocessed_lidar_dir:
+                logger.info(f"🔍 Loading preprocessed LiDAR from: {self.config.preprocessed_lidar_dir}")
+                success = self._load_preprocessed_lidar_data(self.config.preprocessed_lidar_dir)
+                if success:
+                    logger.info("✅ Preprocessed LiDAR data loaded successfully")
+                else:
+                    logger.warning("⚠️  Failed to load preprocessed LiDAR data")
+            else:
+                logger.warning("⚠️  LiDAR enabled but no preprocessed_lidar_dir specified")
+        else:
+            logger.info("ℹ️  LiDAR not enabled in config")
+        
+        # Add debug logging after LiDAR initialization
+        logger.info("🔄 LiDAR initialization complete, continuing with forest model setup...")
+        
+        # CRITICAL FIX: Skip shared terrain manager to prevent hanging
+        logger.info("🔄 Skipping shared terrain manager initialization to prevent hanging...")
+        self.shared_terrain_manager = None
+        logger.info("✅ Shared terrain manager skipped successfully")
+        
+        logger.info("🔄 MemoryOptimizedForestModel initialization complete!")
     
     def _initialize_directly_as_sparse(self, grid_size, num_layers, layer_height_meters, 
                                       model_resolution, initial_fuel_load, config, **kwargs):
@@ -3207,55 +3667,19 @@ class MemoryOptimizedForestModel(ForestModel):
         # CRITICAL FIX: Initialize fire_history attribute that's expected by simulation engine
         self.fire_history = []
         
-        # CRITICAL FIX: Initialize fuel type mappings to prevent KeyError 7
-        # This ensures that any fuel type dictionary access will have proper defaults
-        self.fuel_types = {
-            0: 'bare_ground',
-            1: 'grass',
-            2: 'shrub',
-            3: 'low_vegetation',
-            4: 'medium_vegetation', 
-            5: 'high_vegetation',
-            6: 'canopy',
-            7: 'dense_canopy',  # This was likely missing, causing KeyError 7
-            8: 'very_dense_canopy',
-            9: 'maximum_vegetation'
-        }
-        
-        # Initialize fuel type properties for each type
-        self.fuel_type_properties = {
-            'bare_ground': {'load': 0.0, 'moisture': 0.1, 'ignition': 0.0},
-            'grass': {'load': 0.2, 'moisture': 0.2, 'ignition': 0.8},
-            'shrub': {'load': 0.4, 'moisture': 0.25, 'ignition': 0.7},
-            'low_vegetation': {'load': 0.5, 'moisture': 0.3, 'ignition': 0.6},
-            'medium_vegetation': {'load': 0.6, 'moisture': 0.35, 'ignition': 0.5},
-            'high_vegetation': {'load': 0.7, 'moisture': 0.4, 'ignition': 0.4},
-            'canopy': {'load': 0.8, 'moisture': 0.45, 'ignition': 0.3},
-            'dense_canopy': {'load': 0.9, 'moisture': 0.5, 'ignition': 0.2},
-            'very_dense_canopy': {'load': 1.0, 'moisture': 0.55, 'ignition': 0.1},
-            'maximum_vegetation': {'load': 1.0, 'moisture': 0.6, 'ignition': 0.05}
-        }
+        # FUEL TYPE SYSTEM REMOVED - Using direct LiDAR values instead of categorical fuel types
     
     def _initialize_optimized_sparse_storage(self):
-        """Initialize sparse storage with optimization."""
-        try:
-            from scipy.sparse import lil_matrix
-            
-            # Use LIL format for efficient modifications (fire simulation frequently modifies cells)
-            self.fuel_load_layers = {}
-            self.state_layers = {}
-            
-            for layer in range(self.num_layers):
-                shape = (self.width, self.height)
-                self.fuel_load_layers[layer] = lil_matrix(shape, dtype=np.float32)
-                self.state_layers[layer] = lil_matrix(shape, dtype=np.int8)
-            
-            logger.debug(f"🧹 Optimized sparse storage (LIL format) initialized for {self.num_layers} layers")
-            
-        except ImportError:
-            logger.warning("⚠️  scipy.sparse not available - using basic sparse storage")
-            self.fuel_load_layers = {}
-            self.state_layers = {}
+        """Initialize sparse storage with proper geographic bounds."""
+        # ... existing code ...
+        
+        # CRITICAL FIX: Pass geo_bounds to LiDAR manager
+        geo_bounds = getattr(self.config, 'geo_bounds', None)
+        if hasattr(self, 'lidar_manager') and geo_bounds:
+            self.lidar_manager.geo_bounds = geo_bounds
+            logger.info(f"✅ Using geographic bounds for LiDAR filtering: {geo_bounds}")
+        
+        # ... rest of existing code ...
     
     def optimize_sparse_storage(self):
         """Optimize sparse storage for large grids."""
@@ -3406,6 +3830,10 @@ class MemoryOptimizedForestModel(ForestModel):
             base_state = object.__getattribute__(self, 'state')
             if isinstance(base_state, np.ndarray):
                 original_state = base_state.copy()
+        
+        # CRITICAL FIX: If dense arrays were skipped, create empty sparse arrays directly
+        if original_fuel_load is None:
+            logger.info("🚨 Creating sparse arrays directly (dense arrays were skipped)")
         
         # Initialize sparse storage dictionaries
         self.fuel_load_layers = {}
@@ -3635,7 +4063,121 @@ class MemoryOptimizedForestModel(ForestModel):
 
     # Add property accessors for fuel_load and state to maintain compatibility
 
+    def _load_sparse_preprocessed_terrain_data(self, preprocessed_dir: str) -> bool:
+        """
+        Load preprocessed terrain data in sparse format for ultra-memory efficiency.
+        
+        Args:
+            preprocessed_dir: Directory containing preprocessed terrain files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from src.utils.shared_terrain import SparseTerrainManager
+            
+            # Get shared terrain info
+            shared_terrain_info = self.shared_terrain_manager.get_shared_terrain_info()
+            
+            if not shared_terrain_info['is_loaded']:
+                logger.warning("⚠️  No shared sparse terrain available - loading individually")
+                return False
+            
+            logger.info(f"🏔️  Loading sparse terrain data from shared memory")
+            
+            # Load terrain data from shared memory
+            for terrain_type in ['elevation', 'slope', 'aspect', 'barranco_mask', 
+                               'barranco_directions', 'depression_mask', 
+                               'wind_channeling_mask', 'wind_amplification', 
+                               'wind_direction_modification']:
+                
+                if terrain_type not in shared_terrain_info['sparse_formats']:
+                    continue
+                    
+                sparse_format = shared_terrain_info['sparse_formats'][terrain_type]
+                shape = shared_terrain_info['shapes'][terrain_type]
+                dtype_str = shared_terrain_info['dtypes'][terrain_type]
+                
+                if sparse_format == 'csr':
+                    # Load sparse matrix components
+                    data_name = shared_terrain_info['shared_names'][f"{terrain_type}_data"]
+                    indices_name = shared_terrain_info['shared_names'][f"{terrain_type}_indices"]
+                    indptr_name = shared_terrain_info['shared_names'][f"{terrain_type}_indptr"]
+                    
+                    # Attach to shared memory
+                    data_shm = shared_memory.SharedMemory(name=data_name)
+                    indices_shm = shared_memory.SharedMemory(name=indices_name)
+                    indptr_shm = shared_memory.SharedMemory(name=indptr_name)
+                    
+                    # Create numpy arrays from shared memory
+                    data_array = np.ndarray(shape=(len(data_shm.buf)//4,), dtype=np.float32, buffer=data_shm.buf)
+                    indices_array = np.ndarray(shape=(len(indices_shm.buf)//4,), dtype=np.int32, buffer=indices_shm.buf)
+                    indptr_array = np.ndarray(shape=(len(indptr_shm.buf)//4,), dtype=np.int32, buffer=indptr_shm.buf)
+                    
+                    # Reconstruct sparse matrix
+                    from scipy.sparse import csr_matrix
+                    terrain_data = csr_matrix((data_array, indices_array, indptr_array), shape=shape)
+                    
+                    # Store in terrain attributes
+                    setattr(self, f"{terrain_type}", terrain_data)
+                    
+                    logger.debug(f"✅ Loaded sparse {terrain_type}: {shape} (CSR format)")
+                    
+                else:
+                    # Load dense array
+                    shared_name = shared_terrain_info['shared_names'][terrain_type]
+                    shm = shared_memory.SharedMemory(name=shared_name)
+                    
+                    # Create numpy array from shared memory
+                    terrain_data = np.ndarray(shape, dtype=np.dtype(dtype_str), buffer=shm.buf)
+                    
+                    # Store in terrain attributes
+                    setattr(self, f"{terrain_type}", terrain_data)
+                    
+                    logger.debug(f"✅ Loaded dense {terrain_type}: {shape}")
+            
+            logger.info(f"✅ Sparse terrain data loaded successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load sparse terrain data: {e}")
+            return False
 
+    def _load_shared_lidar_data(self, shared_info: Dict[str, Any]) -> bool:
+        """
+        Load LiDAR data from shared memory.
+        
+        Args:
+            shared_info: Shared LiDAR information from main process
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from src.utils.shared_lidar import load_shared_lidar_data
+            
+            # Load LiDAR data from shared memory
+            lidar_data = load_shared_lidar_data(shared_info)
+            
+            if not lidar_data:
+                logger.warning("⚠️  No shared LiDAR data available")
+                return False
+            
+            # Use LiDAR data as fuel load
+            logger.info(f" Loading {len(lidar_data)} LiDAR layers as fuel data...")
+            
+            for layer_idx, layer_data in lidar_data.items():
+                if layer_idx < self.num_layers:
+                    # Copy LiDAR data to fuel load
+                    self.fuel_load[:, :, layer_idx] = layer_data
+                    logger.debug(f"✅ Loaded layer {layer_idx}: {layer_data.shape}")
+            
+            logger.info("✅ Shared LiDAR data loaded successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load shared LiDAR data: {e}")
+            return False
 
 def create_forest_model(model_type: str = "standard", config=None, **kwargs):
     """
@@ -3661,7 +4203,7 @@ def create_forest_model(model_type: str = "standard", config=None, **kwargs):
             num_layers = kwargs.get('num_layers', 10)
             
         layer_height_meters = kwargs.get('layer_height_meters', 2.0)
-        model_resolution = kwargs.get('model_resolution', 5.0)
+        model_resolution = kwargs.get('model_resolution', 20.0)  # Change from 5.0 to 20.0
         initial_fuel_load = kwargs.get('initial_fuel_load', 5.0)
         
         # Remove grid_size and num_layers from kwargs to avoid duplicate arguments

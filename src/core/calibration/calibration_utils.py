@@ -617,7 +617,7 @@ def create_synthetic_target_data(grid_size: Tuple[int, int],
     }
 
 
-def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (100, 100), model_resolution: float = 5.0) -> List['FirePerimeterData']:
+def create_emsr_target_data(day1_path: str, day2_path: str, grid_size: tuple = (609, 609), model_resolution: float = 20.0) -> List['FirePerimeterData']:
     """
     Create target data from Day 1 and Day 2 EMSR delineations.
     
@@ -688,7 +688,7 @@ def create_production_target_data(dem_file: str,
                                  lidar_data_dir: str,
                                  grid_size: Tuple[int, int] = (80, 80),
                                  num_layers: int = 5,
-                                 model_resolution: float = 5.0) -> Dict[str, Any]:
+                                 model_resolution: float = 20.0) -> Dict[str, Any]:
     """
     Create production target data using real terrain and fuel data.
     
@@ -925,42 +925,27 @@ def calculate_optimal_grid_size_from_emsr(day1_path: str, day2_path: str, buffer
 
 def create_unified_progress_callback(verbose: bool = True, quiet_mode: bool = False, 
                                    total_combinations: int = None) -> callable:
-    """
-    Unified progress callback function to replace redundant implementations.
-    
-    Args:
-        verbose: Whether to show detailed progress information
-        quiet_mode: Whether to suppress most output
-        total_combinations: Total number of combinations for percentage calculation
-        
-    Returns:
-        Progress callback function
-    """
+    """Unified progress callback function with minimal output."""
     def callback(completed: int, total: int, current_result=None):
         if quiet_mode:
             return
             
-        # Calculate progress percentage
+        # Only show progress every 10% or at completion
         progress = (completed / total) * 100 if total > 0 else 0
-        
-        # Determine update frequency based on total
-        update_interval = max(1, total // 20) if verbose else max(1, total // 10)
+        update_interval = max(1, total // 10)
         
         if completed % update_interval == 0 or completed == total:
-            if verbose and current_result is not None:
-                # Detailed progress with result information (simplified to avoid duplication)
-                status = "SUCCESS" if hasattr(current_result, 'is_valid') and current_result.is_valid else "FAILED"
-                print(f"[{progress:6.1f}%] Evaluation {completed:4d}/{total}: {status}")
-            else:
-                # Simple progress (avoid duplication with grid search logging)
-                pass  # Let grid search handle progress reporting
+            if completed == total:
+                print(f"✅ Completed: {completed}/{total}")
+            elif progress % 10 == 0:  # Every 10%
+                print(f"📊 Progress: {progress:.0f}% ({completed}/{total})")
     
     return callback
 
 
 def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str, 
                                          buffer_percent: float = 10.0,
-                                         model_resolution: float = 5.0) -> Tuple[int, int]:
+                                         model_resolution: float = 20.0) -> Tuple[int, int]:
     """
     Unified grid size calculation from EMSR data.
     
@@ -978,6 +963,7 @@ def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str,
     """
     try:
         import geopandas as gpd
+        import pandas as pd
         from shapely.geometry import box
         import numpy as np
         
@@ -1028,6 +1014,10 @@ def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str,
         for gdf_proj in [day1_proj, day2_proj]:
             if not gdf_proj.empty:
                 total_fire_area_m2 += gdf_proj.area.sum()
+
+        # FIX: If both inputs are the same file (Day 4), don't double-count
+        if day1_path == day2_path:
+            total_fire_area_m2 = total_fire_area_m2 / 2  # Don't double-count Day 4
         
         # CRITICAL FIX: Calculate grid dimensions based on fire area (square root approach)
         # For 122.7 km² fire area, we want a grid that's roughly square and covers this area
@@ -1044,14 +1034,45 @@ def calculate_unified_grid_size_from_emsr(day1_path: str, day2_path: str,
         height_cells = int(np.floor(total_side_length_m / model_resolution))
         
         # CRITICAL: Ensure minimum grid size for Day 4 fire
-        min_cells = int(np.ceil((fire_side_length_m / model_resolution) * 0.8))  # At least 80% of fire area
-        width_cells = max(width_cells, min_cells)
-        height_cells = max(height_cells, min_cells)
+        # For Day 4 calculation, use the known area:
+        if "Day 4" in day1_path or "GRA_PRODUCT" in day1_path:
+            # Use known Day 4 area: 12,273.9 hectares
+            total_fire_area_m2 = 122739000  # 12,273.9 ha in m²
+            fire_area_cells = total_fire_area_m2 / (model_resolution * model_resolution)
+            min_cells = int(np.ceil(np.sqrt(fire_area_cells) * 0.8))  # 80% of fire area side length
+            width_cells = max(width_cells, min_cells)
+            height_cells = max(height_cells, min_cells)
+        else:
+            # OLD (BUGGY):
+            min_cells = int(np.ceil((fire_side_length_m / model_resolution) * 0.8))
+
+            # NEW (CORRECT):
+            fire_area_cells = total_fire_area_m2 / (model_resolution * model_resolution)
+            min_cells = int(np.ceil(np.sqrt(fire_area_cells) * 0.8))  # 80% of fire area side length
+            width_cells = max(width_cells, min_cells)
+            height_cells = max(height_cells, min_cells)
         
+        # CRITICAL FIX: Calculate geographic bounds for LiDAR filtering
+        fire_gdf = gpd.GeoDataFrame(pd.concat([day1_gdf, day2_gdf], ignore_index=True))
+        fire_bounds = fire_gdf.total_bounds  # [minx, miny, maxx, maxy]
+        geo_bounds = {
+            'min_lon': fire_bounds[0],
+            'min_lat': fire_bounds[1], 
+            'max_lon': fire_bounds[2],
+            'max_lat': fire_bounds[3]
+        }
+        
+        # Add buffer to bounds
+        lon_buffer = (fire_bounds[2] - fire_bounds[0]) * (buffer_percent / 100.0)
+        lat_buffer = (fire_bounds[3] - fire_bounds[1]) * (buffer_percent / 100.0)
+        
+        geo_bounds['min_lon'] -= lon_buffer
+        geo_bounds['min_lat'] -= lat_buffer
+        geo_bounds['max_lon'] += lon_buffer
+        geo_bounds['max_lat'] += lat_buffer
+        
+        # FIX: Return only 2 values to match the function signature
         return width_cells, height_cells
-        
-        # The calculation is now done above using the fire area approach
-        pass
         
     except Exception as e:
         # Fallback to reasonable defaults
@@ -1084,8 +1105,8 @@ def create_unified_target_data(source_type: str, **kwargs) -> Dict[str, Any]:
 
 
 def _create_emsr_target_data(day1_path: str, day2_path: str, 
-                           grid_size: tuple = (100, 100), 
-                           model_resolution: float = 5.0) -> Dict[str, Any]:
+                           grid_size: tuple = (609, 609),  # Change from (100, 100)
+                           model_resolution: float = 20.0) -> Dict[str, Any]:  # Change from 5.0
     """Create target data from EMSR files."""
     try:
         import geopandas as gpd
@@ -1130,9 +1151,9 @@ def _create_emsr_target_data(day1_path: str, day2_path: str,
 
 
 def _create_production_target_data(dem_file: str, lidar_data_dir: str,
-                                 grid_size: Tuple[int, int] = (80, 80),
+                                 grid_size: Tuple[int, int] = (609, 609),  # Change from (80, 80)
                                  num_layers: int = 5,
-                                 model_resolution: float = 5.0) -> Dict[str, Any]:
+                                 model_resolution: float = 20.0) -> Dict[str, Any]:  # Already correct
     """Create target data for production runs."""
     # Simplified production target data creation
     return {

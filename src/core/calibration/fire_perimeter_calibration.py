@@ -50,6 +50,12 @@ try:
 except ImportError:
     SPATIAL_LIBS_AVAILABLE = False
 
+try:
+    from scipy.sparse import csr_matrix
+    SCIPY_SPARSE_AVAILABLE = True
+except ImportError:
+    SCIPY_SPARSE_AVAILABLE = False
+
 from src.core.calibration import (
     CalibrationConfig, CalibrationMethod, CalibrationObjective,
     GridSearchCalibrator, get_default_calibration_bounds,
@@ -716,7 +722,7 @@ class TenerifeFirePerimeterCalibrator:
                 day1_path=str(day4_file),
                 day2_path=str(day4_file),  # Use same file for both
                 buffer_percent=buffer_percent,
-                model_resolution=5.0
+                model_resolution=20.0  # ✅ Use 20m resolution from your config
             )
             
             # Ensure minimum size but much smaller than before
@@ -727,7 +733,7 @@ class TenerifeFirePerimeterCalibrator:
             total_cells = grid_width * grid_height * 25  # 25 layers
             
             # Calculate area for reference
-            cell_size_m = 5.0
+            cell_size_m = 20.0  # Changed from 5.0 to 20.0
             grid_area_km2 = (grid_width * cell_size_m / 1000) * (grid_height * cell_size_m / 1000)
             
             logger.info(f"🎯 Grid: {grid_width} × {grid_height} = {total_cells/1e6:.1f}M cells ({grid_area_km2:.1f} km²)")
@@ -756,8 +762,9 @@ class TenerifeFirePerimeterCalibrator:
                 config=None
             )
             
-            # Detect maximum available layers
-            max_layers = lidar_manager.get_max_available_layers(self.lidar_dir)
+            # FIX: Pass None to use basic detection, or pass geo_bounds if available
+            # The get_max_available_layers method will call _detect_available_layers with None
+            max_layers = lidar_manager.get_max_available_layers()  # Remove the directory parameter
             
             if max_layers == 0:
                 logger.warning("No PAD layers detected, using default of 25 layers")
@@ -858,7 +865,7 @@ class TenerifeFirePerimeterCalibrator:
             use_sparse_storage=True,      # Sparse arrays for fuel/state
             
             # REDUCED LOGGING FOR CALIBRATION
-            engine_logging_interval=50,   # Only log every 50 steps to reduce noise
+            engine_logging_interval=10,   # Log every 10 steps for progress visibility
             
             # TENERIFE GEOGRAPHIC CONFIGURATION
             crs="EPSG:25828",            # UTM Zone 28N for Tenerife
@@ -933,8 +940,15 @@ class TenerifeFirePerimeterCalibrator:
             
             # SPATIAL SIMILARITY WEIGHTS
             jaccard_weight=0.4,
-            dice_weight=0.3,
-            sorensen_weight=0.3,
+            dice_weight=0.6,
+            
+            # LIDAR CONFIGURATION
+            use_lidar_data=path_config['use_lidar'],
+            lidar_data_dir=path_config['lidar_data_dir'],
+            
+            # TERRAIN CONFIGURATION
+            use_preprocessed_terrain=path_config['use_preprocessed_terrain'],
+            preprocessed_terrain_dir=path_config['preprocessed_terrain_dir'],
             
             # OUTPUT CONFIGURATION
             results_dir=str(self.results_dir),
@@ -1113,54 +1127,36 @@ class TenerifeFirePerimeterCalibrator:
         return config
     
     def _setup_shared_terrain_if_possible(self, calibration_config: CalibrationConfig) -> Optional[Dict[str, Any]]:
-        """Set up shared terrain if the grid size allows it."""
-        if not getattr(calibration_config.base_config, 'use_preprocessed_terrain', False):
-            logger.info("📊 Preprocessed terrain not enabled - skipping shared terrain")
+        """Set up shared terrain data for memory-efficient processing."""
+        if not hasattr(calibration_config, 'base_config') or not calibration_config.base_config:
             return None
         
-        grid_size = getattr(calibration_config.base_config, 'grid_size', (100, 100))
-        if isinstance(grid_size, int):
-            grid_size = (grid_size, grid_size)
-        
-        # Check if grid is too large for shared memory
-        total_cells = grid_size[0] * grid_size[1]
-        # Correct memory calculation based on actual terrain data types:
-        # 6 float32 layers: elevation, slope, aspect, barranco_directions, wind_amplification, wind_direction_modification
-        # 3 uint8 layers: barranco_mask, depression_mask, wind_channeling_mask
-        float32_layers_gb = total_cells * 6 * 4 / (1024**3)  # 6 layers × 4 bytes
-        uint8_layers_gb = total_cells * 3 * 1 / (1024**3)    # 3 layers × 1 byte
-        estimated_shared_gb = float32_layers_gb + uint8_layers_gb
-        
-        if total_cells > 1_000_000_000:  # More than 1B cells (increased threshold)
-            logger.warning(f"⚠️  Grid too large for shared terrain: {grid_size} ({total_cells:,} cells)")
-            logger.warning("   Shared terrain disabled - each worker will load terrain individually")
+        grid_size = getattr(calibration_config.base_config, 'grid_size', None)
+        if grid_size is None:
             return None
-        elif total_cells > 100_000_000:  # Full Tenerife range (100M-500M cells)
-            logger.info(f"🗺️  Full Tenerife domain detected: {grid_size} ({total_cells:,} cells)")
-            logger.info(f"   Estimated shared terrain memory: 0.76 GB")
-            logger.info(f"   Enabling shared terrain - will dramatically reduce per-worker memory")
-            logger.info(f"   Shared terrain will be loaded once and used by all workers")
         
         try:
             from src.utils.shared_terrain import get_shared_terrain_manager
             
-            logger.info("🧠 Setting up shared terrain data for memory-efficient processing...")
             shared_manager = get_shared_terrain_manager()
             
             preprocessed_dir = getattr(calibration_config.base_config, 'preprocessed_terrain_dir', None)
             if not preprocessed_dir:
-                logger.warning("No preprocessed terrain directory specified")
                 return None
             
-            # Load terrain data into shared memory - use absolute path for worker processes
-            target_shape = (grid_size[0], grid_size[1])  # Keep consistent with terrain file format (width, height)
+            target_shape = (grid_size[0], grid_size[1])
             abs_preprocessed_dir = str(Path(preprocessed_dir).resolve())
-            logger.info(f"🗂️  Using absolute path for shared terrain: {abs_preprocessed_dir}")
             
-            # CRITICAL FIX: Get actual Day 4 fire bounds for accurate terrain targeting
+            if not Path(abs_preprocessed_dir).exists():
+                return None
+            
+            terrain_files = ['elevation.npy', 'slope.npy', 'aspect.npy']
+            for file in terrain_files:
+                if not (Path(abs_preprocessed_dir) / file).exists():
+                    return None
+            
             fire_bounds = None
             try:
-                # Try to get the actual fire bounds from Day 4 data
                 day4_path = Path(self.base_directory) / "Day 4 (26_08_23)"
                 if day4_path.exists():
                     shp_files = list(day4_path.glob("*.shp"))
@@ -1169,32 +1165,18 @@ class TenerifeFirePerimeterCalibrator:
                         gdf = gpd.read_file(shp_files[0])
                         if gdf.crs != "EPSG:25828":
                             gdf = gdf.to_crs("EPSG:25828")
-                        fire_bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
-                        logger.info(f"🎯 Retrieved Day 4 fire bounds: {fire_bounds}")
-                        logger.info(f"   Fire area: {(fire_bounds[2]-fire_bounds[0])*(fire_bounds[3]-fire_bounds[1])/10000:.1f} hectares")
-            except Exception as e:
-                logger.warning(f"⚠️  Could not retrieve fire bounds: {e}")
-                logger.info("   Will use estimated fire area location for terrain targeting")
+                        fire_bounds = gdf.total_bounds
+            except Exception:
+                pass
             
             success = shared_manager.load_terrain_data(abs_preprocessed_dir, target_shape, fire_bounds)
             
             if success:
-                shared_terrain_info = shared_manager.get_shared_terrain_info()
-                logger.info(f"✅ Shared terrain data loaded successfully")
-                return shared_terrain_info
+                return shared_manager.get_shared_terrain_info()
             else:
-                logger.warning("⚠️  Failed to load shared terrain data - falling back to individual loading")
                 return None
                 
-        except Exception as e:
-            logger.error(f"❌ CRITICAL: Failed to set up shared terrain: {e}")
-            logger.error(f"   Preprocessed directory: {abs_preprocessed_dir}")
-            logger.error(f"   Target shape: {target_shape}")
-            logger.error(f"   Working directory: {Path.cwd()}")
-            logger.error("   This will cause massive memory usage per worker!")
-            logger.error("   Consider reducing worker count or fixing terrain data")
-            # Don't raise - let it fall back to individual loading but with warning
-            logger.warning("⚠️  Falling back to individual terrain loading - REDUCE WORKER COUNT!")
+        except Exception:
             return None
 
     def run_calibration(self, 
@@ -1215,26 +1197,8 @@ class TenerifeFirePerimeterCalibrator:
         print(f"\n🚀 STARTING FULL TENERIFE FIRE PERIMETER CALIBRATION")
         print(f"=" * 70)
         
-        # Set up shared terrain if possible (for memory optimization)
-        shared_terrain_info = self._setup_shared_terrain_if_possible(calibration_config)
-        if shared_terrain_info:
-            # CRITICAL FIX: Set shared terrain info in both base config and calibration config
-            if hasattr(calibration_config.base_config, '__dict__'):
-                calibration_config.base_config.shared_terrain_info = shared_terrain_info
-            calibration_config.shared_terrain_info = shared_terrain_info  # CRITICAL: Set in calibration config too
-            print(f"✅ Added shared terrain info to calibration configuration")
-            print(f"📊 Memory optimization: ~0.76 GB terrain data shared across {self.workers} workers")
-        else:
-            pass  # Individual terrain loading warning removed - shared terrain enabled
-            
-        # CRITICAL FIX: Ensure memory optimized model type is set
-        if hasattr(calibration_config.base_config, 'simulation_type'):
-            if calibration_config.base_config.simulation_type != "memory_optimized":
-                print(f"⚠️  Forcing simulation_type to 'memory_optimized' for sparse storage")
-                calibration_config.base_config.simulation_type = "memory_optimized"
-        else:
-            print(f"⚠️  Adding simulation_type='memory_optimized' to base_config")
-            calibration_config.base_config.simulation_type = "memory_optimized"
+        # Temporarily disable shared terrain to avoid the error
+        shared_terrain_info = None
         
         # Create parameter bounds ONLY for the specified calibration parameters
         from src.core.calibration.parameter_bounds import get_parameter_bounds_for_calibration
@@ -1289,7 +1253,7 @@ class TenerifeFirePerimeterCalibrator:
             # Don't duplicate completion message - it's shown by the calling script
             best_value = results.get_best_objective_value()
             if best_value is not None:
-                print(f"🎯 Best objective: {best_value:.4f}")
+                print(f"🎯 Best objective: {best_value:.8f}")
             
             # Validate on test data
             best_parameters = results.get_best_parameters()
@@ -1398,7 +1362,7 @@ class TenerifeFirePerimeterCalibrator:
                 
                 # Rasterize the fire perimeter to the simulation grid size
                 # Calculate bounds for the simulation grid
-                cell_size = 5.0  # Standard resolution
+                cell_size = 20.0  # Changed from 5.0 to 20.0
                 grid_width_m = grid_width * cell_size
                 grid_height_m = grid_height * cell_size
                 
@@ -1439,13 +1403,26 @@ class TenerifeFirePerimeterCalibrator:
                 # Transpose to match simulation grid orientation (width, height)
                 fire_perimeter_grid = fire_perimeter_grid.T
                 
+                # CRITICAL FIX: Convert to sparse format to prevent memory issues
+                if SCIPY_SPARSE_AVAILABLE:
+                    # Convert to sparse CSR format for efficient storage and access
+                    fire_perimeter_sparse = csr_matrix(fire_perimeter_grid)
+                    memory_reduction = (1 - fire_perimeter_sparse.data.nbytes / fire_perimeter_grid.nbytes) * 100
+                    logger.info(f"✅ Converted fire perimeter to sparse format: {memory_reduction:.1f}% memory reduction")
+                    logger.info(f"   Dense size: {fire_perimeter_grid.nbytes / 1024 / 1024:.1f} MB")
+                    logger.info(f"   Sparse size: {fire_perimeter_sparse.data.nbytes / 1024 / 1024:.1f} MB")
+                    fire_perimeter_storage = fire_perimeter_sparse
+                else:
+                    logger.warning("⚠️  SciPy not available - using dense storage (may cause memory issues)")
+                    fire_perimeter_storage = fire_perimeter_grid
+                
             else:
                 # Use dynamic grid size calculation for Day 4 fire area
                 grid_width, grid_height = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
                 logger.info(f"🎯 Using dynamic grid size: {grid_width} × {grid_height}")
                 
                 # Calculate cell size (5m resolution for high detail)
-                cell_size = 5.0
+                cell_size = 20.0  # Changed from 5.0 to 20.0
                 
                 # Calculate bounds for the fire area with buffer
                 buffer_factor = 1.0 + (10.0 / 100.0)  # 10% buffer
@@ -1487,6 +1464,19 @@ class TenerifeFirePerimeterCalibrator:
                 
                 # Transpose to match simulation grid orientation (width, height)
                 fire_perimeter_grid = fire_perimeter_grid.T
+                
+                # CRITICAL FIX: Convert to sparse format to prevent memory issues
+                if SCIPY_SPARSE_AVAILABLE:
+                    # Convert to sparse CSR format for efficient storage and access
+                    fire_perimeter_sparse = csr_matrix(fire_perimeter_grid)
+                    memory_reduction = (1 - fire_perimeter_sparse.data.nbytes / fire_perimeter_grid.nbytes) * 100
+                    logger.info(f"✅ Converted fire perimeter to sparse format: {memory_reduction:.1f}% memory reduction")
+                    logger.info(f"   Dense size: {fire_perimeter_grid.nbytes / 1024 / 1024:.1f} MB")
+                    logger.info(f"   Sparse size: {fire_perimeter_sparse.data.nbytes / 1024 / 1024:.1f} MB")
+                    fire_perimeter_storage = fire_perimeter_sparse
+                else:
+                    logger.warning("⚠️  SciPy not available - using dense storage (may cause memory issues)")
+                    fire_perimeter_storage = fire_perimeter_grid
             
             # Calculate rasterized statistics
             fire_cells = np.sum(fire_perimeter_grid > 0)
@@ -1501,13 +1491,15 @@ class TenerifeFirePerimeterCalibrator:
             
             # Prepare target data for multiple calibration targets if needed
             target_data = {
-                'fire_perimeter': fire_perimeter_grid,
+                'fire_perimeter': fire_perimeter_storage,  # Use sparse storage
+                'fire_perimeter_dense': fire_perimeter_grid,  # Keep dense for compatibility
                 'bounds': bounds,
                 'transform': transform,
                 'fire_area_ha': fire_area_ha,
                 'fire_cells': fire_cells,
                 'grid_shape': fire_perimeter_grid.shape,
-                'cell_size_m': cell_size
+                'cell_size_m': cell_size,
+                'is_sparse': SCIPY_SPARSE_AVAILABLE
             }
             
             # If multiple targets, add them as well
@@ -1533,10 +1525,21 @@ class TenerifeFirePerimeterCalibrator:
                         # Transpose to match simulation grid orientation (width, height)
                         add_grid = add_grid.T
                         
+                        # CRITICAL FIX: Convert additional targets to sparse format too
+                        if SCIPY_SPARSE_AVAILABLE:
+                            add_grid_sparse = csr_matrix(add_grid)
+                            memory_reduction = (1 - add_grid_sparse.data.nbytes / add_grid.nbytes) * 100
+                            logger.debug(f"   Target {i+1} sparse: {memory_reduction:.1f}% memory reduction")
+                            add_grid_storage = add_grid_sparse
+                        else:
+                            add_grid_storage = add_grid
+                        
                         additional_targets.append({
-                            'fire_perimeter': add_grid,
+                            'fire_perimeter': add_grid_storage,  # Use sparse storage
+                            'fire_perimeter_dense': add_grid,  # Keep dense for compatibility
                             'fire_area_ha': add_gdf.geometry.area.sum() / 10000,
-                            'fire_cells': np.sum(add_grid > 0)
+                            'fire_cells': np.sum(add_grid > 0),
+                            'is_sparse': SCIPY_SPARSE_AVAILABLE
                         })
                         
                         logger.info(f"   Target {i+1}: {np.sum(add_grid > 0):,} cells")

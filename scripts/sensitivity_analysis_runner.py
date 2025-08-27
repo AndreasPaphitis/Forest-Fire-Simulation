@@ -482,8 +482,7 @@ class HPCOptimizedSensitivityRunner:
             
             # Spatial similarity sub-weights (for sensitivity analysis)
             jaccard_weight=0.4,
-            dice_weight=0.3,
-            sorensen_weight=0.3
+            dice_weight=0.6
         )
         
         return config

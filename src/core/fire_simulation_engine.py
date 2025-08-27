@@ -44,7 +44,8 @@ logger = get_logger(__name__)
 from src.utils.shared_utilities import (
     log_once,
     calculate_memory_requirements,
-    monitor_memory_usage
+    monitor_memory_usage,
+    calculate_wind_factor
 )
 from src.core.forest_model import (
     ForestModel,
@@ -378,12 +379,25 @@ class FireSimulationEngine:
             else:
                 # Check for tracked ignition points first
                 if hasattr(self.forest_model, '_ignition_points') and self.forest_model._ignition_points:
+                    logger.info(f"🔍 Found {len(self.forest_model._ignition_points)} ignition points: {self.forest_model._ignition_points}")
                     for x, y, z in self.forest_model._ignition_points:
+                        logger.info(f"🔍 Checking ignition point ({x}, {y}, {z})")
                         if (0 <= x < self.forest_model.width and 
                             0 <= y < self.forest_model.height and 
                             0 <= z < self.forest_model.num_layers):
-                            if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
-                                self.active_cells.add((x, y, z))
+                            logger.info(f"🔍 Ignition point ({x}, {y}, {z}) is within bounds")
+                            try:
+                                state_value = self.forest_model.state[x, y, z]
+                                logger.info(f"🔍 State value at ({x}, {y}, {z}): {state_value}, expected: {FrameworkCellState.BURNING.value}")
+                                if state_value == FrameworkCellState.BURNING.value:
+                                    self.active_cells.add((x, y, z))
+                                    logger.info(f"✅ Added ignition point ({x}, {y}, {z}) to active cells")
+                                else:
+                                    logger.warning(f"⚠️ Ignition point ({x}, {y}, {z}) state value {state_value} != {FrameworkCellState.BURNING.value}")
+                            except Exception as e:
+                                logger.error(f"❌ Failed to check state at ignition point ({x}, {y}, {z}): {e}")
+                        else:
+                            logger.warning(f"⚠️ Ignition point ({x}, {y}, {z}) is out of bounds")
                     logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
                 
                 # If no active cells found from ignition points, scan for any burning cells
@@ -444,12 +458,25 @@ class FireSimulationEngine:
             
             # Check for tracked ignition points first (same logic as large grid)
             if hasattr(self.forest_model, '_ignition_points') and self.forest_model._ignition_points:
+                logger.info(f"🔍 Found {len(self.forest_model._ignition_points)} ignition points: {self.forest_model._ignition_points}")
                 for x, y, z in self.forest_model._ignition_points:
+                    logger.info(f"🔍 Checking ignition point ({x}, {y}, {z})")
                     if (0 <= x < self.forest_model.width and 
                         0 <= y < self.forest_model.height and 
                         0 <= z < self.forest_model.num_layers):
-                        if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
-                            self.active_cells.add((x, y, z))
+                        logger.info(f"🔍 Ignition point ({x}, {y}, {z}) is within bounds")
+                        try:
+                            state_value = self.forest_model.state[x, y, z]
+                            logger.info(f"🔍 State value at ({x}, {y}, {z}): {state_value}, expected: {FrameworkCellState.BURNING.value}")
+                            if state_value == FrameworkCellState.BURNING.value:
+                                self.active_cells.add((x, y, z))
+                                logger.info(f"✅ Added ignition point ({x}, {y}, {z}) to active cells")
+                            else:
+                                logger.warning(f"⚠️ Ignition point ({x}, {y}, {z}) state value {state_value} != {FrameworkCellState.BURNING.value}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to check state at ignition point ({x}, {y}, {z}): {e}")
+                    else:
+                        logger.warning(f"⚠️ Ignition point ({x}, {y}, {z}) is out of bounds")
                 logger.info(f"📍 Using tracked ignition points: {len(self.active_cells)} initial cells")
             
             # If no active cells found from ignition points, do full scan
@@ -466,16 +493,9 @@ class FireSimulationEngine:
         total_grid_cells = self.forest_model.width * self.forest_model.height * self.forest_model.num_layers
         active_percentage = (len(self.active_cells) / total_grid_cells) * 100 if total_grid_cells > 0 else 0
         
-        logger.info(f"🔥 FIRE SIMULATION INITIALIZED")
-        logger.info(f"   Grid Size: {self.forest_model.width} × {self.forest_model.height} × {self.forest_model.num_layers} = {total_grid_cells:,} total cells")
-        logger.info(f"   Initial Fire: {len(self.active_cells)} active cells ({active_percentage:.3f}% of grid)")
-        
-        if len(self.active_cells) > 0:
-            # Show first few ignition points
-            ignition_points = list(self.active_cells)[:5]
-            logger.info(f"   Ignition Points: {ignition_points}")
-            if len(self.active_cells) > 5:
-                logger.info(f"   ... and {len(self.active_cells) - 5} more ignition points")
+        # Reduced logging for calibration runs
+        if len(self.active_cells) == 0:
+            logger.warning("No active cells at start - ignition point may not be set correctly")
 
         # Reset logging statistics for new simulation
         self.log_stats = {
@@ -513,34 +533,19 @@ class FireSimulationEngine:
             
             # Progress updates every 10 steps or when fire size changes significantly
             if (step + 1) % 10 == 0 or len(self.active_cells) == 0:
-                pass  # Step statistics suppressed for calibration runs
+                active_count = len(self.active_cells)
+                burned_count = len(self.burned_cells)
+                total_affected = active_count + burned_count
+                print(f"🔥 Step {step + 1}/{sim_max_steps}: {active_count} burning + {burned_count} burned = {total_affected} total cells")
             
             # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
-                # Protective fallback: attempt a single ignition before early exit
-                try:
-                    grid_w = getattr(self.forest_model, 'width', 0)
-                    grid_h = getattr(self.forest_model, 'height', 0)
-                    layers = getattr(self.forest_model, 'num_layers', 1)
-                    if grid_w > 0 and grid_h > 0 and layers > 0 and step == 0:
-                        cx, cy = grid_w // 2, grid_h // 2
-                        # Try to leverage tracked ignitions if present but not active yet
-                        if getattr(self.forest_model, '_ignition_points', []):
-                            for x, y, z in self.forest_model._ignition_points:
-                                if 0 <= x < grid_w and 0 <= y < grid_h and 0 <= z < layers:
-                                    if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
-                                        self.active_cells.add((x, y, z))
-                        # If still empty, set a safe center ignition
-                        if not self.active_cells and hasattr(self.forest_model, 'set_ignition'):
-                            try:
-                                self.forest_model.set_ignition(cx, cy, 0)
-                                if self.forest_model.state[cx, cy, 0] == FrameworkCellState.BURNING.value:
-                                    self.active_cells.add((cx, cy, 0))
-                                    logger.warning("No active cells at start — auto-initialized center ignition.")
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+                # CRITICAL FIX: Don't override ignition point - let the calibration set it
+                if step == 0:
+                    logger.warning("No active cells at start - ignition point may not be set correctly")
+                    # Don't auto-initialize - let the calibration handle ignition
+                    logger.info(f"Fire extinguished after {step} steps")
+                    break
                 
                 if not self.active_cells:
                     logger.info(f"Fire extinguished after {step} steps")
@@ -950,7 +955,7 @@ class FireSimulationEngine:
     
     def _safe_set_state(self, x, y, z, value):
         """
-        Safely set cell state with bounds checking and retry logic.
+        Safely set cell state with bounds checking, retry logic, and verification.
         
         Args:
             x, y, z: Cell coordinates
@@ -960,14 +965,80 @@ class FireSimulationEngine:
             True if successful, False otherwise
         """
         if not self._safe_bounds_check(x, y, z):
+            logger.debug(f"⚠️  Bounds check failed for state assignment at ({x}, {y}, {z})")
             return False
         
-        try:
-            self.forest_model.state[x, y, z] = value
-            return True
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to set state at ({x}, {y}, {z}): {e}")
-            return False
+        # CRITICAL FIX: Add retry logic with different matrix formats
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Attempt the assignment
+                self.forest_model.state[x, y, z] = value
+                
+                # CRITICAL FIX: Verify the assignment succeeded
+                try:
+                    # Small delay to ensure assignment is complete
+                    import time
+                    time.sleep(0.0001)  # 0.1ms delay
+                    
+                    # Verify the assignment
+                    assigned_value = self.forest_model.state[x, y, z]
+                    # Use tolerance-based comparison for floating-point values
+                    if isinstance(value, (float, np.floating)) and isinstance(assigned_value, (float, np.floating)):
+                        tolerance = 1e-6
+                        if abs(assigned_value - value) <= tolerance:
+                            return True
+                        else:
+                            logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): expected {value}, got {assigned_value}")
+                    elif assigned_value == value:
+                        return True
+                    else:
+                        logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): expected {value}, got {assigned_value}")
+                        
+                        # Try to force the assignment again
+                        if attempt < max_retries - 1:
+                            logger.debug(f"🔄 Retrying state assignment at ({x}, {y}, {z}) - attempt {attempt + 2}")
+                            continue
+                        else:
+                            return False
+                        
+                except Exception as verify_error:
+                    logger.warning(f"⚠️  Assignment verification failed at ({x}, {y}, {z}): {verify_error}")
+                    if attempt < max_retries - 1:
+                        logger.debug(f"🔄 Retrying state assignment at ({x}, {y}, {z}) - attempt {attempt + 2}")
+                        continue
+                    else:
+                        return False
+                    
+            except Exception as e:
+                logger.warning(f"⚠️  State assignment failed at ({x}, {y}, {z}) - attempt {attempt + 1}: {e}")
+                
+                # CRITICAL FIX: Try matrix format conversion on failure
+                if attempt == 0 and hasattr(self.forest_model, 'state'):
+                    try:
+                        # Check if we can convert the matrix format
+                        if hasattr(self.forest_model.state, 'sparse_layers'):
+                            sparse_layers = self.forest_model.state.sparse_layers
+                            if isinstance(sparse_layers, list) and 0 <= z < len(sparse_layers):
+                                sparse_matrix = sparse_layers[z]
+                                if hasattr(sparse_matrix, 'format') and sparse_matrix.format == 'dok':
+                                    logger.debug(f"🔄 Converting DOK to LIL for layer {z} due to assignment failure")
+                                    from scipy.sparse import lil_matrix
+                                    lil_matrix_converted = sparse_matrix.tolil()
+                                    sparse_layers[z] = lil_matrix_converted
+                                    logger.debug(f"✅ Converted layer {z} from DOK to LIL")
+                    except Exception as conversion_error:
+                        logger.debug(f"⚠️  Matrix format conversion failed: {conversion_error}")
+                
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 1ms, 2ms, 4ms
+                    import time
+                    time.sleep(0.001 * (2 ** attempt))
+                    continue
+                else:
+                    return False
+        
+        return False
     
     def _safe_get_vertical_connectivity(self, x, y, layer_interface_index, fallback_value=0.3):
         """
@@ -1121,104 +1192,15 @@ class FireSimulationEngine:
             base_prob = getattr(self.config, 'spread_probability', 0.8)  # Increased from 0.5 to 0.8 for better spreading
             
             # Wind factor - use memory-safe access
-            wind_factor = 1.0 # Default if no wind data or wind speed is zero
-            
-            # MEMORY-SAFE WIND CALCULATION: Enable wind factor calculation with safe access
-            # Wind effects are now handled on-demand via get_wind_speed_at_cell and get_wind_direction_at_cell
-            logger.debug(f"WIND_FACTOR_CALC: Using memory-safe wind calculation for massive grid")
-            has_wind_speed = False
-            has_wind_direction = False
-
-            # Enable wind calculation with memory-safe access
-            try:
-                # Use memory-safe access for wind data if available
-                if hasattr(self.forest_model, 'get_wind_speed_at_cell'):
-                    cell_wind_speed_ms = self.forest_model.get_wind_speed_at_cell(x, y)
-                    has_wind_speed = True
-                else:
-                    cell_wind_speed_ms = 0.0
-                
-                if hasattr(self.forest_model, 'get_wind_direction_at_cell'):
-                    cell_wind_direction_rad = self.forest_model.get_wind_direction_at_cell(x, y)
-                    has_wind_direction = True
-                else:
-                    cell_wind_direction_rad = 0.0
-                
-                if has_wind_speed and has_wind_direction and cell_wind_speed_ms > 1e-6:
-                    cell_wind_direction_deg = math.degrees(cell_wind_direction_rad)
-                    
-                    logger.debug(f"WIND_FACTOR_CALC: cell_wind_speed_ms={cell_wind_speed_ms:.4f}")
-                    logger.debug(f"WIND_FACTOR_CALC: cell_wind_direction_rad={cell_wind_direction_rad:.4f} (deg={cell_wind_direction_deg:.2f})")
-                    
-                    # Standard meteorological to Cartesian conversion: 0 deg North, 90 deg East
-                    # Wind direction is 'FROM', spread angle is 'TO'
-                    # If wind is FROM 270 deg (West), it blows TOWARDS 90 deg (East)
-                    # If spread is TOWARDS 90 deg (East), then cos_angle should be 1 (alignment)
-                    
-                    # Wind vector components (direction it's blowing TO)
-                    # Angle in radians for math functions, cartesian (0 East, 90 North)
-                    # If wind_dir_rad is 0 (from North), blows to Pi (South). Cartesian angle = 3Pi/2 or -Pi/2
-                    # If wind_dir_rad is Pi/2 (from East), blows to 3Pi/2 (West). Cartesian angle = Pi
-                    # If wind_dir_rad is Pi (from South), blows to 0 (North). Cartesian angle = Pi/2
-                    # If wind_dir_rad is 3Pi/2 (from West), blows to Pi/2 (East). Cartesian angle = 0
-                    
-                    # Convert meteorological wind direction (FROM, 0 North, clockwise) to Cartesian angle (TO, 0 East, anti-clockwise)
-                    # meteorological_rad = cell_wind_direction_rad
-                    # cartesian_angle_rad = math.pi/2 - meteorological_rad
-                    # If using degrees: cartesian_deg = 90 - meteorological_deg (then adjust to be 'to')
-                    # The old logic: cartesian_angle_deg_to = (270 - cell_wind_direction_deg + 360) % 360
-                    # This formula converts meteorological degrees (0=N, 90=E) to Cartesian degrees (0=E, 90=N) for a vector *pointing to* where the wind is going.
-                    
-                    wind_cartesian_angle_deg_to = (270.0 - cell_wind_direction_deg + 360.0) % 360.0
-                    wind_cartesian_angle_rad_to = math.radians(wind_cartesian_angle_deg_to)
-
-                    wind_x_comp = cell_wind_speed_ms * math.cos(wind_cartesian_angle_rad_to)
-                    wind_y_comp = cell_wind_speed_ms * math.sin(wind_cartesian_angle_rad_to)
-                    
-                    spread_dx = float(x - src_x)
-                    spread_dy = float(y - src_y) # Note: y typically increases downwards in array indexing, upwards in Cartesian.
-                                              # Assuming spread_dx, spread_dy are in array index sense (dx positive right, dy positive down)
-                                              # If wind_y_comp is positive (Northward), and spread_dy is negative (Northward in array) => alignment.
-                                              # Let's stick to existing spread_dx, dy logic which implies standard cartesian for spread vector calc.
-
-                    spread_magnitude = math.sqrt(spread_dx**2 + spread_dy**2)
-                    
-                    cos_angle = 0.0 # Cosine of angle between wind vector and spread vector
-                    if spread_magnitude > 1e-6: # Avoid division by zero if src and tgt are same (should not happen here)
-                        # Spread vector components (already Cartesian-like if dx, dy are differences)
-                        # Normalized spread vector
-                        norm_spread_dx = spread_dx / spread_magnitude
-                        norm_spread_dy = spread_dy / spread_magnitude
-                        
-                        # Dot product of normalized wind vector (implicit) and normalized spread vector
-                        # wind_alignment = (norm_spread_dx * wind_x_comp) + (norm_spread_dy * wind_y_comp) # This is dot product of spread_norm and wind_unnormed
-                        # cos_angle = wind_alignment / cell_wind_speed_ms # This is dot_product(spread_norm, wind_unnormed) / |wind_unnormed|
-                        # This is effectively dot_product(spread_norm, wind_norm)
-                        
-                        # To be explicit:
-                        norm_wind_x_comp = wind_x_comp / cell_wind_speed_ms
-                        norm_wind_y_comp = wind_y_comp / cell_wind_speed_ms
-                        cos_angle = (norm_spread_dx * norm_wind_x_comp) + (norm_spread_dy * norm_wind_y_comp)
-
-                    # Get parameters from engine config for scaling
-                    reference_speed_for_scaling = getattr(self.config, 'reference_wind_speed', 10.0) # Default in ModelConfig
-                    wind_influence_factor_config = getattr(self.config, 'wind_influence_on_spread', 0.5) # Default in ModelConfig
-
-                    wind_speed_contribution_scale = cell_wind_speed_ms / reference_speed_for_scaling
-                    
-                    wind_factor = 1.0 + max(0, cos_angle) * wind_speed_contribution_scale * wind_influence_factor_config
-
-                    logger.debug(f"WIND_FACTOR_DETAILS: spread_dx={spread_dx}, spread_dy={spread_dy}")
-                    logger.debug(f"WIND_FACTOR_DETAILS: wind_cartesian_angle_rad_to={wind_cartesian_angle_rad_to:.4f}")
-                    logger.debug(f"WIND_FACTOR_DETAILS: cos_angle_wind_spread={cos_angle:.4f}")
-                    logger.debug(f"WIND_FACTOR_DETAILS: reference_speed_config={reference_speed_for_scaling:.4f}")
-                    logger.debug(f"WIND_FACTOR_DETAILS: influence_config={wind_influence_factor_config:.4f}")
-                    
-            except Exception as wind_error:
-                logger.warning(f"⚠️  Wind factor calculation failed: {wind_error}")
-                logger.warning("Using default wind_factor=1.0")
+            if (self.forest_model.terrain_elevation is None or 
+                self.forest_model.terrain_slope is None or 
+                self.forest_model.terrain_aspect is None):
+                # Use default wind factor when terrain data is not available
                 wind_factor = 1.0
-
+            else:
+                # Calculate wind factor using terrain data
+                wind_factor = calculate_wind_factor(self.forest_model.terrain_elevation, self.forest_model.terrain_slope, self.forest_model.terrain_aspect, x, y, z)
+            
             # Slope factor (existing logic for horizontal)
             slope_factor = self._calculate_slope_factor(x, y, z, src_x, src_y)
 
@@ -1260,19 +1242,19 @@ class FireSimulationEngine:
         # Clip probability to ensure it's within [0, 1]
         effective_spread_prob = max(0.0, min(1.0, ignition_prob))
         
-        # CRITICAL FIX: Lower ignition threshold to improve fire spreading
-        # The default threshold of 0.5 was too high, causing fires to not spread
-        ignition_threshold = getattr(self.config, 'ignition_threshold', 0.1)  # Lowered from 0.5 to 0.1
+        # CRITICAL FIX: Use proper probability-based ignition instead of threshold comparison
+        # Generate random number and compare to probability for realistic fire spread
+        random_value = self.rng.random()
         
         # --- DEBUG PRINT --- (Only in emergency mode to reduce log spam)
         if self.emergency_mode:
             logger.debug(f"DEBUG _check_ignition: tgt=({x},{y},{z}), src=({src_x},{src_y},{src_z})")
             logger.debug(f"    EFFECTIVE_SPREAD_PROB: {effective_spread_prob:.6f}")
-            logger.debug(f"    ignition_threshold: {ignition_threshold}")
-            logger.debug(f"    Comparison: {effective_spread_prob >= ignition_threshold}")
+            logger.debug(f"    RANDOM_VALUE: {random_value:.6f}")
+            logger.debug(f"    Comparison: {random_value < effective_spread_prob}")
         # --- END DEBUG PRINT ---
 
-        result_comparison = (effective_spread_prob >= ignition_threshold)
+        result_comparison = (random_value < effective_spread_prob)
         
         # Only log result in emergency mode to reduce spam
         if self.emergency_mode:
