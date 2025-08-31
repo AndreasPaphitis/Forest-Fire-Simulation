@@ -133,7 +133,7 @@ def main():
             
             # PREPROCESSED TERRAIN ONLY (ModelConfig doesn't have preprocessed_lidar_dir)
             use_preprocessed_terrain=True,
-            preprocessed_terrain_dir=r'C:\Users\user\Desktop\UvA\YEAR 2\Thesis\Coding\QGIS python scripts\preprocessed_terrain'
+            preprocessed_terrain_dir='/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain'
         )
         
         # Create calibration config
@@ -144,11 +144,12 @@ def main():
             max_workers=args.workers,
             # Set preprocessed terrain on CalibrationConfig itself
             use_preprocessed_terrain=True,
-            preprocessed_terrain_dir=r'C:\Users\user\Desktop\UvA\YEAR 2\Thesis\Coding\QGIS python scripts\preprocessed_terrain'
+            preprocessed_terrain_dir='/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_terrain'
         )
         
         # Set preprocessed LiDAR directory on calibration config (NOT on ModelConfig)
-        calib_config.preprocessed_lidar_dir = "preprocessed_lidar"
+        # Use HPC absolute path for preprocessed LiDAR data
+        calib_config.preprocessed_lidar_dir = "/gpfs/home1/apaphitis/git/github/Forest-Fire-Simulation/preprocessed_lidar"
         
         # Step 5: Create proper CalibrationTarget objects using existing architecture
         print("Setting up EMSR calibration targets...")
