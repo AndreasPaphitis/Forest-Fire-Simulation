@@ -66,6 +66,7 @@ def main():
     parser.add_argument('--workers', type=int, default=1, help='Number of workers (default: 1)')
     parser.add_argument('--grid-points', type=int, default=3, help='Grid points per parameter (default: 3)')
     parser.add_argument('--max-steps', type=int, default=15, help='Maximum simulation steps (default: 15)')
+    parser.add_argument('--memory-gb', type=int, default=16, help='Memory allocation in GB (default: 16)')
     
     args = parser.parse_args()
     
@@ -73,6 +74,7 @@ def main():
     print(f"   Workers: {args.workers}")
     print(f"   Grid points: {args.grid_points}")
     print(f"   Max steps: {args.max_steps}")
+    print(f"   Memory: {args.memory_gb} GB")
     print(f"   Total combinations: {args.grid_points ** 4}")
     print()
     
@@ -101,7 +103,7 @@ def main():
         experiment_name = f"ultra_clean_calibration_{timestamp}"
         
         calibrator = TenerifeFirePerimeterCalibrator(
-            memory_gb=16,  # RESTORED to original value
+            memory_gb=args.memory_gb,  # Use command line argument
             workers=args.workers,
             grid_search_points=args.grid_points,
             experiment_name=experiment_name,
