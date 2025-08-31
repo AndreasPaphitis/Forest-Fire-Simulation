@@ -61,15 +61,16 @@ def main():
     parser.add_argument('--workers', type=int, default=4, help='Number of workers')
     parser.add_argument('--grid-points', type=int, default=3, help='Grid points per parameter')
     parser.add_argument('--max-steps', type=int, default=50, help='Maximum simulation steps')
+    parser.add_argument('--memory', type=int, default=16, help='Memory in GB per process')
     
     args = parser.parse_args()
     
-    # TOP 4 PARAMETERS (based on sensitivity analysis)
+    # TOP 4 PARAMETERS
     top_4_parameters = [
-        'min_fuel_value',           # 🥇 Most sensitive (0.1727)
-        'spread_probability',        # 🥈 Second (0.0511)
-        'fuel_consumption_rate',     # 🥉 Third (0.0494)
-        'ember_probability'          # 4th (0.0467)
+        'spread_probability',
+        'fuel_consumption_rate', 
+        'ember_probability',
+        'ember_ignition'
     ]
     
     # Create experiment name
@@ -97,7 +98,7 @@ def main():
         # Step 2: Create calibrator with FIXED grid size (no dynamic calculation)
         print("Creating calibrator...")
         calibrator = TenerifeFirePerimeterCalibrator(
-            memory_gb=16,
+            memory_gb=args.memory,
             workers=args.workers,
             grid_search_points=args.grid_points,
             experiment_name=experiment_name,
@@ -148,14 +149,6 @@ def main():
         
         # Set preprocessed LiDAR directory on calibration config (NOT on ModelConfig)
         calib_config.preprocessed_lidar_dir = "preprocessed_lidar"
-        
-        # Optimize bounds for min_fuel_value (most sensitive parameter from sensitivity analysis)
-        if 'min_fuel_value' in top_4_parameters:
-            print("🔧 Optimizing bounds for min_fuel_value (most sensitive parameter)")
-            # The sensitivity analysis shows this parameter has the highest impact (0.1727)
-            # Use tighter bounds around the most effective range for better calibration
-            # Current bounds: [0.02, 0.1] - keeping these as they're already well-optimized
-            print("   Using optimized bounds: [0.02, 0.1] for min_fuel_value")
         
         # Step 5: Create proper CalibrationTarget objects using existing architecture
         print("Setting up EMSR calibration targets...")

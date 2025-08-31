@@ -411,7 +411,7 @@ class FireSimulationEngine:
                     
                     for x in range(self.forest_model.width):
                         for y in range(self.forest_model.height):
-                            for z in range(self.forest_model.num_layers):
+                            for z in range(1, self.forest_model.num_layers):  # Start from layer 1, exclude layer 0
                                 cells_scanned += 1
                                 
                                 # Check timeout every 1000 cells
@@ -447,7 +447,7 @@ class FireSimulationEngine:
                         for dy in range(-search_radius, search_radius + 1):
                             x, y = center_x + dx, center_y + dy
                             if (0 <= x < self.forest_model.width and 0 <= y < self.forest_model.height):
-                                for z in range(self.forest_model.num_layers):
+                                for z in range(1, self.forest_model.num_layers):  # Start from layer 1, exclude layer 0
                                     if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                         self.active_cells.add((x, y, z))
                     
@@ -484,7 +484,7 @@ class FireSimulationEngine:
                 logger.info("No active cells from ignition points - doing full scan...")
                 for x in range(self.forest_model.width):
                     for y in range(self.forest_model.height):
-                        for z in range(self.forest_model.num_layers):
+                        for z in range(1, self.forest_model.num_layers):  # Start from layer 1, exclude layer 0
                             if self.forest_model.state[x, y, z] == FrameworkCellState.BURNING.value:
                                 self.active_cells.add((x, y, z))
                 logger.info(f"Full scan found {len(self.active_cells)} burning cells")
@@ -527,16 +527,24 @@ class FireSimulationEngine:
             self._process_step()
             step_time = time.time() - step_start
             
-            # Simple progress indicator
+            # Simple progress indicator - ENABLED for sensitivity analysis
             if (step + 1) % 5 == 0:
-                pass  # Step progress suppressed for calibration runs
+                active_count = len(self.active_cells)
+                burned_count = len(self.burned_cells)
+                total_affected = active_count + burned_count
+                # Add worker identification for parallel processing
+                worker_id = f"[Worker-{os.getpid() % 1000:03d}]"
+                print(f"🔥 {worker_id} Step {step + 1}/{sim_max_steps}: {active_count} burning + {burned_count} burned = {total_affected} total cells")
             
             # Progress updates every 10 steps or when fire size changes significantly
+            # ENABLED for sensitivity analysis to show worker progress
             if (step + 1) % 10 == 0 or len(self.active_cells) == 0:
                 active_count = len(self.active_cells)
                 burned_count = len(self.burned_cells)
                 total_affected = active_count + burned_count
-                print(f"🔥 Step {step + 1}/{sim_max_steps}: {active_count} burning + {burned_count} burned = {total_affected} total cells")
+                # Add worker identification for parallel processing
+                worker_id = f"[Worker-{os.getpid() % 1000:03d}]"
+                print(f"🔥 {worker_id} Step {step + 1}/{sim_max_steps}: {active_count} burning + {burned_count} burned = {total_affected} total cells")
             
             # Check if fire has stopped spreading AFTER processing the step
             if sim_stop_when_extinguished and not self.active_cells:
@@ -599,7 +607,13 @@ class FireSimulationEngine:
                 else:
                     spread_rate = len(self.active_cells)
                 
-                pass  # Detailed step statistics suppressed for calibration runs
+                # ENABLED for sensitivity analysis - show detailed step statistics
+                worker_id = f"[Worker-{os.getpid() % 1000:03d}]"
+                logger.info(f"📊 {worker_id} Step {step + 1} Statistics:")
+                logger.info(f"   • Affected: {total_affected:,} cells ({affected_percentage:.2f}% of grid)")
+                logger.info(f"   • Spread Rate: {spread_rate:.1f} cells/step")
+                logger.info(f"   • Active: {len(self.active_cells):,} cells")
+                logger.info(f"   • Burned: {len(self.burned_cells):,} cells")
         
         # Update final statistics
         stats['steps'] = self.current_step + 1

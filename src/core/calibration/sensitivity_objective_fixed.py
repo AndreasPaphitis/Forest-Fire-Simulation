@@ -207,27 +207,11 @@ class SensitivityAnalysisObjective(ObjectiveFunction):
         try:
             # FIXED: Handle both dense and sparse storage
             if hasattr(forest_model, 'state') and forest_model.state is not None:
+                # Dense storage
                 state = forest_model.state
                 
-                # Handle SparseLayerAccessor
-                if hasattr(state, 'sparse_layers'):
-                    # Sparse storage using SparseLayerAccessor
-                    fire_mask = np.zeros((forest_model.height, forest_model.width), dtype=bool)
-                    
-                    # Check each layer for burning cells
-                    for layer_idx in range(forest_model.num_layers):
-                        if layer_idx in state.sparse_layers:
-                            layer_state = state.sparse_layers[layer_idx]
-                            if hasattr(layer_state, 'toarray'):
-                                # Sparse matrix
-                                layer_array = layer_state.toarray()
-                                fire_mask |= (layer_array == 2)  # Burning cells
-                            elif hasattr(layer_state, 'shape'):
-                                # Dense array
-                                fire_mask |= (layer_state == 2)  # Burning cells
-                
                 # Handle different state formats
-                elif hasattr(state, 'shape') and len(state.shape) == 3:
+                if hasattr(state, 'shape') and len(state.shape) == 3:
                     # 3D array: find all burning/burned cells
                     fire_mask = np.any(state == 2, axis=2)  # Burning cells
                 elif hasattr(state, 'shape') and len(state.shape) == 2:
@@ -295,26 +279,10 @@ class SensitivityAnalysisObjective(ObjectiveFunction):
         try:
             # FIXED: Handle both dense and sparse storage
             if hasattr(forest_model, 'state') and forest_model.state is not None:
+                # Dense storage
                 state = forest_model.state
                 
-                # Handle SparseLayerAccessor
-                if hasattr(state, 'sparse_layers'):
-                    # Sparse storage using SparseLayerAccessor
-                    burning_count = 0
-                    for layer_idx in range(forest_model.num_layers):
-                        if layer_idx in state.sparse_layers:
-                            layer_state = state.sparse_layers[layer_idx]
-                            if hasattr(layer_state, 'toarray'):
-                                # Sparse matrix
-                                layer_array = layer_state.toarray()
-                                burning_count += np.sum(layer_array == 2)
-                            elif hasattr(layer_state, 'shape'):
-                                # Dense array
-                                burning_count += np.sum(layer_state == 2)
-                    return burning_count
-                
-                # Handle dense storage
-                elif hasattr(state, 'shape') and len(state.shape) == 3:
+                if hasattr(state, 'shape') and len(state.shape) == 3:
                     return np.sum(state == 2)  # Count burning cells across all layers
                 elif hasattr(state, 'shape') and len(state.shape) == 2:
                     return np.sum(state == 2)  # Count burning cells
@@ -347,3 +315,4 @@ def create_sensitivity_objective() -> SensitivityAnalysisObjective:
         persistence_weight=0.2,
         dispersion_weight=0.2
     )
+

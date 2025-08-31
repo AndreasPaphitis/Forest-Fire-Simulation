@@ -195,7 +195,7 @@ class TerrainPreprocessorRasterioFixed:
             raise
     
     def _load_dem_data(self):
-        """Load DEM data using rasterio with memory management."""
+        """Load DEM data using rasterio with memory management and geographic subsetting."""
         if not RASTERIO_AVAILABLE:
             raise ImportError("Rasterio is required for terrain preprocessing")
         
@@ -207,14 +207,32 @@ class TerrainPreprocessorRasterioFixed:
                 self.transform = dataset.transform
                 self.crs = dataset.crs
                 
-                # Read elevation data
-                self.dem_data = dataset.read(1)
+                # Check if we need to subset the data
+                if self.config.geo_bounds is not None:
+                    logger.info(f"🗺️ Subsetting DEM to bounds: {self.config.geo_bounds}")
+                    
+                    # Convert geographic bounds to pixel coordinates
+                    from rasterio.windows import from_bounds
+                    min_x, min_y, max_x, max_y = self.config.geo_bounds
+                    window = from_bounds(min_x, min_y, max_x, max_y, dataset.transform)
+                    
+                    # Read the subset
+                    self.dem_data = dataset.read(1, window=window)
+                    
+                    # Update transform for the subset
+                    self.transform = rasterio.windows.transform(window, dataset.transform)
+                    
+                    logger.info(f"📊 DEM subset loaded: {self.dem_data.shape}, dtype: {self.dem_data.dtype}")
+                    logger.info(f"📊 Subset bounds: {self.config.geo_bounds}")
+                else:
+                    logger.info("🌍 Loading entire DEM (no subsetting)")
+                    # Read elevation data
+                    self.dem_data = dataset.read(1)
                 
                 # Handle no-data values
                 if dataset.nodata is not None:
                     self.dem_data[self.dem_data == dataset.nodata] = np.nan
                 
-                logger.info(f"📊 DEM loaded: {self.dem_data.shape}, dtype: {self.dem_data.dtype}")
                 logger.info(f"📊 Elevation range: {np.nanmin(self.dem_data):.2f} to {np.nanmax(self.dem_data):.2f}")
                 
         except Exception as e:

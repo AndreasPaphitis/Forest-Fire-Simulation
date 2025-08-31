@@ -2807,6 +2807,84 @@ class ForestModel(BaseForestModel):
             self.wind_direction_rad.fill(math.radians(wind_direction_deg))
         logger.debug("Uniform wind field initialized.")
 
+    def get_2d_fire_perimeter(self):
+        """
+        Get a 2D fire perimeter that includes both burning and burned cells.
+        
+        This method creates a 2D boolean array where any cell that is burning or burned
+        in any layer is marked as fire-affected, matching the logic used in the objective function.
+        
+        Returns:
+            2D numpy array (width, height) where 1.0 indicates fire-affected cells
+        """
+        try:
+            # Import FrameworkCellState here to avoid circular imports
+            from src.core.framework.cell_state import FrameworkCellState
+            
+            if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage:
+                # Handle sparse storage - same logic as objective function
+                width, height, num_layers = self.state.shape
+                predicted_2d = np.zeros((width, height), dtype=float)
+                
+                # Access sparse layers directly without any conversion
+                for layer_idx in range(num_layers):
+                    try:
+                        # Get the sparse matrix directly from the accessor
+                        try:
+                            # Handle both list and dictionary access patterns
+                            if isinstance(self.state.sparse_layers, list) and 0 <= layer_idx < len(self.state.sparse_layers):
+                                sparse_matrix = self.state.sparse_layers[layer_idx]
+                            else:
+                                # Fallback to dictionary access
+                                sparse_matrix = self.state.sparse_layers[layer_idx]
+                        except (KeyError, IndexError):
+                            continue  # Skip this layer if not found
+                        
+                        # Check if this layer has any non-zero elements (burning or burned cells)
+                        if sparse_matrix.nnz > 0:
+                            # Get the coordinates of non-zero elements directly
+                            rows, cols = sparse_matrix.nonzero()
+                            
+                            # Mark these positions as fire-affected in our 2D array
+                            # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                            for row, col in zip(rows, cols):
+                                if 0 <= row < width and 0 <= col < height:
+                                    cell_state = sparse_matrix[row, col]
+                                    # Count both burning and burned cells as part of fire perimeter
+                                    if cell_state in [FrameworkCellState.BURNING.value, FrameworkCellState.BURNED.value]:
+                                        predicted_2d[row, col] = 1.0
+                                        
+                    except Exception as e:
+                        logger.warning(f"Error accessing layer {layer_idx}: {e}")
+                        continue
+                
+                return predicted_2d
+                
+            else:
+                # Handle dense storage - same logic as objective function
+                if hasattr(self.state, 'shape') and len(self.state.shape) == 3:
+                    # Regular 3D array: sum across layers to get 2D fire map
+                    # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                    burning_cells = np.sum(self.state == FrameworkCellState.BURNING.value, axis=2)
+                    burned_cells = np.sum(self.state == FrameworkCellState.BURNED.value, axis=2)
+                    predicted_2d = (burning_cells + burned_cells) > 0  # Any layer burning or burned
+                    return predicted_2d.astype(float)
+                elif hasattr(self.state, 'shape') and len(self.state.shape) == 2:
+                    # 2D array: use directly
+                    # Count both BURNING (1) and BURNED (2) cells as fire perimeter
+                    predicted_2d = ((self.state == FrameworkCellState.BURNING.value) | 
+                                   (self.state == FrameworkCellState.BURNED.value)).astype(float)
+                    return predicted_2d
+                else:
+                    # Fallback: create empty 2D array
+                    logger.warning(f"Unexpected forest model state format: {getattr(self.state, 'shape', 'no shape')}, creating fallback")
+                    return np.zeros(self.grid_size, dtype=float)
+                    
+        except Exception as e:
+            logger.error(f"Error in get_2d_fire_perimeter: {e}")
+            # Fallback: create empty 2D array
+            return np.zeros(self.grid_size, dtype=float)
+
 
 class SparseLayerAccessor:
     """
