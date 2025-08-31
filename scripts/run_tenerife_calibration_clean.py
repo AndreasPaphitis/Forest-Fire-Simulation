@@ -97,6 +97,14 @@ def main():
         
         print(f"✅ Found {len(fire_dataset.fire_perimeters)} fire perimeters")
         
+        # Debug: Show what fire perimeters were found
+        for i, perimeter in enumerate(fire_dataset.fire_perimeters):
+            print(f"   Fire perimeter {i+1}: {perimeter}")
+            if hasattr(perimeter, 'shapefile_path'):
+                print(f"     Shapefile path: {perimeter.shapefile_path}")
+            else:
+                print(f"     No shapefile_path attribute")
+        
         # Step 3: Create calibrator with minimal settings
         print("Creating calibrator...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -121,67 +129,7 @@ def main():
         )
         print("✅ Training/validation split created")
         
-        # Step 5: Create calibration configuration MANUALLY (EXACTLY like original)
-        print("Creating calibration configuration...")
-        
-        # Create base config with preprocessed data (EXACTLY like original)
-        base_config = ModelConfig(
-            grid_size=(609, 609),
-            num_layers=20,  # Use 20 layers (preprocessed)
-            max_steps=args.max_steps,
-            model_resolution=20.0,
-            simulation_type="memory_optimized",
-            memory_optimization_level=3,
-            use_disk_storage=True,
-            use_differential_history=True,
-            use_sparse_storage=True,
-            
-            # ENABLE LIDAR
-            use_lidar=True,
-            auto_size_from_lidar=False,  # Use fixed grid size
-            preprocessed_lidar_dir='preprocessed_lidar',
-            
-            # PREPROCESSED TERRAIN ONLY (ModelConfig doesn't have preprocessed_lidar_dir)
-            use_preprocessed_terrain=True,
-            preprocessed_terrain_dir='preprocessed_terrain'
-        )
-        
-        # CRITICAL FIX: Add preprocessed LiDAR directory to base config so forest model can access it
-        base_config.preprocessed_lidar_dir = "preprocessed_lidar"
-        
-        # TOP 4 MOST SENSITIVE PARAMETERS FROM SENSITIVITY ANALYSIS
-        # Based on completed sensitivity analysis results:
-        # 1. min_fuel_value: 0.1727 (Most sensitive - 3.4x more than #2)
-        # 2. spread_probability: 0.0511 (Second most sensitive)
-        # 3. fuel_consumption_rate: 0.0494 (Third most sensitive)
-        # 4. ember_probability: 0.0467 (Fourth most sensitive)
-        top_4_parameters = [
-            'min_fuel_value',           # 0.1727 - CRITICAL (Most sensitive)
-            'spread_probability',       # 0.0511 - CRITICAL
-            'fuel_consumption_rate',    # 0.0494 - CRITICAL
-            'ember_probability'         # 0.0467 - CRITICAL
-        ]
-        
-        print(f"🎯 Using top 4 sensitivity analysis parameters:")
-        for i, param in enumerate(top_4_parameters, 1):
-            print(f"   {i}. {param}")
-        print()
-        
-        # Create calibration config (EXACTLY like original)
-        calib_config = CalibrationConfig(
-            base_config=base_config,
-            calibration_parameters=top_4_parameters,
-            grid_search_points=args.grid_points,
-            max_workers=args.workers,
-            # Set preprocessed terrain on CalibrationConfig itself
-            use_preprocessed_terrain=True,
-            preprocessed_terrain_dir='preprocessed_terrain'
-        )
-        
-        # Set preprocessed LiDAR directory on calibration config (NOT on ModelConfig)
-        calib_config.preprocessed_lidar_dir = 'preprocessed_lidar'
-        
-        # Step 6: Create proper CalibrationTarget objects using existing architecture (EXACTLY like original)
+        # Step 5: Set up calibration targets FIRST (before creating calibration config)
         print("Setting up calibration targets...")
         calibration_targets = []
         
@@ -197,10 +145,7 @@ def main():
                 filename = Path(fire_perimeter.shapefile_path).name
                 print(f"✅ Added target {i+1}: {filename}")
         
-        if calibration_targets:
-            calib_config.calibration_targets = calibration_targets
-            print(f"✅ Using {len(calibration_targets)} EMSR calibration targets")
-        else:
+        if not calibration_targets:
             print(f"⚠️  No valid EMSR targets found - falling back to synthetic targets")
             # Fallback to synthetic targets if EMSR data fails
             import numpy as np
@@ -227,6 +172,68 @@ def main():
             )
             calibration_targets.append(target)
             print(f"✅ Added synthetic target: {np.sum(target_fire > 0)} burned cells")
+        
+        print(f"✅ Using {len(calibration_targets)} calibration targets")
+        
+        # Step 6: Create calibration configuration with targets included
+        print("Creating calibration configuration...")
+        
+        # Create base config with preprocessed data
+        base_config = ModelConfig(
+            grid_size=(609, 609),
+            num_layers=20,  # Use 20 layers (preprocessed)
+            max_steps=args.max_steps,
+            model_resolution=20.0,
+            simulation_type="memory_optimized",
+            memory_optimization_level=3,
+            use_disk_storage=True,
+            use_differential_history=True,
+            use_sparse_storage=True,
+            
+            # ENABLE LIDAR
+            use_lidar=True,
+            auto_size_from_lidar=False,  # Use fixed grid size
+            preprocessed_lidar_dir='preprocessed_lidar',
+            
+            # PREPROCESSED TERRAIN
+            use_preprocessed_terrain=True,
+            preprocessed_terrain_dir='preprocessed_terrain'
+        )
+        
+        # CRITICAL FIX: Add preprocessed LiDAR directory to base config
+        base_config.preprocessed_lidar_dir = "preprocessed_lidar"
+        
+        # TOP 4 MOST SENSITIVE PARAMETERS FROM SENSITIVITY ANALYSIS
+        # Based on completed sensitivity analysis results:
+        # 1. min_fuel_value: 0.1727 (Most sensitive - 3.4x more than #2)
+        # 2. spread_probability: 0.0511 (Second most sensitive)
+        # 3. fuel_consumption_rate: 0.0494 (Third most sensitive)
+        # 4. ember_probability: 0.0467 (Fourth most sensitive)
+        top_4_parameters = [
+            'min_fuel_value',           # 0.1727 - CRITICAL (Most sensitive)
+            'spread_probability',       # 0.0511 - CRITICAL
+            'fuel_consumption_rate',    # 0.0494 - CRITICAL
+            'ember_probability'         # 0.0467 - CRITICAL
+        ]
+        
+        print(f"🎯 Using top 4 sensitivity analysis parameters:")
+        for i, param in enumerate(top_4_parameters, 1):
+            print(f"   {i}. {param}")
+        print()
+        
+        # Create calibration config WITH targets included
+        calib_config = CalibrationConfig(
+            base_config=base_config,
+            calibration_parameters=top_4_parameters,
+            grid_search_points=args.grid_points,
+            max_workers=args.workers,
+            calibration_targets=calibration_targets,  # Include targets here
+            use_preprocessed_terrain=True,
+            preprocessed_terrain_dir='preprocessed_terrain'
+        )
+        
+        # Set preprocessed LiDAR directory on calibration config
+        calib_config.preprocessed_lidar_dir = 'preprocessed_lidar'
         
         print(f"✅ Using preprocessed LiDAR data: preprocessed_lidar")
         print(f"✅ Using preprocessed terrain data")
