@@ -240,6 +240,9 @@ def _evaluate_single_parameter_value(evaluation: ParameterEvaluation,
         config_variant_dict = config_dict.copy()
         config_variant_dict[evaluation.parameter_name] = evaluation.test_value
         
+        # FIX: Remove _baseline_objective from config_dict before creating ModelConfig
+        config_variant_dict.pop('_baseline_objective', None)
+        
         # Force memory optimization level 2 for parallel processing
         config_variant_dict['memory_optimization_level'] = 2
         
@@ -408,7 +411,8 @@ class SensitivityAnalyzer:
         # Initialize results
         results = SensitivityResults()
         
-        # Get baseline objective value
+        # Get baseline objective value - ONLY RUN ONCE in main process
+        logger.info("🔄 Starting baseline evaluation (this runs ONCE in main process)...")
         baseline_objective = self._evaluate_baseline(target_data)
         results.baseline_objective = baseline_objective
         
@@ -417,6 +421,7 @@ class SensitivityAnalyzer:
             return results
         
         logger.info(f"✅ Baseline objective value: {baseline_objective:.4f}")
+        logger.info("🚀 Baseline completed! Now starting parallel evaluations...")
         
         # Generate all parameter-value combinations
         evaluations = self._generate_all_evaluations()
@@ -428,6 +433,9 @@ class SensitivityAnalyzer:
         
         # Convert config to dictionary for parallel processing
         config_dict = self.config.base_config.__dict__.copy()
+        
+        # CRITICAL FIX: Pass baseline objective to workers to prevent re-evaluation
+        config_dict['_baseline_objective'] = baseline_objective
         
         # Parallel or sequential evaluation
         if self.parallel_execution and total_evaluations > 1:
@@ -520,26 +528,37 @@ class SensitivityAnalyzer:
                 shared_terrain_info = None
         
         try:
+            logger.info(f"🔧 Creating ProcessPoolExecutor with {self.max_workers} workers")
             with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                logger.info(f"✅ ProcessPoolExecutor created successfully")
+                
                 # Submit all jobs
+                logger.info(f"📤 Submitting {len(evaluations)} evaluation jobs...")
                 future_to_eval = {
                     executor.submit(_evaluate_single_parameter_value, 
                                    eval_item, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info): eval_item
                     for eval_item in evaluations
                 }
+                logger.info(f"✅ All {len(future_to_eval)} jobs submitted successfully")
                 
                 # Collect results as they complete
                 completed = 0
+                logger.info(f"🔄 Starting to collect results from {len(future_to_eval)} submitted jobs...")
                 for future in as_completed(future_to_eval, timeout=3600):  # 1-hour total timeout
                     try:
                         result = future.result(timeout=5400)  # 1.5 hour timeout per evaluation
                         evaluation_results.append(result)
                         completed += 1
+                        logger.info(f"✅ Completed evaluation {completed}/{len(evaluations)}")
                         
-                        # Progress callback
-                        if progress_callback and completed % max(1, len(evaluations) // 20) == 0:
-                            progress = completed / len(evaluations) * 100
-                            logger.info(f"📈 Progress: {progress:.1f}% ({completed}/{len(evaluations)})")
+                        # Progress callback - call for every completed evaluation
+                        if progress_callback:
+                            progress_callback(completed, len(evaluations), result)
+                        else:
+                            # Fallback logging every 5%
+                            if completed % max(1, len(evaluations) // 20) == 0:
+                                progress = completed / len(evaluations) * 100
+                                logger.info(f"📈 Progress: {progress:.1f}% ({completed}/{len(evaluations)})")
                     
                     except TimeoutError:
                         eval_item = future_to_eval[future]
@@ -600,10 +619,14 @@ class SensitivityAnalyzer:
             result = _evaluate_single_parameter_value(evaluation, config_dict, self.parameter_bounds, target_data, objective_config, shared_terrain_info)
             evaluation_results.append(result)
             
-            # Progress callback
-            if progress_callback and (i + 1) % max(1, len(evaluations) // 20) == 0:
-                progress = (i + 1) / len(evaluations) * 100
-                logger.info(f"📈 Progress: {progress:.1f}% ({i + 1}/{len(evaluations)})")
+            # Progress callback - call for every completed evaluation
+            if progress_callback:
+                progress_callback(i + 1, len(evaluations), result)
+            else:
+                # Fallback logging every 5%
+                if (i + 1) % max(1, len(evaluations) // 20) == 0:
+                    progress = (i + 1) / len(evaluations) * 100
+                    logger.info(f"📈 Progress: {progress:.1f}% ({i + 1}/{len(evaluations)})")
         
         return evaluation_results
     

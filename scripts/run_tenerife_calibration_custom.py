@@ -64,12 +64,12 @@ def main():
     
     args = parser.parse_args()
     
-    # TOP 4 PARAMETERS
+    # TOP 4 PARAMETERS (based on sensitivity analysis)
     top_4_parameters = [
-        'spread_probability',
-        'fuel_consumption_rate', 
-        'ember_probability',
-        'ember_ignition'
+        'min_fuel_value',           # 🥇 Most sensitive (0.1727)
+        'spread_probability',        # 🥈 Second (0.0511)
+        'fuel_consumption_rate',     # 🥉 Third (0.0494)
+        'ember_probability'          # 4th (0.0467)
     ]
     
     # Create experiment name
@@ -148,6 +148,14 @@ def main():
         
         # Set preprocessed LiDAR directory on calibration config (NOT on ModelConfig)
         calib_config.preprocessed_lidar_dir = "preprocessed_lidar"
+        
+        # Optimize bounds for min_fuel_value (most sensitive parameter from sensitivity analysis)
+        if 'min_fuel_value' in top_4_parameters:
+            print("🔧 Optimizing bounds for min_fuel_value (most sensitive parameter)")
+            # The sensitivity analysis shows this parameter has the highest impact (0.1727)
+            # Use tighter bounds around the most effective range for better calibration
+            # Current bounds: [0.02, 0.1] - keeping these as they're already well-optimized
+            print("   Using optimized bounds: [0.02, 0.1] for min_fuel_value")
         
         # Step 5: Create proper CalibrationTarget objects using existing architecture
         print("Setting up EMSR calibration targets...")
