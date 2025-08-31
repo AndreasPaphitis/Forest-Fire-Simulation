@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-ULTRA-CLEAN Tenerife Calibration Runner - NEW VERSION
-- Minimal imports
-- No complex logging setup
-- Direct calibration execution
-- No hanging issues
+UPDATED Tenerife Calibration Runner - TOP 4 SENSITIVITY ANALYSIS PARAMETERS
+- Uses the top 4 most sensitive parameters from completed sensitivity analysis
+- Minimal imports and clean execution
+- Proper LiDAR configuration and HPC optimization
+- Fire perimeter integration with EMSR data
 - ALL NECESSARY CONFIGURATIONS INCLUDED
 """
 
@@ -62,17 +62,18 @@ def create_minimal_progress_callback():
     return progress_callback
 
 def main():
-    parser = argparse.ArgumentParser(description='Ultra-clean Tenerife calibration runner')
+    parser = argparse.ArgumentParser(description='Updated Tenerife calibration runner with top 4 sensitivity parameters')
     parser.add_argument('--workers', type=int, default=1, help='Number of workers (default: 1)')
-    parser.add_argument('--grid-points', type=int, default=2, help='Grid points per parameter (default: 2)')
-    parser.add_argument('--max-steps', type=int, default=10, help='Maximum simulation steps (default: 10)')
+    parser.add_argument('--grid-points', type=int, default=3, help='Grid points per parameter (default: 3)')
+    parser.add_argument('--max-steps', type=int, default=15, help='Maximum simulation steps (default: 15)')
     
     args = parser.parse_args()
     
-    print(f"ULTRA-CLEAN TENERIFE CALIBRATION")
+    print(f"UPDATED TENERIFE CALIBRATION - TOP 4 SENSITIVITY PARAMETERS")
     print(f"   Workers: {args.workers}")
     print(f"   Grid points: {args.grid_points}")
     print(f"   Max steps: {args.max_steps}")
+    print(f"   Total combinations: {args.grid_points ** 4}")
     print()
     
     try:
@@ -146,13 +147,23 @@ def main():
         # CRITICAL FIX: Add preprocessed LiDAR directory to base config so forest model can access it
         base_config.preprocessed_lidar_dir = "preprocessed_lidar"
         
-        # Top 4 parameters only
+        # TOP 4 MOST SENSITIVE PARAMETERS FROM SENSITIVITY ANALYSIS
+        # Based on completed sensitivity analysis results:
+        # 1. min_fuel_value: 0.1727 (Most sensitive - 3.4x more than #2)
+        # 2. spread_probability: 0.0511 (Second most sensitive)
+        # 3. fuel_consumption_rate: 0.0494 (Third most sensitive)
+        # 4. ember_probability: 0.0467 (Fourth most sensitive)
         top_4_parameters = [
-            'spread_probability',
-            'fuel_consumption_rate', 
-            'ember_probability',
-            'ember_ignition'
+            'min_fuel_value',           # 0.1727 - CRITICAL (Most sensitive)
+            'spread_probability',       # 0.0511 - CRITICAL
+            'fuel_consumption_rate',    # 0.0494 - CRITICAL
+            'ember_probability'         # 0.0467 - CRITICAL
         ]
+        
+        print(f"🎯 Using top 4 sensitivity analysis parameters:")
+        for i, param in enumerate(top_4_parameters, 1):
+            print(f"   {i}. {param}")
+        print()
         
         # Create calibration config (EXACTLY like original)
         calib_config = CalibrationConfig(
