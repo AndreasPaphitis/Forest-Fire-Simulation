@@ -38,14 +38,20 @@ logging.getLogger('src.utils.lidar_utils').setLevel(logging.WARNING)
 logging.getLogger('src.utils.terrain_preprocessor').setLevel(logging.WARNING)
 
 def create_minimal_progress_callback():
-    """Create a minimal progress callback."""
+    """Create a minimal progress callback that tracks actual best values."""
     start_time = time.time()
+    best_so_far = float('inf')  # Start with infinity for minimization
     
     def progress_callback(completed: int, total: int, result):
+        nonlocal best_so_far
+        
         # Report every single simulation
         progress = (completed / total) * 100
-        best_value = result.objective_value if result.is_valid else 0.0
-        current_value = result.objective_value if result.is_valid else 0.0
+        current_value = result.objective_value if result.is_valid else float('inf')
+        
+        # 🔥 CRITICAL FIX: Track actual best (minimum) value across all results
+        if result.is_valid and current_value < best_so_far:
+            best_so_far = current_value
         
         if completed > 0:
             elapsed_time = time.time() - start_time
@@ -57,7 +63,10 @@ def create_minimal_progress_callback():
         else:
             eta_str = "calculating..."
         
-        print(f"Progress: {progress:.1f}% ({completed}/{total}) | Current: {current_value:.8f} | Best: {best_value:.8f} | ETA: {eta_str}")
+        # Display current and best (minimum) values
+        best_display = best_so_far if best_so_far != float('inf') else 0.0
+        current_display = current_value if current_value != float('inf') else 0.0
+        print(f"Progress: {progress:.1f}% ({completed}/{total}) | Current: {current_display:.8f} | Best: {best_display:.8f} | ETA: {eta_str}")
     
     return progress_callback
 

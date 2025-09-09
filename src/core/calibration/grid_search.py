@@ -108,10 +108,10 @@ class GridSearchResults:
         self.successful_evaluations = sum(1 for r in self.results if r.is_valid)
         self.total_time = sum(r.evaluation_time for r in self.results)
         
-        # Find best result
+        # Find best result (CRITICAL FIX: Use min() for error minimization objective)
         valid_results = [r for r in self.results if r.is_valid]
         if valid_results:
-            self.best_result = max(valid_results, key=lambda x: x.objective_value)
+            self.best_result = min(valid_results, key=lambda x: x.objective_value)
     
     def add_result(self, result: GridSearchResult):
         """Add a new result and update statistics."""
