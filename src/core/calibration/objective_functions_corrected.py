@@ -168,16 +168,30 @@ class CorrectedSpatialErrorObjective(ObjectiveFunction):
             else:
                 predicted_2d = np.array(simulation_result)
             
-            # Extract target data
-            if target_data is None or 'target_fire_perimeter' not in target_data:
+            # Extract target data - FIX: Use correct key 'fire_perimeter' not 'target_fire_perimeter'
+            if target_data is None:
                 return ObjectiveResult(
                     value=999.0,
                     components={},
                     is_valid=False,
-                    error_message="No target_fire_perimeter in target_data"
+                    error_message="target_data is None"
                 )
             
-            target_2d = np.array(target_data['target_fire_perimeter'])
+            # CRITICAL FIX: Use the actual key that exists in target_data
+            if 'fire_perimeter' in target_data:
+                target_2d = np.array(target_data['fire_perimeter'])
+            elif 'fire_perimeter_dense' in target_data:
+                target_2d = np.array(target_data['fire_perimeter_dense'])
+            elif 'target_fire_perimeter' in target_data:
+                target_2d = np.array(target_data['target_fire_perimeter'])
+            else:
+                available_keys = list(target_data.keys()) if target_data else []
+                return ObjectiveResult(
+                    value=999.0,
+                    components={},
+                    is_valid=False,
+                    error_message=f"No fire perimeter data found. Available keys: {available_keys}"
+                )
             
             # Ensure arrays are boolean
             predicted_2d = predicted_2d.astype(bool)
@@ -259,8 +273,8 @@ class CorrectedSpatialErrorObjective(ObjectiveFunction):
 def create_corrected_spatial_objective() -> CorrectedSpatialErrorObjective:
     """Create a corrected spatial error objective that minimizes error."""
     return CorrectedSpatialErrorObjective(
-        jaccard_weight=0.4,
-        dice_weight=0.6,
+        jaccard_weight=0.0,  # 🎯 DICE ONLY: Smoother optimization for calibration
+        dice_weight=1.0,     # 🎯 Focus on Dice coefficient alone
         penalty_for_overprediction=2.0  # Strong penalty for over-prediction
     )
 
