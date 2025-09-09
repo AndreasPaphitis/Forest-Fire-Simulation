@@ -903,23 +903,26 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         'evaluation_time': time.time()
                     }
                 
-                # Set ignition point AFTER simulation engine is created
-                worker_logger.debug("Setting ignition point to Arafo highlands...")
+                # Set ignition points AFTER simulation engine is created (same as validation script)
+                worker_logger.debug("Setting ignition points from config...")
                 try:
-                    # Set ignition point to Arafo highlands (65%, 62% of grid)
-                    grid_width = forest_model.width
-                    grid_height = forest_model.height
-                    arafo_x = int(grid_width * 0.65)  # 65% of grid width
-                    arafo_y = int(grid_height * 0.62)  # 62% of grid height
-                    
-                    # Set the ignition point in the forest model
-                    forest_model.set_ignition(arafo_x, arafo_y, 0)  # Ground layer
-                    worker_logger.debug(f"✅ Ignition point set to Arafo highlands: ({arafo_x}, {arafo_y})")
-                    
-                    # Also set it in the simulation engine's active cells
-                    if hasattr(engine, 'active_cells'):
-                        engine.active_cells.add((arafo_x, arafo_y, 0))
-                        worker_logger.debug(f"✅ Added ignition point to engine active cells: ({arafo_x}, {arafo_y}, 0)")
+                    # Use ignition points from config (same as validation script)
+                    if hasattr(model_config, 'ignition_points') and model_config.ignition_points:
+                        for ignition_point in model_config.ignition_points:
+                            forest_model.set_ignition(ignition_point[0], ignition_point[1], ignition_point[2])
+                            worker_logger.debug(f"✅ Ignition point set from config: ({ignition_point[0]}, {ignition_point[1]}, {ignition_point[2]})")
+                            
+                            # Also set it in the simulation engine's active cells
+                            if hasattr(engine, 'active_cells'):
+                                engine.active_cells.add((ignition_point[0], ignition_point[1], ignition_point[2]))
+                                worker_logger.debug(f"✅ Added ignition point to engine active cells: {ignition_point}")
+                    else:
+                        # Fallback to default ignition point
+                        default_x, default_y = 395, 377  # Center of 609×609 grid
+                        forest_model.set_ignition(default_x, default_y, 0)
+                        worker_logger.debug(f"✅ Default ignition point set: ({default_x}, {default_y}, 0)")
+                        if hasattr(engine, 'active_cells'):
+                            engine.active_cells.add((default_x, default_y, 0))
                     
                 except Exception as ignition_error:
                     worker_logger.warning(f"⚠️ Failed to set ignition point: {ignition_error}")
@@ -1625,22 +1628,25 @@ class GridSearchCalibrator:
                 forest_model = self._create_forest_model_with_optimized_config(parameter_values)
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
             
-            # Set ignition point BEFORE running simulation
+            # Set ignition points BEFORE running simulation (same as validation script)
             try:
-                # Set ignition point to Arafo highlands (65%, 62% of grid)
-                grid_width = forest_model.width
-                grid_height = forest_model.height
-                arafo_x = int(grid_width * 0.65)  # 65% of grid width
-                arafo_y = int(grid_height * 0.62)  # 62% of grid height
-                
-                # Set the ignition point in the forest model
-                forest_model.set_ignition(arafo_x, arafo_y, 0)  # Ground layer
-                logger.debug(f"✅ Ignition point set to Arafo highlands: ({arafo_x}, {arafo_y})")
-                
-                # Also set it in the simulation engine's active cells
-                if hasattr(engine, 'active_cells'):
-                    engine.active_cells.add((arafo_x, arafo_y, 0))
-                    logger.debug(f"✅ Added ignition point to engine active cells: ({arafo_x}, {arafo_y}, 0)")
+                # Use ignition points from config (same as validation script)
+                if hasattr(config, 'ignition_points') and config.ignition_points:
+                    for ignition_point in config.ignition_points:
+                        forest_model.set_ignition(ignition_point[0], ignition_point[1], ignition_point[2])
+                        logger.debug(f"✅ Ignition point set from config: ({ignition_point[0]}, {ignition_point[1]}, {ignition_point[2]})")
+                        
+                        # Also set it in the simulation engine's active cells
+                        if hasattr(engine, 'active_cells'):
+                            engine.active_cells.add((ignition_point[0], ignition_point[1], ignition_point[2]))
+                            logger.debug(f"✅ Added ignition point to engine active cells: {ignition_point}")
+                else:
+                    # Fallback to default ignition point
+                    default_x, default_y = 395, 377  # Center of 609×609 grid
+                    forest_model.set_ignition(default_x, default_y, 0)
+                    logger.debug(f"✅ Default ignition point set: ({default_x}, {default_y}, 0)")
+                    if hasattr(engine, 'active_cells'):
+                        engine.active_cells.add((default_x, default_y, 0))
                 
             except Exception as ignition_error:
                 logger.warning(f"⚠️ Failed to set ignition point: {ignition_error}")
