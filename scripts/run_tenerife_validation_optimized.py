@@ -333,7 +333,7 @@ def run_validation_for_day(day_number: int,
     
     # Initialize fire simulation engine
     engine = FireSimulationEngine(forest_model=forest_model, config=config)
-    engine.save_interval = 20  # 🔥 FIRE PROGRESSION: Save every 20 steps for TRUE progression (optimal)
+    engine.save_interval = 10  # 🔥 FIRE PROGRESSION: Save every 10 steps for detailed analysis
     engine.lazy_save_enabled = True  # 🔥 FIRE PROGRESSION: Enable lazy saving for efficiency
     
     # 🚨 CRITICAL: Disable ALL cleanup for validation to preserve simulation integrity
@@ -565,8 +565,8 @@ def main():
         if not args.experiment_name:
             print("❌ Error: --experiment_name is required unless using --use-latest-params")
             sys.exit(1)
-        print(f"\n🔍 Loading best parameters from {args.experiment_name}...")
-        best_parameters = load_best_parameters(args.results_dir, args.experiment_name)
+        print(f"\n🎯 Using hardcoded calibrated parameters (no file loading needed)")
+        # best_parameters = load_best_parameters(args.results_dir, args.experiment_name)  # DISABLED for HPC
     
     # Create configuration with best parameters (using correct Tenerife settings)
     # 🚨 CRITICAL FIX: Use original working grid size to match target data
@@ -582,7 +582,7 @@ def main():
         
         # 🔥 FIRE PROGRESSION: Enable full state storage for TRUE progression animation
         store_full_states=True,          # CRITICAL: Enable full state storage at each timestep
-        save_interval=20,                # OPTIMIZED: Save every 20 steps (10 frames for 200 steps) for optimal performance
+        save_interval=10,                # 🔥 SAVE EVERY 10 STEPS: Higher temporal resolution for detailed analysis
         use_differential_history=True,   # CRITICAL: Enable differential history storage
         disk_storage_dir=str(output_dir),  # CRITICAL: Save all states to output folder
         
@@ -597,12 +597,20 @@ def main():
         
         # 🚨 FIX: Set ignition points for original working grid size
         ignition_points=[(395, 377, 0)],  # Center of 609×609 grid (original working configuration)
-        **best_parameters
+        
+        # 🎯 HARDCODED BEST PARAMETERS from HPC calibration (lowest error = 0.8297)
+        min_fuel_value=0.02,
+        spread_probability=0.95,
+        fuel_consumption_rate=0.6333333333333333,
+        ember_probability=0.2
     )
     
-    print(f"✅ Configuration created with best parameters:")
-    for param, value in best_parameters.items():
-        print(f"   {param}: {value}")
+    print(f"✅ Configuration created with best calibrated parameters:")
+    print(f"   min_fuel_value: 0.02")
+    print(f"   spread_probability: 0.95")
+    print(f"   fuel_consumption_rate: 0.6333333333333333")
+    print(f"   ember_probability: 0.2")
+    print(f"   🔥 Save interval: 10 steps (detailed analysis)")
     
     # Parse days to validate
     days_to_validate = [int(d.strip()) for d in args.days.split(',')]
