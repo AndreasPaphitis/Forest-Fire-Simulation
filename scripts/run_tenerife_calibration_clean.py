@@ -203,6 +203,9 @@ def main():
         # CRITICAL FIX: Add preprocessed LiDAR directory to base config
         base_config.preprocessed_lidar_dir = "preprocessed_lidar"
         
+        # CRITICAL FIX: Set ignition points for calibration
+        base_config.ignition_points = [(395, 377, 0)]  # Center of 609×609 grid (Arafo highlands equivalent)
+        
         # TOP 4 MOST SENSITIVE PARAMETERS FROM SENSITIVITY ANALYSIS
         # Based on completed sensitivity analysis results:
         # 1. min_fuel_value: 0.1727 (Most sensitive - 3.4x more than #2)

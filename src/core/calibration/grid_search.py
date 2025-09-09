@@ -1012,7 +1012,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                                          
                                          # Calculate objective with partial results
                                          objective_function = get_objective_function_by_name(objective_function_name)
-                                         partial_objective = objective_function(partial_simulation_result, target_data)
+                                         partial_objective = objective_function.evaluate(partial_simulation_result, target_data)
                                          
                                          worker_logger.info(f"✅ Stored partial results: {active_count} burning + {burned_count} burned cells")
                                          
@@ -1101,7 +1101,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
         # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
-                objective_result = objective_function(simulation_result, target_data)
+                objective_result = objective_function.evaluate(simulation_result, target_data)
                 
                 # Extract values from ObjectiveResult object
                 objective_value = objective_result.value if objective_result.is_valid else 0.0
@@ -1277,7 +1277,7 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                                  }
                                  
                                  objective_function = get_objective_function_by_name(objective_function_name)
-                                 partial_objective = objective_function(partial_simulation_result, target_data)
+                                 partial_objective = objective_function.evaluate(partial_simulation_result, target_data)
                                  
                                  worker_logger.info(f"✅ Recovered partial results from worker timeout: {active_count} burning + {burned_count} burned cells")
                                  
@@ -1655,7 +1655,7 @@ class GridSearchCalibrator:
                     logger.warning("No target data available - using synthetic target")
             
             # Calculate objective value
-            objective_result = self.objective_function(simulation_result, target_data)
+            objective_result = self.objective_function.evaluate(simulation_result, target_data)
             
             evaluation_time = time.time() - start_time
             
