@@ -770,8 +770,14 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         worker_logger.info(f"🌲 Worker {worker_id}: Grid size: {model_config.grid_size}")
                         worker_logger.info(f"🌲 Worker {worker_id}: LiDAR enabled: {getattr(model_config, 'use_lidar', False)}")
                         
-                        forest_model = create_forest_model(
-                            model_type=simulation_type,
+                        # 🚨 CRITICAL FIX: Use SAME forest model as validation script (which works!)
+                        from src.core.optimized_forest_model import OptimizedMemoryOptimizedForestModel
+                        forest_model = OptimizedMemoryOptimizedForestModel(
+                            grid_size=model_config.grid_size,
+                            num_layers=model_config.num_layers,
+                            layer_height_meters=model_config.layer_height,
+                            model_resolution=model_config.model_resolution,
+                            initial_fuel_load=model_config.initial_fuel_load,
                             config=model_config
                         )
                         
@@ -1697,12 +1703,28 @@ class GridSearchCalibrator:
                 )
                 
             except ImportError as e:
-                # Fallback to standard components
-                forest_model = self._create_forest_model_with_optimized_config(parameter_values)
+                # Fallback to standard components - USE SAME MODEL AS VALIDATION
+                from src.core.optimized_forest_model import OptimizedMemoryOptimizedForestModel
+                forest_model = OptimizedMemoryOptimizedForestModel(
+                    grid_size=config.grid_size,
+                    num_layers=config.num_layers,
+                    layer_height_meters=config.layer_height,
+                    model_resolution=config.model_resolution,
+                    initial_fuel_load=config.initial_fuel_load,
+                    config=config
+                )
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
             except Exception as e:
-                # Fallback to standard components
-                forest_model = self._create_forest_model_with_optimized_config(parameter_values)
+                # Fallback to standard components - USE SAME MODEL AS VALIDATION
+                from src.core.optimized_forest_model import OptimizedMemoryOptimizedForestModel
+                forest_model = OptimizedMemoryOptimizedForestModel(
+                    grid_size=config.grid_size,
+                    num_layers=config.num_layers,
+                    layer_height_meters=config.layer_height,
+                    model_resolution=config.model_resolution,
+                    initial_fuel_load=config.initial_fuel_load,
+                    config=config
+                )
                 engine = FireSimulationEngine(forest_model=forest_model, config=config)
             
             # Set ignition points BEFORE running simulation (same as validation script)
