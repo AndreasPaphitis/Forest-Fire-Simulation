@@ -35,7 +35,7 @@ def test_corrected_objective():
         # Target: Small realistic fire
         target = np.zeros((100, 100))
         target[40:60, 40:60] = 1  # 20x20 = 400 cells
-        target_data = {'target_fire_perimeter': target}
+        target_data = {'fire_perimeter': target}
         
         scenarios = [
             ("Perfect Match", target.copy()),

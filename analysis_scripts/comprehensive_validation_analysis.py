@@ -19,7 +19,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.core.calibration.objective_functions import SpatialSimilarityObjective
+from src.core.calibration.objective_functions_corrected import create_corrected_spatial_objective
 from src.core.calibration.calibration_utils import load_historical_fire_data
 
 def load_validation_data(day_number):

@@ -2190,8 +2190,8 @@ class GridSearchCalibrator:
             logger.error(f"Traceback: {traceback.format_exc()}")
             # Create a minimal fallback config_dict
             config_dict = {
-                'grid_size': (100, 100),
-                'num_layers': 10,
+                'grid_size': (609, 609),  # 🚨 FIX: Use correct Tenerife grid size
+                'num_layers': 20,         # 🚨 FIX: Use correct layer count
                 'max_steps': 100,
                 'simulation_type': 'memory_optimized',
                 'spread_probability': 0.8,
@@ -2199,6 +2199,10 @@ class GridSearchCalibrator:
                 'ignition_threshold': 0.1,
                 'stop_when_fire_extinguished': False,
                 'simulation_timeout_minutes': 60.0,  # Default 60 minutes
+                
+                # 🚨 CRITICAL FIX: Add ignition_points to fallback config
+                'ignition_points': [(395, 377, 0)],  # Center of 609×609 grid (Arafo highlands)
+                
                 # Add missing required parameters
                 'ember_probability': 0.3,
                 'ember_ignition': 0.3,
