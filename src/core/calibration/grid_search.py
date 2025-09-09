@@ -2174,6 +2174,17 @@ class GridSearchCalibrator:
             else:
                 logger.warning("No simulation_timeout_minutes found in calibration config, using grid-size based timeout")
             
+            # 🚨 CRITICAL FIX: Add ignition_points to config_dict for workers
+            if hasattr(self.config, 'base_config') and hasattr(self.config.base_config, 'ignition_points') and self.config.base_config.ignition_points:
+                config_dict['ignition_points'] = self.config.base_config.ignition_points
+                logger.info(f"✅ Added ignition_points from base_config to config_dict: {self.config.base_config.ignition_points}")
+            elif 'ignition_points' not in config_dict:
+                # Ensure ignition_points are ALWAYS present
+                config_dict['ignition_points'] = [(395, 377, 0)]  # Default Tenerife ignition
+                logger.warning(f"⚠️  No ignition_points found in config - added default: {config_dict['ignition_points']}")
+            else:
+                logger.info(f"✅ ignition_points already in config_dict: {config_dict['ignition_points']}")
+            
             # CRITICAL FIX: Add shared terrain info to config_dict for worker processes
             if hasattr(self.config, 'shared_terrain_info') and self.config.shared_terrain_info:
                 config_dict['shared_terrain_info'] = self.config.shared_terrain_info
