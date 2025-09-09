@@ -1,0 +1,34 @@
+{
+  "day": 3,
+  "objective_value": 0.36478319063434,
+  "execution_time": 92767.42757368088,
+  "vertical_spread_stats": {
+    "total_spread": 10318317,
+    "vertical_spread": 365534,
+    "horizontal_spread": 2544506,
+    "ember_spread": 4331410,
+    "total_ignitions": 2993363,
+    "vertical_percentage": 3.5425738519179046,
+    "horizontal_percentage": 24.660087492950645,
+    "ember_percentage": 41.97787294187608,
+    "vertical_efficiency": 12.211482536531653,
+    "horizontal_efficiency": 85.00492589772773,
+    "ember_efficiency": 144.70045898208804,
+    "vertical_horizontal_ratio": 0.14365617530475464,
+    "ember_horizontal_ratio": 1.7022596920581048,
+    "ember_vertical_ratio": 11.849540672003151,
+    "spread_classification": "High vertical spread - strong convection"
+  },
+  "engine_performance": {
+    "numba_operations": 0,
+    "standard_operations": 0,
+    "numba_efficiency_percent": 0.0,
+    "lazy_saves": 0,
+    "lazy_loads": 0,
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "cache_efficiency_percent": 0.0,
+    "total_operations": 0,
+    "total_cache_accesses": 0
+  }
+}

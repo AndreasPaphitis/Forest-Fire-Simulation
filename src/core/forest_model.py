@@ -196,7 +196,7 @@ class BaseForestModel(ABC):
         
         # Resolve configuration
         resolved_config = config
-        print(f"🔍 BaseForestModel: Received config: {type(resolved_config)}")
+        # BaseForestModel initialized
         if resolved_config is None:
             # Try to get from kwargs if a 'config' dict/ModelConfig was passed there
             resolved_config = kwargs.get('config') 
@@ -260,7 +260,7 @@ class BaseForestModel(ABC):
         
         # CRITICAL FIX: Skip dense array creation for large grids to prevent hanging
         if total_cells > 7_000_000:  # 7M+ cells (like 609×609×20)
-            logger.info(f"🚨 LARGE GRID DETECTED: {total_cells:,} cells - using sparse storage for fuel")
+            logger.debug(f"Large grid detected: {total_cells:,} cells - using sparse storage")
             # Use sparse storage for large grids to prevent hanging
             self.state = None
             self.fuel_load = None
@@ -320,18 +320,14 @@ class BaseForestModel(ABC):
         
         # CRITICAL FIX: Load LiDAR data if available in config
         if self.config:
-            logger.info(f"🔍 Config found: {type(self.config)}")
-            logger.info(f"🔍 Config attributes: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
-            if hasattr(self.config, 'preprocessed_lidar_dir'):
-                logger.info(f"🔍 LiDAR directory: {self.config.preprocessed_lidar_dir}")
-            logger.info(f"🔍 Attempting to load LiDAR data during initialization...")
+            logger.debug(f"Config found: {type(self.config)}")
             success = self._load_lidar_data(self.config)
             if success:
-                logger.info("✅ LiDAR data loaded successfully during initialization")
+                logger.debug("LiDAR data loaded successfully")
             else:
-                logger.warning("⚠️  Failed to load LiDAR data during initialization - using default fuel")
+                logger.warning("Failed to load LiDAR data - using default fuel")
         else:
-            logger.info("ℹ️  No config found - using default fuel initialization")
+            logger.debug("No config found - using default fuel initialization")
     
     def _initialize_sparse_fuel_storage(self, default_fuel: float):
         """
@@ -341,7 +337,7 @@ class BaseForestModel(ABC):
             default_fuel: Default fuel value to use
         """
         try:
-            logger.info(f"🔥 Initializing sparse fuel storage with default fuel: {default_fuel}")
+            logger.debug(f"Initializing sparse fuel storage with default fuel: {default_fuel}")
             
             # Import scipy.sparse for proper sparse matrix creation
             from scipy.sparse import lil_matrix
@@ -506,8 +502,8 @@ class BaseForestModel(ABC):
                             if ignition_x < layer_data.shape[0] and ignition_y < layer_data.shape[1]:
                                 original_value = layer_data[ignition_x, ignition_y]
                                 stored_value = sparse_fuel[ignition_x, ignition_y]
-                                logger.info(f"🔥 Layer {model_layer_idx} - Original LiDAR value at ({ignition_x}, {ignition_y}): {original_value}")
-                                logger.info(f"🔥 Layer {model_layer_idx} - Stored sparse value at ({ignition_x}, {ignition_y}): {stored_value}")
+                                logger.debug(f"Layer {model_layer_idx} - Original LiDAR value at ({ignition_x}, {ignition_y}): {original_value}")
+                                logger.debug(f"Layer {model_layer_idx} - Stored sparse value at ({ignition_x}, {ignition_y}): {stored_value}")
                     else:
                         # Dense model
                         # CRITICAL FIX: Resize layer_data to match grid dimensions if needed
@@ -717,22 +713,36 @@ class BaseForestModel(ABC):
     def get_active_cells(self):
         """
         Get list of currently active (burning) cells.
+        PERFORMANCE OPTIMIZED: Uses efficient sparse matrix operations.
         
         Returns:
             List of (x, y, z) tuples representing active cells
         """
         active_cells = []
         
-        if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and hasattr(self, 'state_layers'):
-            # Sparse storage mode
+        # Check for SparseLayerAccessor (new sparse storage format)
+        if hasattr(self, 'state') and hasattr(self.state, 'sparse_layers'):
+            # New sparse storage using SparseLayerAccessor - OPTIMIZED
+            for layer_idx, layer_state in self.state.sparse_layers.items():
+                if hasattr(layer_state, 'nnz') and layer_state.nnz > 0:  # Skip empty layers
+                    if hasattr(layer_state, 'nonzero'):
+                        coords = layer_state.nonzero()
+                        # Check each coordinate for burning cells
+                        for i in range(len(coords[0])):
+                            x, y = coords[0][i], coords[1][i]
+                            if layer_state[x, y] == FrameworkCellState.BURNING.value:
+                                active_cells.append((x, y, layer_idx))
+        elif hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # Old sparse storage mode - OPTIMIZED
             for layer_idx, layer_state in self.state_layers.items():
-                # Find non-zero elements in sparse matrix
-                if hasattr(layer_state, 'nonzero'):
-                    coords = layer_state.nonzero()
-                    for i in range(len(coords[0])):
-                        x, y = coords[0][i], coords[1][i]
-                        if layer_state[x, y] == FrameworkCellState.BURNING.value:
-                            active_cells.append((x, y, layer_idx))
+                if hasattr(layer_state, 'nnz') and layer_state.nnz > 0:  # Skip empty layers
+                    if hasattr(layer_state, 'nonzero'):
+                        coords = layer_state.nonzero()
+                        # Check each coordinate for burning cells
+                        for i in range(len(coords[0])):
+                            x, y = coords[0][i], coords[1][i]
+                            if layer_state[x, y] == FrameworkCellState.BURNING.value:
+                                active_cells.append((x, y, layer_idx))
         else:
             # Dense storage mode
             if hasattr(self, 'state') and self.state is not None:
@@ -2376,8 +2386,7 @@ class ForestModel(BaseForestModel):
         # CRITICAL FIX: Only pass config to parent, not individual parameters
         # This prevents conflicts between config values and individual parameters
         kwargs_without_config = {k: v for k, v in kwargs.items() if k != 'config'}
-        print(f"🔍 ForestModel: Passing config to parent: {type(config)}")
-        print(f"🔍 ForestModel: Config has preprocessed_lidar_dir: {hasattr(config, 'preprocessed_lidar_dir')}")
+        # ForestModel initialized
         super().__init__(config=config, **kwargs_without_config)
         
         # Initialize additional attributes specific to ForestModel
@@ -2550,6 +2559,39 @@ class ForestModel(BaseForestModel):
         self.simulation_engine = engine
         logger.debug("Simulation engine reference set for ForestModel")
     
+    def count_burning_cells_from_state(self):
+        """
+        Count burning cells directly from the state (handles both dense and sparse storage).
+        
+        Returns:
+            Tuple of (active_cells, burned_cells) counts
+        """
+        active_count = 0
+        burned_count = 0
+        
+        # Check for SparseLayerAccessor (new sparse storage format)
+        if hasattr(self, 'state') and hasattr(self.state, 'sparse_layers'):
+            # New sparse storage using SparseLayerAccessor
+            for layer_idx, layer_state in self.state.sparse_layers.items():
+                if hasattr(layer_state, 'nnz'):
+                    # Count non-zero elements (both burning and burned)
+                    total_nonzero = layer_state.nnz
+                    # For now, assume all non-zero are burning (we'd need more sophisticated logic for burned)
+                    active_count += total_nonzero
+        elif hasattr(self, 'use_sparse_storage') and self.use_sparse_storage and hasattr(self, 'state_layers'):
+            # Old sparse storage mode
+            for layer_idx, layer_state in self.state_layers.items():
+                if hasattr(layer_state, 'nnz'):
+                    total_nonzero = layer_state.nnz
+                    active_count += total_nonzero
+        else:
+            # Dense storage mode
+            if hasattr(self, 'state') and self.state is not None:
+                active_count = np.sum(self.state == FrameworkCellState.BURNING.value)
+                burned_count = np.sum(self.state == FrameworkCellState.BURNED.value)
+        
+        return active_count, burned_count
+
     def update_stats(self, active_cells=None, burned_cells=None, step=None):
         """
         Update simulation statistics for tracking and visualization.
@@ -2559,6 +2601,12 @@ class ForestModel(BaseForestModel):
             burned_cells: Number of burned out cells  
             step: Current simulation step
         """
+        # If active_cells not provided, count from state
+        if active_cells is None:
+            active_cells, burned_cells_from_state = self.count_burning_cells_from_state()
+            if burned_cells is None:
+                burned_cells = burned_cells_from_state
+        
         if active_cells is not None:
             self.stats['active_cells'] = active_cells
             # Use get() with default to handle missing key
@@ -2769,9 +2817,10 @@ class ForestModel(BaseForestModel):
     def calculate_vertical_connectivity(self):
         """
         Calculate vertical connectivity between layers based on fuel load.
+        Works with both dense and sparse storage.
         
         Returns:
-            Numpy array of vertical connectivity values
+            Numpy array or sparse storage of vertical connectivity values
         """
         logger.info("Calculating vertical connectivity between layers")
         
@@ -2779,6 +2828,16 @@ class ForestModel(BaseForestModel):
         max_fuel = getattr(self.config, 'max_fuel_value', 10.0) if self.config else 10.0
         if max_fuel <= 0: max_fuel = 10.0 # Prevent division by zero if config is bad
 
+        # Check if we're using sparse storage
+        if hasattr(self, 'fuel_load_layers') and self.fuel_load_layers:
+            logger.info("Using sparse storage for vertical connectivity calculation")
+            return self._calculate_vertical_connectivity_sparse(max_fuel)
+        else:
+            logger.info("Using dense storage for vertical connectivity calculation")
+            return self._calculate_vertical_connectivity_dense(max_fuel)
+    
+    def _calculate_vertical_connectivity_dense(self, max_fuel: float):
+        """Calculate vertical connectivity using dense storage."""
         # Calculate vertical connectivity based on fuel load in adjacent layers
         for z in range(self.num_layers - 1):
             # Normalize fuel load for calculation
@@ -2790,6 +2849,70 @@ class ForestModel(BaseForestModel):
             self.vertical_connectivity[:, :, z] = np.sqrt(fuel_lower * fuel_upper)
         
         return self.vertical_connectivity
+    
+    def _calculate_vertical_connectivity_sparse(self, max_fuel: float):
+        """Calculate vertical connectivity using sparse storage."""
+        try:
+            from scipy.sparse import lil_matrix
+            
+            # Initialize sparse vertical connectivity storage
+            self.vertical_connectivity_layers = {}
+            
+            # Calculate vertical connectivity based on fuel load in adjacent layers
+            for z in range(self.num_layers - 1):
+                # Get fuel from sparse storage
+                if z in self.fuel_load_layers and (z+1) in self.fuel_load_layers:
+                    fuel_lower_sparse = self.fuel_load_layers[z]
+                    fuel_upper_sparse = self.fuel_load_layers[z+1]
+                    
+                    # Convert to dense for calculation, then back to sparse
+                    fuel_lower_dense = fuel_lower_sparse.toarray()
+                    fuel_upper_dense = fuel_upper_sparse.toarray()
+                    
+                    # Normalize fuel load for calculation
+                    fuel_lower_norm = np.clip(fuel_lower_dense / max_fuel, 0, 1)
+                    fuel_upper_norm = np.clip(fuel_upper_dense / max_fuel, 0, 1)
+                    
+                    # Connectivity is the product of fuel availability in adjacent layers
+                    connectivity_dense = np.sqrt(fuel_lower_norm * fuel_upper_norm)
+                    
+                    # Convert back to sparse storage
+                    connectivity_sparse = lil_matrix(connectivity_dense, dtype=np.float32)
+                    self.vertical_connectivity_layers[z] = connectivity_sparse
+                    
+                    logger.debug(f"✅ Calculated vertical connectivity for layer {z} (sparse)")
+                else:
+                    # Fallback: create default connectivity
+                    logger.warning(f"⚠️  Missing fuel data for layers {z} or {z+1}, using default connectivity")
+                    default_connectivity = lil_matrix((self.width, self.height), dtype=np.float32)
+                    default_connectivity[:, :] = 0.5  # Default connectivity value
+                    self.vertical_connectivity_layers[z] = default_connectivity
+            
+            logger.info(f"✅ Sparse vertical connectivity calculated for {len(self.vertical_connectivity_layers)} layer interfaces")
+            return self.vertical_connectivity_layers
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate sparse vertical connectivity: {e}")
+            # Fallback: create default sparse connectivity
+            self._create_default_sparse_vertical_connectivity()
+            return self.vertical_connectivity_layers
+    
+    def _create_default_sparse_vertical_connectivity(self):
+        """Create default sparse vertical connectivity as fallback."""
+        try:
+            from scipy.sparse import lil_matrix
+            
+            self.vertical_connectivity_layers = {}
+            for z in range(self.num_layers - 1):
+                default_connectivity = lil_matrix((self.width, self.height), dtype=np.float32)
+                default_connectivity[:, :] = 0.5  # Default connectivity value
+                self.vertical_connectivity_layers[z] = default_connectivity
+            
+            logger.info(f"✅ Created default sparse vertical connectivity for {len(self.vertical_connectivity_layers)} layer interfaces")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create default sparse vertical connectivity: {e}")
+            self.vertical_connectivity_layers = {}
 
     def initialize_wind(self, wind_direction_deg: float, wind_speed_ms: float):
         """Initialize a uniform wind field across the model."""
@@ -2819,7 +2942,7 @@ class ForestModel(BaseForestModel):
         """
         try:
             # Import FrameworkCellState here to avoid circular imports
-            from src.core.framework.cell_state import FrameworkCellState
+            from src.core.core_simulation_framework import CellState as FrameworkCellState
             
             if hasattr(self, 'use_sparse_storage') and self.use_sparse_storage:
                 # Handle sparse storage - same logic as objective function
@@ -2906,7 +3029,8 @@ class SparseLayerAccessor:
             if not hasattr(SparseLayerAccessor, '_global_layer_difference_logged'):
                 # Only show this message if the difference is significant (not just 3 vs 20)
                 if actual_layers < num_layers * 0.5:  # Less than 50% of expected layers
-                    print(f"ℹ️  Layer Adaptation: Using {actual_layers} layers (expected {num_layers}) - Geographic bounds filtering active")
+                    # Layer adaptation applied
+                    pass
                 SparseLayerAccessor._global_layer_difference_logged = True
     
     @property
@@ -4242,7 +4366,7 @@ class MemoryOptimizedForestModel(ForestModel):
                 return False
             
             # Use LiDAR data as fuel load
-            logger.info(f" Loading {len(lidar_data)} LiDAR layers as fuel data...")
+            logger.debug(f"Loading {len(lidar_data)} LiDAR layers as fuel data...")
             
             for layer_idx, layer_data in lidar_data.items():
                 if layer_idx < self.num_layers:
@@ -4256,6 +4380,586 @@ class MemoryOptimizedForestModel(ForestModel):
         except Exception as e:
             logger.error(f"❌ Failed to load shared LiDAR data: {e}")
             return False
+
+    def verify_terrain_loading(self) -> Dict[str, Any]:
+        """
+        Verify that terrain data has been properly loaded and provide detailed status.
+        
+        Returns:
+            Dictionary with terrain loading status and statistics
+        """
+        status = {
+            'elevation_loaded': False,
+            'slope_loaded': False,
+            'aspect_loaded': False,
+            'barranco_loaded': False,
+            'elevation_stats': None,
+            'slope_stats': None,
+            'aspect_stats': None,
+            'barranco_stats': None,
+            'overall_status': 'Not loaded'
+        }
+        
+        # Check elevation data
+        if hasattr(self, 'terrain_elevation') and self.terrain_elevation is not None:
+            try:
+                elev_min = float(np.min(self.terrain_elevation))
+                elev_max = float(np.max(self.terrain_elevation))
+                elev_range = elev_max - elev_min
+                
+                status['elevation_loaded'] = True
+                status['elevation_stats'] = {
+                    'min': elev_min,
+                    'max': elev_max,
+                    'range': elev_range,
+                    'shape': self.terrain_elevation.shape,
+                    'dtype': str(self.terrain_elevation.dtype)
+                }
+                
+                # Check if elevation data is meaningful (not flat)
+                if elev_range > 1.0:
+                    status['elevation_loaded'] = True
+                else:
+                    status['elevation_loaded'] = False
+                    status['elevation_stats']['warning'] = 'Terrain appears flat (range < 1m)'
+                    
+            except Exception as e:
+                status['elevation_stats'] = {'error': str(e)}
+        
+        # Check slope data
+        if hasattr(self, 'terrain_slope') and self.terrain_slope is not None:
+            try:
+                slope_min = float(np.min(self.terrain_slope))
+                slope_max = float(np.max(self.terrain_slope))
+                slope_range = slope_max - slope_min
+                
+                status['slope_loaded'] = True
+                status['slope_stats'] = {
+                    'min': slope_min,
+                    'max': slope_max,
+                    'range': slope_range,
+                    'shape': self.terrain_slope.shape,
+                    'dtype': str(self.terrain_slope.dtype)
+                }
+                
+                if slope_range > 0.1:  # Check if slope data is meaningful
+                    status['slope_loaded'] = True
+                else:
+                    status['slope_loaded'] = False
+                    status['slope_stats']['warning'] = 'Slope appears flat (range < 0.1°)'
+                    
+            except Exception as e:
+                status['slope_stats'] = {'error': str(e)}
+        
+        # Check aspect data
+        if hasattr(self, 'terrain_aspect') and self.terrain_aspect is not None:
+            try:
+                aspect_min = float(np.min(self.terrain_aspect))
+                aspect_max = float(np.max(self.terrain_aspect))
+                aspect_range = aspect_max - aspect_min
+                
+                status['aspect_loaded'] = True
+                status['aspect_stats'] = {
+                    'min': aspect_min,
+                    'max': aspect_max,
+                    'range': aspect_range,
+                    'shape': self.terrain_aspect.shape,
+                    'dtype': str(self.terrain_aspect.dtype)
+                }
+                
+                if aspect_range > 1.0:  # Check if aspect data is meaningful
+                    status['aspect_loaded'] = True
+                else:
+                    status['aspect_loaded'] = False
+                    status['aspect_stats']['warning'] = 'Aspect appears uniform (range < 1°)'
+                    
+            except Exception as e:
+                status['aspect_stats'] = {'error': str(e)}
+        
+        # Check barranco data
+        if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
+            try:
+                barranco_count = int(np.sum(self.barranco_mask))
+                total_cells = int(self.barranco_mask.size)
+                barranco_percent = (barranco_count / total_cells * 100) if total_cells > 0 else 0.0
+                
+                status['barranco_loaded'] = True
+                status['barranco_stats'] = {
+                    'count': barranco_count,
+                    'total_cells': total_cells,
+                    'percentage': barranco_percent,
+                    'shape': self.barranco_mask.shape,
+                    'dtype': str(self.barranco_mask.dtype)
+                }
+                
+            except Exception as e:
+                status['barranco_stats'] = {'error': str(e)}
+        
+        # Determine overall status
+        loaded_count = sum([status['elevation_loaded'], status['slope_loaded'], 
+                           status['aspect_loaded'], status['barranco_loaded']])
+        
+        if loaded_count == 0:
+            status['overall_status'] = 'Not loaded'
+        elif loaded_count == 1:
+            status['overall_status'] = 'Partially loaded'
+        elif loaded_count == 2:
+            status['overall_status'] = 'Mostly loaded'
+        elif loaded_count == 3:
+            status['overall_status'] = 'Well loaded'
+        else:
+            status['overall_status'] = 'Fully loaded'
+        
+        return status
+
+    def get_slope_factor(self, x: int, y: int) -> float:
+        """
+        Calculate slope factor for fire spread at position (x, y).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            Slope factor (1.0 = no effect, >1.0 = uphill spread faster, <1.0 = downhill spread slower)
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return 1.0
+        
+        if not hasattr(self, 'terrain_slope') or self.terrain_slope is None:
+            return 1.0
+        
+        slope_deg = self.terrain_slope[x, y]
+        
+        # Convert slope to radians
+        slope_rad = np.radians(slope_deg)
+        
+        # Calculate slope factor using exponential model
+        # Factor increases for uphill spread, decreases for downhill
+        # This follows Rothermel fire spread model principles
+        slope_factor = np.exp(3.57 * np.tan(slope_rad))
+        
+        # Limit the factor to reasonable bounds (0.1 to 3.0)
+        slope_factor = np.clip(slope_factor, 0.1, 3.0)
+        
+        return float(slope_factor)
+    
+    def get_wind_factor(self, x: int, y: int) -> float:
+        """
+        Calculate wind factor for fire spread at position (x, y).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            Wind factor (1.0 = no effect, >1.0 = wind-assisted spread)
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return 1.0
+        
+        if not hasattr(self, 'wind_speed') or self.wind_speed is None:
+            return 1.0
+        
+        wind_speed = self.wind_speed[x, y]
+        
+        # Base wind factor calculation
+        # Wind speed in m/s, factor increases with wind speed
+        wind_factor = 1.0 + (wind_speed / 10.0) * 0.5
+        
+        # Apply barranco wind amplification if available
+        if hasattr(self, '_barranco_amplification_factor') and hasattr(self, '_barranco_mask_cached'):
+            if self._barranco_mask_cached[x, y]:
+                wind_factor *= self._barranco_amplification_factor
+        
+        # Limit wind factor to reasonable bounds (1.0 to 5.0)
+        wind_factor = np.clip(wind_factor, 1.0, 5.0)
+        
+        return float(wind_factor)
+    
+    def is_barranco(self, x: int, y: int) -> bool:
+        """
+        Check if position (x, y) is in a barranco (ravine).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            True if position is in a barranco, False otherwise
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return False
+        
+        if not hasattr(self, 'barranco_mask') or self.barranco_mask is None:
+            return False
+        
+        return bool(self.barranco_mask[x, y])
+    
+    def get_terrain_elevation(self, x: int, y: int) -> float:
+        """
+        Get terrain elevation at position (x, y).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            Elevation in meters
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return 0.0
+        
+        if not hasattr(self, 'terrain_elevation') or self.terrain_elevation is None:
+            return 0.0
+        
+        return float(self.terrain_elevation[x, y])
+    
+    def get_terrain_slope(self, x: int, y: int) -> float:
+        """
+        Get terrain slope at position (x, y).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            Slope in degrees
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return 0.0
+        
+        if not hasattr(self, 'terrain_slope') or self.terrain_slope is None:
+            return 0.0
+        
+        return float(self.terrain_slope[x, y])
+    
+    def get_terrain_aspect(self, x: int, y: int) -> float:
+        """
+        Get terrain aspect (slope direction) at position (x, y).
+        
+        Args:
+            x, y: Grid coordinates
+            
+        Returns:
+            Aspect in degrees (0-360)
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return 0.0
+        
+        if not hasattr(self, 'terrain_slope') or self.terrain_aspect is None:
+            return 0.0
+        
+        return float(self.terrain_aspect[x, y])
+    
+    def load_terrain_data_manually(self, elevation_data: np.ndarray = None, slope_data: np.ndarray = None, 
+                                  aspect_data: np.ndarray = None, barranco_mask: np.ndarray = None) -> None:
+        """
+        Manually load terrain data after model creation.
+        
+        Args:
+            elevation_data: Elevation array
+            slope_data: Slope array
+            aspect_data: Aspect array
+            barranco_mask: Barranco mask array
+        """
+        try:
+            logger.info("🔄 Manually loading terrain data...")
+            
+            # Load elevation data
+            if elevation_data is not None:
+                if elevation_data.shape != (self.height, self.width):
+                    if (elevation_data.shape[0] >= self.height and elevation_data.shape[1] >= self.width):
+                        elevation_data = elevation_data[:self.height, :self.width]
+                        logger.info(f"✅ Elevation data subsetted: {elevation_data.shape}")
+                    else:
+                        logger.warning(f"⚠️  Elevation data too small: {elevation_data.shape} vs ({self.height}, {self.width})")
+                        elevation_data = None
+                
+                if elevation_data is not None:
+                    self.terrain_elevation = elevation_data.astype(np.float32)
+                    logger.info(f"✅ Elevation data loaded: {elevation_data.shape}")
+            
+            # Load slope data
+            if slope_data is not None:
+                if slope_data.shape != (self.height, self.width):
+                    if (slope_data.shape[0] >= self.height and slope_data.shape[1] >= self.width):
+                        slope_data = slope_data[:self.height, :self.width]
+                    else:
+                        slope_data = None
+                
+                if slope_data is not None:
+                    self.terrain_slope = slope_data.astype(np.float32)
+                    logger.info("✅ Slope data loaded")
+            
+            # Load aspect data
+            if aspect_data is not None:
+                if aspect_data.shape != (self.height, self.width):
+                    if (aspect_data.shape[0] >= self.height and aspect_data.shape[1] >= self.width):
+                        aspect_data = aspect_data[:self.height, :self.width]
+                    else:
+                        aspect_data = None
+                
+                if aspect_data is not None:
+                    self.terrain_aspect = aspect_data.astype(np.float32)
+                    logger.info("✅ Aspect data loaded")
+            
+            # Load barranco mask
+            if barranco_mask is not None:
+                if barranco_mask.shape != (self.height, self.width):
+                    if (barranco_mask.shape[0] >= self.height and barranco_mask.shape[1] >= self.width):
+                        barranco_mask = barranco_mask[:self.height, :self.width]
+                    else:
+                        barranco_mask = None
+                
+                if barranco_mask is not None:
+                    self.barranco_mask = barranco_mask.astype(np.bool_)
+                    logger.info("✅ Barranco mask loaded")
+            
+            # Update terrain analysis
+            if hasattr(self, '_update_terrain_analysis'):
+                self._update_terrain_analysis()
+                logger.info("✅ Terrain analysis updated after manual loading")
+            else:
+                logger.info("✅ Terrain data loaded (analysis update skipped)")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to manually load terrain data: {e}")
+    
+    def add_ember(self, x: int, y: int, z: int, velocity: tuple) -> None:
+        """
+        Add ember to tracking system for fire spread simulation.
+        
+        Args:
+            x, y, z: Ember position
+            velocity: (vx, vy, vz) velocity components
+        """
+        if not hasattr(self, 'ember_tracking'):
+            self.ember_tracking = {
+                'active_embers': [],
+                'ember_history': [],
+                'ember_ignitions': 0,
+                'ember_spread_distance': 0
+            }
+        
+        ember = {
+            'position': (x, y, z),
+            'velocity': velocity,
+            'lifetime': 0,
+            'max_lifetime': 50  # Maximum ember lifetime
+        }
+        
+        self.ember_tracking['active_embers'].append(ember)
+        self.ember_tracking['ember_spread_distance'] += np.sqrt(velocity[0]**2 + velocity[1]**2)
+    
+    def update_embers(self) -> None:
+        """Update ember positions and lifetimes."""
+        if not hasattr(self, 'ember_tracking'):
+            return
+        
+        active_embers = []
+        
+        for ember in self.ember_tracking['active_embers']:
+            ember['lifetime'] += 1
+            
+            if ember['lifetime'] < ember['max_lifetime']:
+                # Update position based on velocity
+                x, y, z = ember['position']
+                vx, vy, vz = ember['velocity']
+                
+                new_x = int(x + vx)
+                new_y = int(y + vy)
+                new_z = int(z + vz)
+                
+                # Check bounds
+                if (0 <= new_x < self.width and 0 <= new_y < self.height and 
+                    0 <= new_z < self.num_layers):
+                    ember['position'] = (new_x, new_y, new_z)
+                    active_embers.append(ember)
+                else:
+                    # Ember out of bounds
+                    self.ember_tracking['ember_history'].append(ember)
+            else:
+                # Ember expired
+                self.ember_tracking['ember_history'].append(ember)
+        
+        self.ember_tracking['active_embers'] = active_embers
+    
+    def check_ember_ignition(self, x: int, y: int, z: int) -> bool:
+        """
+        Check if ember can ignite fuel at position (x, y, z).
+        
+        Args:
+            x, y, z: Grid coordinates
+            
+        Returns:
+            True if ignition occurs, False otherwise
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height and 0 <= z < self.num_layers):
+            return False
+        
+        # Get fuel load and state
+        fuel_load = self.get_fuel_load(x, y, z)
+        state = self.get_state(x, y, z)
+        
+        # Check if position is unburned and has sufficient fuel
+        if state == 0 and fuel_load > 0.1:  # 0 = unburned
+            # Random ignition based on fuel load and ember probability
+            ignition_prob = min(fuel_load / 10.0, 0.8)  # Higher fuel = higher probability
+            if np.random.random() < ignition_prob:
+                self.ember_tracking['ember_ignitions'] += 1
+                return True
+        
+        return False
+    
+    def increment_spread_stat(self, spread_type: str) -> None:
+        """
+        Increment fire spread statistics.
+        
+        Args:
+            spread_type: Type of spread ('horizontal_spread', 'vertical_spread', 'ember_spread', etc.)
+        """
+        if not hasattr(self, 'spread_stats'):
+            self.spread_stats = {
+                'horizontal_spread': 0,
+                'vertical_spread': 0,
+                'ember_spread': 0,
+                'ember_ignitions': 0,
+                'total_ignitions': 0,
+                'wind_assisted_spread': 0,
+                'slope_assisted_spread': 0,
+                'barranco_assisted_spread': 0
+            }
+        
+        if spread_type in self.spread_stats:
+            self.spread_stats[spread_type] += 1
+    
+    def get_terrain_summary(self) -> str:
+        """Get a summary of current terrain data."""
+        summary = []
+        
+        if hasattr(self, 'terrain_elevation') and self.terrain_elevation is not None:
+            elev_min = np.min(self.terrain_elevation)
+            elev_max = np.max(self.terrain_elevation)
+            elev_range = elev_max - elev_min
+            summary.append(f"Elevation: {elev_min:.1f}m to {elev_max:.1f}m (range: {elev_range:.1f}m)")
+        else:
+            summary.append("Elevation: Not loaded")
+        
+        if hasattr(self, 'terrain_slope') and self.terrain_slope is not None:
+            slope_max = np.max(self.terrain_slope)
+            summary.append(f"Slope: max {slope_max:.1f}°")
+        else:
+            summary.append("Slope: Not loaded")
+        
+        if hasattr(self, 'barranco_mask') and self.barranco_mask is not None:
+            barranco_count = np.sum(self.barranco_mask)
+            total_cells = self.width * self.height
+            barranco_percent = (barranco_count / total_cells) * 100
+            summary.append(f"Barrancos: {barranco_count} cells ({barranco_percent:.1f}%)")
+        else:
+            summary.append("Barrancos: Not loaded")
+        
+        return " | ".join(summary)
+    
+    def get_fuel_load(self, x: int, y: int, z: int = 0) -> float:
+        """
+        Get fuel load at specified position.
+        
+        Args:
+            x, y, z: Grid coordinates (z defaults to 0 for 2D models)
+            
+        Returns:
+            Fuel load value
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height and 0 <= z < self.num_layers):
+            return 0.0
+        
+        if hasattr(self, 'fuel_load_layers') and isinstance(self.fuel_load_layers, dict):
+            # Dictionary-based storage (legacy)
+            if z in self.fuel_load_layers:
+                return float(self.fuel_load_layers[z][x, y])
+        elif hasattr(self, 'fuel_load_layers') and isinstance(self.fuel_load_layers, list):
+            # List-based storage (new implementation)
+            if z < len(self.fuel_load_layers):
+                return float(self.fuel_load_layers[z][x, y])
+        elif hasattr(self, 'fuel_load') and self.fuel_load is not None:
+            # 3D array storage
+            if z < self.fuel_load.shape[2]:
+                return float(self.fuel_load[x, y, z])
+        
+        return 0.0
+    
+    def get_state(self, x: int, y: int, z: int = 0) -> int:
+        """
+        Get cell state at specified position.
+        
+        Args:
+            x, y, z: Grid coordinates (z defaults to 0 for 2D models)
+            
+        Returns:
+            Cell state (0=unburned, 1=burning, 2=burned, 3=ignition)
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height and 0 <= z < self.num_layers):
+            return 0  # Default to unburned for out-of-bounds
+        
+        if hasattr(self, 'state_layers') and isinstance(self.state_layers, dict):
+            # Dictionary-based storage (legacy)
+            if z in self.state_layers:
+                return int(self.state_layers[z][x, y])
+        elif hasattr(self, 'state_layers') and isinstance(self.state_layers, list):
+            # List-based storage (new implementation)
+            if z < len(self.state_layers):
+                return int(self.state_layers[z][x, y])
+        elif hasattr(self, 'state') and self.state is not None:
+            # 3D array storage
+            if z < self.state.shape[2]:
+                return int(self.state[x, y, z])
+        
+        return 0  # Default to unburned
+    
+    def set_fuel_load(self, x: int, y: int, z: int, value: float) -> None:
+        """
+        Set fuel load at specified position.
+        
+        Args:
+            x, y, z: Grid coordinates
+            value: Fuel load value to set
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height and 0 <= z < self.num_layers):
+            return
+        
+        if hasattr(self, 'fuel_load_layers') and isinstance(self.fuel_load_layers, dict):
+            # Dictionary-based storage (legacy)
+            if z in self.fuel_load_layers:
+                self.fuel_load_layers[z][x, y] = value
+        elif hasattr(self, 'fuel_load_layers') and isinstance(self.fuel_load_layers, list):
+            # List-based storage (new implementation)
+            if z < len(self.fuel_load_layers):
+                self.fuel_load_layers[z][x, y] = value
+        elif hasattr(self, 'fuel_load') and self.fuel_load is not None:
+            # 3D array storage
+            if z < self.fuel_load.shape[2]:
+                self.fuel_load[x, y, z] = value
+    
+    def set_state(self, x: int, y: int, z: int, state: int) -> None:
+        """
+        Set cell state at specified position.
+        
+        Args:
+            x, y, z: Grid coordinates
+            state: Cell state (0=unburned, 1=burning, 2=burned, 3=ignition)
+        """
+        if not (0 <= x < self.width and 0 <= y < self.height and 0 <= z < self.num_layers):
+            return
+        
+        if hasattr(self, 'state_layers') and isinstance(self.state_layers, dict):
+            # Dictionary-based storage (legacy)
+            if z in self.state_layers:
+                self.state_layers[z][x, y] = state
+        elif hasattr(self, 'fuel_load_layers') and isinstance(self.state_layers, list):
+            # List-based storage (new implementation)
+            if z < len(self.state_layers):
+                self.state_layers[z][x, y] = state
+        elif hasattr(self, 'state') and self.state is not None:
+            # 3D array storage
+            if z < self.state.shape[2]:
+                self.state[x, y, z] = state
 
 def create_forest_model(model_type: str = "standard", config=None, **kwargs):
     """

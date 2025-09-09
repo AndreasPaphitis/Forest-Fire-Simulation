@@ -15,11 +15,11 @@ from pathlib import Path
 import json
 import math
 
-def load_test1_data():
-    """Load Test 1 simulation data."""
-    results_dir = Path("results/Test 1/prod_20250614_150108/results")
+def load_validation_data(day=3):
+    """Load validation simulation data."""
+    results_dir = Path("validation_results_optimized")
     
-    print("🔥 Loading Test 1 simulation data for interactive exploration...")
+    print(f"🔥 Loading Day {day} validation data for interactive exploration...")
     
     try:
         # Load simulation history

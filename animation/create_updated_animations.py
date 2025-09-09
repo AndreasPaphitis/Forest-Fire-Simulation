@@ -14,33 +14,36 @@ from pathlib import Path
 import json
 import math
 
-def load_test1_data():
-    """Load Test 1 simulation data."""
-    results_dir = Path("results/Test 1/prod_20250614_150108/results")
+def load_validation_data(day=3):
+    """Load validation simulation data."""
+    results_dir = Path("validation_results_optimized")
     
-    print("🎬 Loading Test 1 simulation data for updated animations...")
+    print(f"🎬 Loading Day {day} validation data for updated animations...")
     
     try:
-        # Load simulation history
-        history_file = results_dir / "production_simulation_history.pkl"
-        with open(history_file, 'rb') as f:
-            history = pickle.load(f)
+        # Load forest model
+        forest_model_file = results_dir / f"day_{day}_forest_model.pkl"
+        with open(forest_model_file, 'rb') as f:
+            forest_model = pickle.load(f)
         
-        # Load final model state
-        model_file = results_dir / "production_final_forest_model_state.pkl"
-        with open(model_file, 'rb') as f:
-            model = pickle.load(f)
+        # Load engine (contains sparse_history)
+        engine_file = results_dir / f"day_{day}_engine.pkl"
+        with open(engine_file, 'rb') as f:
+            engine = pickle.load(f)
         
-        # Load metadata
-        metadata_file = results_dir / "animation_data/simulation_metadata.json"
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
+        # Load config
+        config_file = results_dir / f"day_{day}_config.pkl"
+        with open(config_file, 'rb') as f:
+            config = pickle.load(f)
+        
+        # Use sparse history from engine
+        history = engine.sparse_history if hasattr(engine, 'sparse_history') else []
         
         print(f"✅ Loaded {len(history)} simulation steps")
-        print(f"✅ Grid size: {metadata['grid_size']}")
-        print(f"✅ Layers: {metadata['num_layers']}")
+        print(f"✅ Grid size: {config.grid_size}")
+        print(f"✅ Layers: {config.num_layers}")
         
-        return history, model, metadata
+        return history, forest_model, config
         
     except Exception as e:
         print(f"❌ Error loading data: {e}")
@@ -96,7 +99,7 @@ def extract_animation_data(model, sample_step=15):
     
     return fuel_data, fire_data, layer_stats, sample_width, sample_height
 
-def create_stratified_layer_animation(fuel_data, fire_data, layer_stats, output_file="test1_stratified_animation.gif"):
+def create_stratified_layer_animation(fuel_data, fire_data, layer_stats, day=3, output_dir="validation_processed_results"):
     """Create animation showing fire by canopy strata."""
     
     print("🌲 Creating stratified layer animation...")
@@ -272,7 +275,7 @@ def generate_consistent_embers(fuel_data, fire_data, layer_stats, ember_mode='an
     
     return ember_network
 
-def create_3d_ember_animation(fuel_data, fire_data, layer_stats, history, output_file="test1_3d_ember_animation.gif"):
+def create_3d_ember_animation(fuel_data, fire_data, layer_stats, history, day=3, output_dir="validation_processed_results"):
     """Create 3D ember transport animation with consistent parameters."""
     
     print("🔥 Creating 3D ember transport animation...")
@@ -356,7 +359,7 @@ def create_3d_ember_animation(fuel_data, fire_data, layer_stats, history, output
     
     return anim
 
-def create_vertical_profile_animation(fuel_data, fire_data, layer_stats, history, output_file="test1_vertical_profile_animation.gif"):
+def create_vertical_profile_animation(fuel_data, fire_data, layer_stats, history, day=3, output_dir="validation_processed_results"):
     """Create animated vertical fire profile."""
     
     print("📊 Creating vertical profile animation...")
@@ -460,7 +463,7 @@ def create_vertical_profile_animation(fuel_data, fire_data, layer_stats, history
     
     return anim
 
-def create_fire_progression_animation(history, fuel_data, fire_data, layer_stats, output_file="test1_fire_progression_animation.gif"):
+def create_fire_progression_animation(history, fuel_data, fire_data, layer_stats, day=3, output_dir="validation_processed_results"):
     """Create fire progression animation over time."""
     
     print("⏱️ Creating fire progression animation...")
@@ -569,7 +572,7 @@ def main():
     
     try:
         # Load simulation data
-        history, model, metadata = load_test1_data()
+        history, model, config = load_validation_data(day=3)
         
         if history is None:
             print("❌ Failed to load simulation data")

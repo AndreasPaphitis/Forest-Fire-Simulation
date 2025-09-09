@@ -1204,9 +1204,12 @@ class TenerifeFirePerimeterCalibrator:
         from src.core.calibration.parameter_bounds import get_parameter_bounds_for_calibration
         parameter_bounds = get_parameter_bounds_for_calibration(calibration_config.calibration_parameters)
         
-        # Create spatial similarity objective function
-        from src.core.calibration.objective_functions import create_default_spatial_objective
-        objective_function = create_default_spatial_objective()
+        # 🚨 CRITICAL FIX: Use corrected objective function that minimizes spatial error
+        from src.core.calibration.objective_functions_corrected import create_corrected_spatial_objective
+        objective_function = create_corrected_spatial_objective()
+        
+        print("🔧 Using CORRECTED objective function (minimizes spatial error instead of maximizing similarity)")
+        print("   This will prevent finding extreme parameters like spread_probability=0.95")
         
         # Create grid search calibrator
         calibrator = GridSearchCalibrator(

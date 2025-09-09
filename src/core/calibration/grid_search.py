@@ -496,6 +496,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
         if name == "SpatialSimilarityObjective":
             from src.core.calibration.objective_functions import SpatialSimilarityObjective
             return SpatialSimilarityObjective()
+        elif name == "CorrectedSpatialErrorObjective":
+            from src.core.calibration.objective_functions_corrected import CorrectedSpatialErrorObjective
+            return CorrectedSpatialErrorObjective()
         else:
             raise ValueError(f"Unknown objective function: {name}")
     

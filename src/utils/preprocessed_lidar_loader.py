@@ -45,8 +45,8 @@ class PreprocessedLiDARLoader:
         if not self.metadata:
             raise ValueError(f"Failed to load metadata from {preprocessed_dir}")
         
-        logger.info(f"Initialized preprocessed LiDAR loader: {preprocessed_dir}")
-        logger.info(f"Available layers: {len(self.metadata.get('processed_layers', []))}")
+        logger.debug(f"Initialized preprocessed LiDAR loader: {preprocessed_dir}")
+        logger.debug(f"Available layers: {len(self.metadata.get('processed_layers', []))}")
     
     def _load_metadata(self) -> Optional[Dict[str, Any]]:
         """Load metadata from lidar_metadata.json."""
@@ -98,14 +98,14 @@ class PreprocessedLiDARLoader:
         processed_layers = self.metadata.get('processed_layers', [])
         layer_data = {}
         
-        logger.info(f"Loading {len(processed_layers)} layers...")
+        logger.debug(f"Loading {len(processed_layers)} layers...")
         
         for layer_idx in processed_layers:
             layer_array = self.load_layer(layer_idx)
             if layer_array is not None:
                 layer_data[layer_idx] = layer_array
         
-        logger.info(f"Successfully loaded {len(layer_data)} layers")
+        logger.debug(f"Successfully loaded {len(layer_data)} layers")
         return layer_data
     
     def get_grid_info(self) -> Tuple[Tuple[int, int], float]:
