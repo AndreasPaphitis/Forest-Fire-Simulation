@@ -311,7 +311,7 @@ def test_corrected_objective():
     ]
     
     for name, pred in scenarios:
-        target_data = {'target_fire_perimeter': target}
+        target_data = {'fire_perimeter': target}
         result = objective.evaluate(pred, target_data)
         
         print(f"\n{name}:")
