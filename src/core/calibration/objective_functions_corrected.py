@@ -179,11 +179,11 @@ class CorrectedSpatialErrorObjective(ObjectiveFunction):
             
             # CRITICAL FIX: Use the actual key that exists in target_data
             if 'fire_perimeter' in target_data:
-                target_2d = np.array(target_data['fire_perimeter'])
+                target_2d_raw = target_data['fire_perimeter']
             elif 'fire_perimeter_dense' in target_data:
-                target_2d = np.array(target_data['fire_perimeter_dense'])
+                target_2d_raw = target_data['fire_perimeter_dense']
             elif 'target_fire_perimeter' in target_data:
-                target_2d = np.array(target_data['target_fire_perimeter'])
+                target_2d_raw = target_data['target_fire_perimeter']
             else:
                 available_keys = list(target_data.keys()) if target_data else []
                 return ObjectiveResult(
@@ -193,9 +193,35 @@ class CorrectedSpatialErrorObjective(ObjectiveFunction):
                     error_message=f"No fire perimeter data found. Available keys: {available_keys}"
                 )
             
-            # Ensure arrays are boolean
-            predicted_2d = predicted_2d.astype(bool)
-            target_2d = target_2d.astype(bool)
+            # 🚨 CRITICAL FIX: Handle different data types safely
+            try:
+                # Handle sparse matrices and complex structures
+                if hasattr(target_2d_raw, 'toarray'):
+                    target_2d = target_2d_raw.toarray()
+                elif hasattr(target_2d_raw, 'todense'):
+                    target_2d = np.array(target_2d_raw.todense())
+                else:
+                    target_2d = np.asarray(target_2d_raw)
+                
+                # Handle predicted data similarly
+                if hasattr(predicted_2d, 'toarray'):
+                    predicted_2d = predicted_2d.toarray()
+                elif hasattr(predicted_2d, 'todense'):
+                    predicted_2d = np.array(predicted_2d.todense())
+                else:
+                    predicted_2d = np.asarray(predicted_2d)
+                
+                # Ensure arrays are boolean
+                predicted_2d = predicted_2d.astype(bool)
+                target_2d = target_2d.astype(bool)
+                
+            except (ValueError, TypeError) as e:
+                return ObjectiveResult(
+                    value=999.0,
+                    components={},
+                    is_valid=False,
+                    error_message=f"Array conversion error: {str(e)}"
+                )
             
             # Shape validation
             if predicted_2d.shape != target_2d.shape:
