@@ -53,7 +53,7 @@ from src.core.calibration.fire_perimeter_calibration import (
     FirePerimeterDataset
 )
 from src.core.calibration.calibration_config import CalibrationConfig
-from src.core.calibration.objective_functions import SpatialSimilarityObjective
+from src.core.calibration.objective_functions_corrected import create_corrected_spatial_objective
 from src.config.config_tools import ModelConfig
 from src.core.forest_model import create_forest_model
 
@@ -415,7 +415,7 @@ def run_validation_for_day(day_number: int,
     }
     
     # Calculate validation metrics using same objective function as calibration
-    objective = SpatialSimilarityObjective()
+    objective = create_corrected_spatial_objective()
     
     # Create target data structure (same as calibration)
     target_data = {
