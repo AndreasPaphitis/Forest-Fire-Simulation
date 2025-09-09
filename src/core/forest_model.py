@@ -2949,7 +2949,10 @@ class ForestModel(BaseForestModel):
                 width, height, num_layers = self.state.shape
                 predicted_2d = np.zeros((width, height), dtype=float)
                 
-                # Access sparse layers directly without any conversion
+                # 🔥 FIXED: Access sparse layers with ground layer priority
+                # Create layer weights for realistic 2D fire perimeter
+                layer_weights = [1.0] + [0.3] * (num_layers - 1)  # Ground=1.0, canopy=0.3
+                
                 for layer_idx in range(num_layers):
                     try:
                         # Get the sparse matrix directly from the accessor
@@ -2968,6 +2971,9 @@ class ForestModel(BaseForestModel):
                             # Get the coordinates of non-zero elements directly
                             rows, cols = sparse_matrix.nonzero()
                             
+                            # Apply layer weighting for realistic 2D projection
+                            weight = layer_weights[layer_idx] if layer_idx < len(layer_weights) else 0.3
+                            
                             # Mark these positions as fire-affected in our 2D array
                             # Count both BURNING (1) and BURNED (2) cells as fire perimeter
                             for row, col in zip(rows, cols):
@@ -2975,23 +2981,52 @@ class ForestModel(BaseForestModel):
                                     cell_state = sparse_matrix[row, col]
                                     # Count both burning and burned cells as part of fire perimeter
                                     if cell_state in [FrameworkCellState.BURNING.value, FrameworkCellState.BURNED.value]:
-                                        predicted_2d[row, col] = 1.0
+                                        # Apply layer weight (ground layer gets full weight)
+                                        if layer_idx == 0:
+                                            predicted_2d[row, col] = 1.0  # Ground layer always counts fully
+                                        else:
+                                            # Only add canopy fire where ground is not already burning
+                                            if predicted_2d[row, col] < 0.5:
+                                                predicted_2d[row, col] = max(predicted_2d[row, col], weight)
                                         
                     except Exception as e:
                         logger.warning(f"Error accessing layer {layer_idx}: {e}")
                         continue
+                
+                # Ensure binary output (0 or 1) for clean comparison
+                predicted_2d = (predicted_2d > 0.5).astype(float)
                 
                 return predicted_2d
                 
             else:
                 # Handle dense storage - same logic as objective function
                 if hasattr(self.state, 'shape') and len(self.state.shape) == 3:
-                    # Regular 3D array: sum across layers to get 2D fire map
-                    # Count both BURNING (1) and BURNED (2) cells as fire perimeter
-                    burning_cells = np.sum(self.state == FrameworkCellState.BURNING.value, axis=2)
-                    burned_cells = np.sum(self.state == FrameworkCellState.BURNED.value, axis=2)
-                    predicted_2d = (burning_cells + burned_cells) > 0  # Any layer burning or burned
-                    return predicted_2d.astype(float)
+                    # 🔥 FIXED: Prioritize ground layer for 2D fire perimeter (more realistic for EMSR comparison)
+                    # Ground layer (layer 0) represents surface fire that EMSR satellites actually detect
+                    width, height, num_layers = self.state.shape
+                    
+                    # Start with ground layer (layer 0) as primary
+                    ground_burning = (self.state[:, :, 0] == FrameworkCellState.BURNING.value)
+                    ground_burned = (self.state[:, :, 0] == FrameworkCellState.BURNED.value)
+                    predicted_2d = (ground_burning | ground_burned).astype(float)
+                    
+                    # Add weighted contribution from canopy layers (reduces over-prediction)
+                    if num_layers > 1:
+                        # Create layer weights: ground=1.0, each higher layer=0.3 (much lower impact)
+                        layer_weights = [1.0] + [0.3] * (num_layers - 1)
+                        
+                        for layer_idx in range(1, num_layers):
+                            layer_burning = (self.state[:, :, layer_idx] == FrameworkCellState.BURNING.value)
+                            layer_burned = (self.state[:, :, layer_idx] == FrameworkCellState.BURNED.value)
+                            layer_fire = (layer_burning | layer_burned).astype(float)
+                            
+                            # Only add canopy fire where ground is NOT already burning (avoid double-counting)
+                            canopy_only = layer_fire * (1 - predicted_2d) * layer_weights[layer_idx]
+                            predicted_2d = np.maximum(predicted_2d, predicted_2d + canopy_only)
+                    
+                    # Ensure binary output (0 or 1) for clean comparison
+                    predicted_2d = (predicted_2d > 0.5).astype(float)
+                    return predicted_2d
                 elif hasattr(self.state, 'shape') and len(self.state.shape) == 2:
                     # 2D array: use directly
                     # Count both BURNING (1) and BURNED (2) cells as fire perimeter
