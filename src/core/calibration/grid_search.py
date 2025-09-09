@@ -905,10 +905,23 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # Set ignition points AFTER simulation engine is created (same as validation script)
                 worker_logger.debug("Setting ignition points from config...")
+                ignition_set = False
                 try:
-                    # Use ignition points from config (same as validation script)
+                    # CRITICAL DEBUG: Check config for ignition points
+                    worker_logger.debug(f"🔍 DEBUG: model_config type: {type(model_config)}")
+                    worker_logger.debug(f"🔍 DEBUG: hasattr ignition_points: {hasattr(model_config, 'ignition_points')}")
+                    
+                    # Try multiple ways to get ignition points
+                    ignition_points = None
                     if hasattr(model_config, 'ignition_points') and model_config.ignition_points:
-                        for ignition_point in model_config.ignition_points:
+                        ignition_points = model_config.ignition_points
+                        worker_logger.debug(f"✅ Found ignition_points in model_config: {ignition_points}")
+                    elif isinstance(model_config, dict) and 'ignition_points' in model_config:
+                        ignition_points = model_config['ignition_points']
+                        worker_logger.debug(f"✅ Found ignition_points in config dict: {ignition_points}")
+                    
+                    if ignition_points:
+                        for ignition_point in ignition_points:
                             forest_model.set_ignition(ignition_point[0], ignition_point[1], ignition_point[2])
                             worker_logger.debug(f"✅ Ignition point set from config: ({ignition_point[0]}, {ignition_point[1]}, {ignition_point[2]})")
                             
@@ -916,16 +929,30 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                             if hasattr(engine, 'active_cells'):
                                 engine.active_cells.add((ignition_point[0], ignition_point[1], ignition_point[2]))
                                 worker_logger.debug(f"✅ Added ignition point to engine active cells: {ignition_point}")
-                    else:
-                        # Fallback to default ignition point
+                            ignition_set = True
+                    
+                    # CRITICAL FALLBACK: Always ensure ignition is set
+                    if not ignition_set:
+                        worker_logger.warning("⚠️ No ignition points found in config - using default")
                         default_x, default_y = 395, 377  # Center of 609×609 grid
                         forest_model.set_ignition(default_x, default_y, 0)
                         worker_logger.debug(f"✅ Default ignition point set: ({default_x}, {default_y}, 0)")
                         if hasattr(engine, 'active_cells'):
                             engine.active_cells.add((default_x, default_y, 0))
+                        ignition_set = True
                     
                 except Exception as ignition_error:
                     worker_logger.warning(f"⚠️ Failed to set ignition point: {ignition_error}")
+                    # EMERGENCY FALLBACK
+                    if not ignition_set:
+                        try:
+                            default_x, default_y = 395, 377
+                            forest_model.set_ignition(default_x, default_y, 0)
+                            worker_logger.debug(f"🚨 Emergency ignition point set: ({default_x}, {default_y}, 0)")
+                            if hasattr(engine, 'active_cells'):
+                                engine.active_cells.add((default_x, default_y, 0))
+                        except Exception as emergency_error:
+                            worker_logger.error(f"❌ Emergency ignition failed: {emergency_error}")
                 
                 # Run simulation with timeout protection
                 worker_logger.debug("Starting simulation run...")
@@ -1104,11 +1131,47 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
         # Calculate objective value
                 objective_function = get_objective_function_by_name(objective_function_name)
-                objective_result = objective_function.evaluate(simulation_result, target_data)
+                
+                # CRITICAL DEBUG: Check target data and simulation result format
+                worker_logger.debug(f"🔍 DEBUG: target_data type: {type(target_data)}")
+                worker_logger.debug(f"🔍 DEBUG: target_data keys: {list(target_data.keys()) if target_data else 'None'}")
+                worker_logger.debug(f"🔍 DEBUG: simulation_result type: {type(simulation_result)}")
+                
+                # CRITICAL FIX: Ensure target data has correct format
+                if target_data is None:
+                    worker_logger.error("❌ target_data is None - objective evaluation will fail")
+                    objective_result = ObjectiveResult(
+                        value=999.0,
+                        components={},
+                        is_valid=False,
+                        error_message="Target data is None"
+                    )
+                elif 'target_fire_perimeter' not in target_data:
+                    worker_logger.error(f"❌ target_fire_perimeter not in target_data keys: {list(target_data.keys())}")
+                    objective_result = ObjectiveResult(
+                        value=999.0,
+                        components={},
+                        is_valid=False,
+                        error_message="Missing target_fire_perimeter in target_data"
+                    )
+                else:
+                    # CRITICAL FIX: Ensure simulation result has correct format for objective function
+                    if not isinstance(simulation_result, dict):
+                        # Convert to dict format expected by objective function
+                        simulation_result = {'forest_model': forest_model}
+                        worker_logger.debug("🔧 Converted simulation_result to dict format with forest_model")
+                    
+                    objective_result = objective_function.evaluate(simulation_result, target_data)
+                    worker_logger.debug(f"✅ Objective evaluation: value={objective_result.value}, valid={objective_result.is_valid}")
                 
                 # Extract values from ObjectiveResult object
                 objective_value = objective_result.value if objective_result.is_valid else 0.0
                 objective_components = objective_result.components if objective_result.is_valid else {}
+                
+                if not objective_result.is_valid:
+                    worker_logger.error(f"❌ Objective evaluation failed: {objective_result.error_message}")
+                else:
+                    worker_logger.debug(f"✅ Valid objective: {objective_value}")
                 
                 # Extract vertical fire spread statistics
                 vertical_spread_stats = None
