@@ -652,6 +652,12 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 worker_config_dict = filtered_config
                 
+                # CRITICAL DEBUG: Check if ignition_points survived filtering
+                worker_logger.debug(f"🔍 worker_config_dict keys after filtering: {list(worker_config_dict.keys())}")
+                worker_logger.debug(f"🔍 ignition_points in filtered config: {'ignition_points' in worker_config_dict}")
+                if 'ignition_points' in worker_config_dict:
+                    worker_logger.debug(f"🔍 ignition_points value after filtering: {worker_config_dict['ignition_points']}")
+                
                 model_config = ModelConfig(**worker_config_dict)
                 worker_logger.debug(f"✅ ModelConfig created successfully with worker seed: {worker_seed}")
                 worker_logger.debug(f"🔍 ModelConfig grid_size: {model_config.grid_size}")
@@ -1146,13 +1152,13 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         is_valid=False,
                         error_message="Target data is None"
                     )
-                elif 'target_fire_perimeter' not in target_data:
-                    worker_logger.error(f"❌ target_fire_perimeter not in target_data keys: {list(target_data.keys())}")
+                elif 'fire_perimeter' not in target_data and 'fire_perimeter_dense' not in target_data and 'target_fire_perimeter' not in target_data:
+                    worker_logger.error(f"❌ No fire perimeter data found in target_data keys: {list(target_data.keys())}")
                     objective_result = ObjectiveResult(
                         value=999.0,
                         components={},
                         is_valid=False,
-                        error_message="Missing target_fire_perimeter in target_data"
+                        error_message="Missing fire perimeter data in target_data"
                     )
                 else:
                     # CRITICAL FIX: Ensure simulation result has correct format for objective function
