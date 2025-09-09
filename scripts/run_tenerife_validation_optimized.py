@@ -602,7 +602,10 @@ def main():
         min_fuel_value=0.02,
         spread_probability=0.95,
         fuel_consumption_rate=0.6333333333333333,
-        ember_probability=0.2
+        ember_probability=0.2,
+        
+        # 🔥 CRITICAL FIX: Force PAD normalization path (consistent with calibration fix)
+        initial_fuel_load=1.0
     )
     
     print(f"✅ Configuration created with best calibrated parameters:")

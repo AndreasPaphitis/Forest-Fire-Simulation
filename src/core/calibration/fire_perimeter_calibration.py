@@ -874,7 +874,7 @@ class TenerifeFirePerimeterCalibrator:
             spread_probability=0.6,
             fuel_consumption_rate=0.8,
             ignition_threshold=0.4,
-            initial_fuel_load=8.0,
+            initial_fuel_load=1.0,  # 🔥 CRITICAL FIX: Force PAD normalization path (fuel_factor = PAD_value directly)
             
             # TERRAIN AND WIND EFFECTS
             slope_influence=0.4,
