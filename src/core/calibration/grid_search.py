@@ -615,6 +615,9 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                 
                 # CRITICAL FIX: Debug the worker_config_dict before filtering
                 worker_logger.debug(f"🔍 worker_config_dict keys before filtering: {list(worker_config_dict.keys())}")
+                worker_logger.debug(f"🔍 ignition_points in worker_config_dict BEFORE filtering: {'ignition_points' in worker_config_dict}")
+                if 'ignition_points' in worker_config_dict:
+                    worker_logger.debug(f"🔍 ignition_points value BEFORE filtering: {worker_config_dict['ignition_points']}")
                 if 'grid_size' in worker_config_dict:
                     worker_logger.debug(f"🔍 worker_config_dict grid_size: {worker_config_dict['grid_size']}")
                 else:
@@ -651,6 +654,11 @@ def evaluate_worker_function(parameter_values: Dict[str, float],
                         filtered_config[param] = worker_config_dict[param]
                 
                 worker_config_dict = filtered_config
+                
+                # 🚨 CRITICAL FIX: FORCE ignition_points into worker_config_dict if missing
+                if 'ignition_points' not in worker_config_dict:
+                    worker_config_dict['ignition_points'] = [(395, 377, 0)]  # Force default ignition
+                    worker_logger.warning(f"🚨 FORCED ignition_points into worker_config_dict: {worker_config_dict['ignition_points']}")
                 
                 # CRITICAL DEBUG: Check if ignition_points survived filtering
                 worker_logger.debug(f"🔍 worker_config_dict keys after filtering: {list(worker_config_dict.keys())}")
