@@ -598,11 +598,11 @@ def main():
         # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in 609×609 grid
         ignition_points=[(304, 304, 0)],  # Center of 609×609 grid (EMSR fire center)
         
-        # 🎯 HARDCODED BEST PARAMETERS from HPC calibration (lowest error = 0.8297)
-        min_fuel_value=0.02,
-        spread_probability=0.95,
-        fuel_consumption_rate=0.6333333333333333,
-        ember_probability=0.2,
+        # 🎯 OPTIMAL PARAMETERS from successful HPC calibration (lowest error = 0.5127)
+        min_fuel_value=0.02,                # Very low threshold - aggressive ignition
+        spread_probability=0.95,            # Very high spread - rapid fire growth  
+        fuel_consumption_rate=0.30,         # Slow consumption - fire persists longer
+        ember_probability=0.60,             # High ember generation - spot fires
         
         # 🔥 CRITICAL FIX: Force PAD normalization path (consistent with calibration fix)
         initial_fuel_load=1.0
