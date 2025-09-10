@@ -7,8 +7,8 @@ This script uses the OptimizedFireSimulationEngine for enhanced performance whil
 identical scientific results and validation accuracy.
 
 SIMULATION CONFIGURATION:
-- Total steps: 200 (configurable via --max-steps argument)
-- Save interval: Every 20 steps (10 total saved frames) - OPTIMIZED FOR TIME EFFICIENCY
+- Total steps: 100 (configurable via --max-steps argument) - HPC OPTIMIZED
+- Save interval: Every 20 steps (5 total saved frames) - OPTIMIZED FOR TIME EFFICIENCY
 - Grid size: 609×609 (memory-efficient dimensions)
 - Full state storage: ENABLED (store_full_states=True)
 
@@ -574,7 +574,7 @@ def main():
                        help='Output directory for validation results')
     parser.add_argument('--days', type=str, default='3,4',
                        help='Comma-separated list of days to validate (e.g., "3,4")')
-    parser.add_argument('--max-steps', type=int, default=200, help='Maximum simulation steps (default: 200 for comprehensive analysis)')
+    parser.add_argument('--max-steps', type=int, default=100, help='Maximum simulation steps (default: 100 for HPC efficiency)')
     parser.add_argument('--parameter-set', type=str, default='OPTIMAL_EXTREME', 
                        choices=['OPTIMAL_EXTREME', 'RANK_2_CONSERVATIVE', 'RANK_3_BALANCED', 'MODERATE_ALL'],
                        help='Parameter set to use (default: OPTIMAL_EXTREME)')
