@@ -829,13 +829,14 @@ class TenerifeFirePerimeterCalibrator:
         path_config = self._validate_paths()
         
         # Calculate optimal grid size based on fire perimeter with buffer
+        # 🔥 CRITICAL FIX: Prioritize base_config grid_size over calibrator grid_size
         if grid_size is not None:
-            # Use the grid size passed from the calibration script (matches target data)
+            # Use the grid size passed from base_config (HIGHEST PRIORITY)
             optimal_grid_size = grid_size
-            print(f"🎯 Using target-matched grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+            print(f"🎯 Using base_config grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
         elif self.grid_size:
             optimal_grid_size = self.grid_size
-            print(f"🎯 Using provided grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
+            print(f"🎯 Using calibrator grid size: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
         else:
             optimal_grid_size = self._calculate_optimal_grid_size_from_day4(buffer_percent=10.0)
             print(f"🎯 Dynamic grid size calculated: {optimal_grid_size[0]} × {optimal_grid_size[1]} cells")
