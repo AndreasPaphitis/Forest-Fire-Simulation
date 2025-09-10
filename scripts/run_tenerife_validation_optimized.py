@@ -595,8 +595,11 @@ def main():
         use_preprocessed_terrain=True,
         preprocessed_terrain_dir='preprocessed_terrain',
         
-        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in LiDAR grid
-        ignition_points=[(830, 598, 0)],  # EMSR fire center in LiDAR grid coordinates
+        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in EMSR grid coordinates  
+        ignition_points=[(598, 510, 0)],  # EMSR fire center in EMSR-centered grid coordinates
+        
+        # 🗺️ CRITICAL FIX: Set grid bounds to match EMSR coordinate system
+        grid_bounds_utm=[347073, 3130660, 371013, 3151060],  # SW_x, SW_y, NE_x, NE_y in UTM
         
         # 🎯 HARDCODED BEST PARAMETERS from HPC calibration (lowest error = 0.8297)
         min_fuel_value=0.02,
