@@ -124,7 +124,7 @@ def main():
             workers=args.workers,
             grid_search_points=args.grid_points,
             experiment_name=experiment_name,
-            grid_size=(1197, 1020),  # 🔥 CRITICAL FIX: Use LiDAR preprocessed grid size for spatial alignment
+            grid_size=(609, 609),  # 🔄 REVERT: Use smaller grid size for memory efficiency
             base_directory='EMSR Delineations'
         )
         print("✅ Calibrator created")
@@ -189,7 +189,7 @@ def main():
         
         # Create base config with preprocessed data
         base_config = ModelConfig(
-            grid_size=(1197, 1020),  # 🔥 CRITICAL FIX: Use LiDAR preprocessed grid size
+            grid_size=(609, 609),  # 🔄 REVERT: Use smaller grid size for memory efficiency
             num_layers=20,  # Use 20 layers (preprocessed)
             max_steps=args.max_steps,
             model_resolution=20.0,
@@ -213,7 +213,7 @@ def main():
         base_config.preprocessed_lidar_dir = "preprocessed_lidar"
         
         # CRITICAL FIX: Set ignition points for calibration
-        base_config.ignition_points = [(830, 598, 0)]  # EMSR fire center in LiDAR grid coordinates
+        base_config.ignition_points = [(304, 304, 0)]  # Center of 609×609 grid (EMSR fire center)
         
         # TOP 4 MOST SENSITIVE PARAMETERS FROM SENSITIVITY ANALYSIS
         # Based on completed sensitivity analysis results:
@@ -251,7 +251,7 @@ def main():
         print(f"✅ Using preprocessed terrain data")
         
         print(f"Configuration ready:")
-        print(f"   Grid size: 1197 × 1020")
+        print(f"   Grid size: 609 × 609")
         print(f"   Parameters: {len(top_4_parameters)}")
         print(f"   Total combinations: {args.grid_points ** len(top_4_parameters)}")
         print()

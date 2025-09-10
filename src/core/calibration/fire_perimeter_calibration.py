@@ -900,13 +900,8 @@ class TenerifeFirePerimeterCalibrator:
             wind_direction=45.0,
         )
         
-        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in EMSR grid coordinates
-        base_config.ignition_points = [(598, 510, 0)]  # EMSR fire center in EMSR-centered grid coordinates
-        
-        # 🗺️ CRITICAL FIX: Set grid bounds to match EMSR target data coordinate system
-        # Calculate EMSR-centered grid bounds (from diagnostic analysis)
-        emsr_grid_bounds = [347073, 3130660, 371013, 3151060]  # SW_x, SW_y, NE_x, NE_y in UTM
-        base_config.grid_bounds_utm = emsr_grid_bounds
+        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in 609×609 grid
+        base_config.ignition_points = [(304, 304, 0)]  # Center of 609×609 grid (EMSR fire center)
         
         # Create calibration targets from training data
         from src.core.calibration.calibration_config import CalibrationTarget

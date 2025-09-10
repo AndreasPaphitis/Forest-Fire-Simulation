@@ -571,7 +571,7 @@ def main():
     # Create configuration with best parameters (using correct Tenerife settings)
     # 🚨 CRITICAL FIX: Use original working grid size to match target data
     config = ModelConfig(
-        grid_size=(1197, 1020),  # 🔥 CRITICAL FIX: Use LiDAR preprocessed grid size for spatial alignment  # 🚨 FIX: Revert to original working dimensions (609×609)
+        grid_size=(609, 609),  # 🔄 REVERT: Use smaller grid size for memory efficiency  # 🚨 FIX: Revert to original working dimensions (609×609)
         num_layers=20,  # Use 20 layers (preprocessed terrain)
         max_steps=args.max_steps,  # argparse converts hyphens to underscores
         model_resolution=20.0,
@@ -595,11 +595,8 @@ def main():
         use_preprocessed_terrain=True,
         preprocessed_terrain_dir='preprocessed_terrain',
         
-        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in EMSR grid coordinates  
-        ignition_points=[(598, 510, 0)],  # EMSR fire center in EMSR-centered grid coordinates
-        
-        # 🗺️ CRITICAL FIX: Set grid bounds to match EMSR coordinate system
-        grid_bounds_utm=[347073, 3130660, 371013, 3151060],  # SW_x, SW_y, NE_x, NE_y in UTM
+        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in 609×609 grid
+        ignition_points=[(304, 304, 0)],  # Center of 609×609 grid (EMSR fire center)
         
         # 🎯 HARDCODED BEST PARAMETERS from HPC calibration (lowest error = 0.8297)
         min_fuel_value=0.02,
