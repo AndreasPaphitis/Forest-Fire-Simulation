@@ -8,7 +8,7 @@ identical scientific results and validation accuracy.
 
 SIMULATION CONFIGURATION:
 - Total steps: 200 (configurable via --max-steps argument)
-- Save interval: Every 10 steps (20 total saved frames) - COMPREHENSIVE 3D ANIMATION
+- Save interval: Every 20 steps (10 total saved frames) - BALANCED PERFORMANCE
 - Grid size: 609×609 (memory-efficient dimensions)
 - Full state storage: ENABLED (store_full_states=True)
 
@@ -384,7 +384,7 @@ def run_validation_for_day(day_number: int,
     
     # Initialize fire simulation engine
     engine = FireSimulationEngine(forest_model=forest_model, config=config)
-    engine.save_interval = 10  # 🔥 FIRE PROGRESSION: Save every 10 steps for detailed analysis
+    engine.save_interval = 20  # 🔥 FIRE PROGRESSION: Save every 20 steps for balanced performance
     engine.lazy_save_enabled = True  # 🔥 FIRE PROGRESSION: Enable lazy saving for efficiency
     
     # 🚨 CRITICAL: Disable ALL cleanup for validation to preserve simulation integrity
@@ -398,8 +398,8 @@ def run_validation_for_day(day_number: int,
     engine.save_directory.mkdir(exist_ok=True)
     print(f"💾 LAZY SAVE SYSTEM: Enabled, saving every {engine.save_interval} steps to {engine.save_directory}")
     print(f"🚨 MEMORY SETTINGS: Level {config.memory_optimization_level}, ALL cleanup DISABLED")
-    print(f"🎬 COMPREHENSIVE 3D ANIMATION: Full 3D state + 2D perimeter + coordinates saved every 10 steps")
-    print(f"📊 TOTAL ANIMATION FRAMES: {max_steps // 10} frames (every 10 steps for {max_steps} total steps)")
+    print(f"🎬 BALANCED 3D ANIMATION: Full 3D state + 2D perimeter + coordinates saved every 20 steps")
+    print(f"📊 TOTAL ANIMATION FRAMES: {max_steps // 20} frames (every 20 steps for {max_steps} total steps)")
     
     # Engine initialized with optimizations
     # Memory optimization enabled
@@ -578,9 +578,16 @@ def main():
     parser.add_argument('--parameter-set', type=str, default='OPTIMAL_EXTREME', 
                        choices=['OPTIMAL_EXTREME', 'RANK_2_CONSERVATIVE', 'RANK_3_BALANCED', 'MODERATE_ALL'],
                        help='Parameter set to use (default: OPTIMAL_EXTREME)')
+    parser.add_argument('--fast-mode', action='store_true', 
+                       help='Enable fast mode: 80 steps, save every 40 steps, minimal storage')
     parser.add_argument('--use-latest-params', action='store_true', help='Use latest calibrated parameters instead of loading from file')
     
     args = parser.parse_args()
+    
+    # Apply fast mode settings
+    if args.fast_mode:
+        args.max_steps = 80  # Override to calibration-like speed
+        print("⚡ FAST MODE ENABLED: 80 steps, save every 40 steps, minimal storage")
     
     print("🚀 TENERIFE VALIDATION WITH OPTIMIZED ENGINE")
     print("=" * 60)
@@ -631,13 +638,13 @@ def main():
         max_steps=args.max_steps,  # argparse converts hyphens to underscores
         model_resolution=20.0,
         simulation_type="memory_optimized",
-        memory_optimization_level=1,  # 🚨 CRITICAL FIX: Reduced from 3 to preserve simulation integrity
-        use_disk_storage=True,
-        use_sparse_storage=True,
+        memory_optimization_level=0,  # 🚀 SPEED: Disable optimization for 60GB RAM
+        use_disk_storage=False,       # 🚀 SPEED: Keep everything in RAM (60GB available)
+        use_sparse_storage=False,     # 🚀 SPEED: Use dense arrays for faster access
         
         # 🔥 FIRE PROGRESSION: Enable full state storage for TRUE progression animation
         store_full_states=True,          # CRITICAL: Enable full state storage at each timestep
-        save_interval=10,                # 🔥 SAVE EVERY 10 STEPS: Higher temporal resolution for detailed analysis
+        save_interval=20,                # 🔥 SAVE EVERY 20 STEPS: Balanced detail vs performance
         use_differential_history=True,   # CRITICAL: Enable differential history storage
         disk_storage_dir=str(output_dir),  # CRITICAL: Save all states to output folder
         
@@ -668,7 +675,7 @@ def main():
     print(f"   spread_probability: {best_parameters['spread_probability']}")
     print(f"   fuel_consumption_rate: {best_parameters['fuel_consumption_rate']}")
     print(f"   ember_probability: {best_parameters['ember_probability']}")
-    print(f"   🔥 Save interval: 10 steps (comprehensive 3D animation)")
+    print(f"   🔥 Save interval: 20 steps (balanced performance)")
     print(f"   🎯 Max steps: {args.max_steps} (configurable for 200+ step analysis)")
     
     # Parse days to validate
