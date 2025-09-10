@@ -899,6 +899,9 @@ class TenerifeFirePerimeterCalibrator:
             wind_direction=45.0,
         )
         
+        # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin
+        base_config.ignition_points = [(830, 598, 0)]  # EMSR fire center in LiDAR grid coordinates
+        
         # Create calibration targets from training data
         from src.core.calibration.calibration_config import CalibrationTarget
         calibration_targets = []

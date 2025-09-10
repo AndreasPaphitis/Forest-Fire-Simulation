@@ -124,7 +124,7 @@ def main():
             workers=args.workers,
             grid_search_points=args.grid_points,
             experiment_name=experiment_name,
-            grid_size=(609, 609),
+            grid_size=(1197, 1020),  # 🔥 CRITICAL FIX: Use LiDAR preprocessed grid size for spatial alignment
             base_directory='EMSR Delineations'
         )
         print("✅ Calibrator created")
