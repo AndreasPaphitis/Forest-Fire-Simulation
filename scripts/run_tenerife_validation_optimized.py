@@ -8,9 +8,14 @@ identical scientific results and validation accuracy.
 
 SIMULATION CONFIGURATION:
 - Total steps: 200 (configurable via --max-steps argument)
-- Save interval: Every 5 steps (40 total saved frames) - ENABLED FOR TRUE PROGRESSION
-- Grid size: 609×609 (original working dimensions)
+- Save interval: Every 10 steps (20 total saved frames) - COMPREHENSIVE 3D ANIMATION
+- Grid size: 609×609 (memory-efficient dimensions)
 - Full state storage: ENABLED (store_full_states=True)
+
+PARAMETER TESTING:
+- To test different parameter sets, change ACTIVE_PARAMETER_SET variable (line ~136)
+- Available sets: OPTIMAL_EXTREME, RANK_2_CONSERVATIVE, RANK_3_BALANCED, MODERATE_ALL
+- Each set represents different calibration results for overfitting analysis
 
 Key Optimizations:
 - Smart vectorization for large-scale problems (>50 active cells)
@@ -95,19 +100,59 @@ def load_best_parameters(results_dir: str, experiment_name: str) -> Dict[str, fl
     # Loaded best parameters
     return best_result.get('parameters', {})
 
-def get_latest_calibrated_parameters() -> Dict[str, float]:
-    """Get the latest calibrated parameters from the most recent calibration run."""
-    # Latest calibrated parameters from successful calibration (2025-08-31)
-    calibrated_parameters = {
-        "min_fuel_value": 0.02,
-        "spread_probability": 0.95,
-        "fuel_consumption_rate": 0.3,
-        "ember_probability": 0.6
+# 🎯 PARAMETER TESTING CONFIGURATION
+# Switch these parameter sets to test different combinations from calibration results
+
+PARAMETER_SETS = {
+    'OPTIMAL_EXTREME': {
+        'name': 'Optimal (Extreme Values - Rank 1)',
+        'min_fuel_value': 0.02,        # MINIMUM tested - aggressive ignition
+        'spread_probability': 0.95,    # MAXIMUM tested - rapid fire growth
+        'fuel_consumption_rate': 0.30, # MINIMUM tested - slow consumption
+        'ember_probability': 0.60,     # MAXIMUM tested - high spot fires
+        'error': 0.5127
+    },
+    'RANK_2_CONSERVATIVE': {
+        'name': 'Conservative Spread (Rank 2)',
+        'min_fuel_value': 0.02,        # Same aggressive ignition
+        'spread_probability': 0.775,   # MUCH lower spread rate
+        'fuel_consumption_rate': 0.30, # Same slow consumption  
+        'ember_probability': 0.60,     # Same high spot fires
+        'error': 0.5360
+    },
+    'RANK_3_BALANCED': {
+        'name': 'Higher Threshold (Rank 3)',
+        'min_fuel_value': 0.06,        # Higher ignition threshold
+        'spread_probability': 0.95,    # High spread rate
+        'fuel_consumption_rate': 0.30, # Slow consumption
+        'ember_probability': 0.60,     # High spot fires
+        'error': 0.5371
+    },
+    'MODERATE_ALL': {
+        'name': 'All Moderate Values',
+        'min_fuel_value': 0.06,        # Mid-range threshold
+        'spread_probability': 0.775,   # Mid-range spread
+        'fuel_consumption_rate': 0.55, # Mid-range consumption
+        'ember_probability': 0.40      # Mid-range embers
     }
+}
+
+# 🔧 CURRENT ACTIVE PARAMETER SET - CHANGE THIS TO TEST DIFFERENT SETS
+ACTIVE_PARAMETER_SET = 'OPTIMAL_EXTREME'  # ⚠️ CHANGE TO: RANK_2_CONSERVATIVE, RANK_3_BALANCED, MODERATE_ALL
+
+def get_latest_calibrated_parameters() -> Dict[str, float]:
+    """Get the currently selected parameter set for testing."""
+    active_params = PARAMETER_SETS[ACTIVE_PARAMETER_SET]
+    print(f"🎯 USING PARAMETER SET: {active_params['name']}")
+    if 'error' in active_params:
+        print(f"   Calibration error: {active_params['error']:.4f}")
     
-    # Using latest calibrated parameters
-    
-    return calibrated_parameters
+    return {
+        "min_fuel_value": active_params['min_fuel_value'],
+        "spread_probability": active_params['spread_probability'],
+        "fuel_consumption_rate": active_params['fuel_consumption_rate'],
+        "ember_probability": active_params['ember_probability']
+    }
 
 def get_preprocessed_data_info() -> Dict[str, Any]:
     """Get information about available preprocessed data."""
@@ -346,8 +391,9 @@ def run_validation_for_day(day_number: int,
     engine.save_directory = output_dir  # Use same directory as main results
     engine.save_directory.mkdir(exist_ok=True)
     print(f"💾 LAZY SAVE SYSTEM: Enabled, saving every {engine.save_interval} steps to {engine.save_directory}")
-    print(f"🚨 MEMORY SETTINGS: Level {config.memory_optimization_level}, ALL cleanup DISABLED, forced 200-step run")
-    print(f"🎬 ANIMATION DATA: 2D fire perimeter + 3D layer masks + cell coordinates saved every 20 steps")
+    print(f"🚨 MEMORY SETTINGS: Level {config.memory_optimization_level}, ALL cleanup DISABLED")
+    print(f"🎬 COMPREHENSIVE 3D ANIMATION: Full 3D state + 2D perimeter + coordinates saved every 10 steps")
+    print(f"📊 TOTAL ANIMATION FRAMES: {args.max_steps // 10} frames (every 10 steps for {args.max_steps} total steps)")
     
     # Engine initialized with optimizations
     # Memory optimization enabled
@@ -522,7 +568,7 @@ def main():
                        help='Output directory for validation results')
     parser.add_argument('--days', type=str, default='3,4',
                        help='Comma-separated list of days to validate (e.g., "3,4")')
-    parser.add_argument('--max-steps', type=int, default=1000, help='Maximum simulation steps')
+    parser.add_argument('--max-steps', type=int, default=200, help='Maximum simulation steps (default: 200 for comprehensive analysis)')
     parser.add_argument('--use-latest-params', action='store_true', help='Use latest calibrated parameters instead of loading from file')
     
     args = parser.parse_args()
@@ -598,22 +644,23 @@ def main():
         # 🔥 CRITICAL FIX: Set ignition points to match EMSR fire origin in 609×609 grid
         ignition_points=[(304, 304, 0)],  # Center of 609×609 grid (EMSR fire center)
         
-        # 🎯 OPTIMAL PARAMETERS from successful HPC calibration (lowest error = 0.5127)
-        min_fuel_value=0.02,                # Very low threshold - aggressive ignition
-        spread_probability=0.95,            # Very high spread - rapid fire growth  
-        fuel_consumption_rate=0.30,         # Slow consumption - fire persists longer
-        ember_probability=0.60,             # High ember generation - spot fires
+        # 🎯 DYNAMIC PARAMETERS - automatically uses selected parameter set from above
+        min_fuel_value=best_parameters['min_fuel_value'],
+        spread_probability=best_parameters['spread_probability'],
+        fuel_consumption_rate=best_parameters['fuel_consumption_rate'],
+        ember_probability=best_parameters['ember_probability'],
         
         # 🔥 CRITICAL FIX: Force PAD normalization path (consistent with calibration fix)
         initial_fuel_load=1.0
     )
     
-    print(f"✅ Configuration created with best calibrated parameters:")
-    print(f"   min_fuel_value: 0.02")
-    print(f"   spread_probability: 0.95")
-    print(f"   fuel_consumption_rate: 0.6333333333333333")
-    print(f"   ember_probability: 0.2")
-    print(f"   🔥 Save interval: 10 steps (detailed analysis)")
+    print(f"✅ Configuration created with selected parameter set:")
+    print(f"   min_fuel_value: {best_parameters['min_fuel_value']}")
+    print(f"   spread_probability: {best_parameters['spread_probability']}")
+    print(f"   fuel_consumption_rate: {best_parameters['fuel_consumption_rate']}")
+    print(f"   ember_probability: {best_parameters['ember_probability']}")
+    print(f"   🔥 Save interval: 10 steps (comprehensive 3D animation)")
+    print(f"   🎯 Max steps: {args.max_steps} (configurable for 200+ step analysis)")
     
     # Parse days to validate
     days_to_validate = [int(d.strip()) for d in args.days.split(',')]
