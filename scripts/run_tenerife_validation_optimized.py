@@ -215,7 +215,8 @@ def save_animation_data(forest_model, engine, config, day_number, output_dir: Pa
 def run_validation_for_day(day_number: int, 
                           test_fire_perimeter: np.ndarray,
                           config: ModelConfig,
-                          output_dir: Path) -> Dict[str, Any]:
+                          output_dir: Path,
+                          max_steps: int = 200) -> Dict[str, Any]:
     """Run validation for a specific day using the optimized engine."""
     
     print(f"\n🔥 VALIDATING DAY {day_number}")
@@ -393,7 +394,7 @@ def run_validation_for_day(day_number: int,
     print(f"💾 LAZY SAVE SYSTEM: Enabled, saving every {engine.save_interval} steps to {engine.save_directory}")
     print(f"🚨 MEMORY SETTINGS: Level {config.memory_optimization_level}, ALL cleanup DISABLED")
     print(f"🎬 COMPREHENSIVE 3D ANIMATION: Full 3D state + 2D perimeter + coordinates saved every 10 steps")
-    print(f"📊 TOTAL ANIMATION FRAMES: {args.max_steps // 10} frames (every 10 steps for {args.max_steps} total steps)")
+    print(f"📊 TOTAL ANIMATION FRAMES: {max_steps // 10} frames (every 10 steps for {max_steps} total steps)")
     
     # Engine initialized with optimizations
     # Memory optimization enabled
@@ -753,7 +754,8 @@ def main():
                     day_number=day,
                     test_fire_perimeter=test_data[day],
                     config=config,
-                    output_dir=output_dir
+                    output_dir=output_dir,
+                    max_steps=args.max_steps
                 )
                 
                 validation_results[day] = result
