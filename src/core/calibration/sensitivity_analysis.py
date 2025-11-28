@@ -845,9 +845,9 @@ class SensitivityAnalyzer:
         """
         Calculate Method 2 Standardized Range-Based Sensitivity Index.
         
-        Formula: Sensitivity = (Output_Range / Param_Range) × (Param_Range / Middle_Output)
+        Formula: Sensitivity = (Output_Range / Param_Range) / Middle_Output
         
-        This measures how much the output changes relative to the parameter range,
+        This measures how much the output changes per unit parameter change,
         standardized by the typical output magnitude for parameter comparison.
         
         Args:

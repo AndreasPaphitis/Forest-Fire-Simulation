@@ -1,0 +1,25 @@
+{
+  "title": "LiDAR-Integrated Cellular Automata Wildfire Model: Tenerife Case Study",
+  "description": "Comprehensive dataset for wildfire simulation research integrating high-resolution LiDAR vegetation structure data with cellular automata modeling framework",
+  "creator": "Your Name",
+  "date_created": "2025-09-11T12:16:11.596489",
+  "keywords": [
+    "wildfire modeling",
+    "LiDAR",
+    "cellular automata",
+    "vegetation structure",
+    "Tenerife",
+    "fire simulation"
+  ],
+  "spatial_coverage": "Tenerife, Canary Islands, Spain",
+  "temporal_coverage": "August 2023 wildfire event",
+  "coordinate_system": "ETRS89 / UTM Zone 28N (EPSG:25828)",
+  "license": "CC BY 4.0",
+  "funding": "University of Amsterdam",
+  "related_publications": [],
+  "data_sources": {
+    "lidar": "Plan Nacional de Ortofotograf\u00eda A\u00e9rea (PNOA), Instituto Geogr\u00e1fico Nacional (IGN)",
+    "terrain": "Instituto Geogr\u00e1fico Nacional (IGN) DTM 5m resolution",
+    "fire_perimeters": "Copernicus Emergency Management Service (EMSR-665)"
+  }
+}

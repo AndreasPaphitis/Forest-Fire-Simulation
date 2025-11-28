@@ -1,0 +1,196 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wildfire-model"
+description = "LiDAR-Integrated Cellular Automata Wildfire Model for Tenerife 2023 Case Study"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Andreas Paphitis", email = "a.paphitis@student.uva.nl"},
+]
+maintainers = [
+    {name = "Andreas Paphitis", email = "a.paphitis@student.uva.nl"},
+]
+keywords = [
+    "wildfire",
+    "lidar",
+    "cellular-automata",
+    "fire-simulation",
+    "geospatial",
+    "tenerife",
+    "forest-fire",
+    "emergency-management"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+    "matplotlib>=3.5.0",
+    "rasterio>=1.3.0",
+    "geopandas>=0.12.0",
+    "pandas>=1.4.0",
+    "scikit-image>=0.19.0",
+    "psutil>=5.8.0",
+    "tqdm>=4.64.0",
+    "pyyaml>=6.0",
+    "h5py>=3.7.0",
+    "netcdf4>=1.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=5.0.0",
+    "mypy>=0.991",
+    "pre-commit>=2.20.0",
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+]
+performance = [
+    "numba>=0.56.0",
+    "dask>=2022.0.0",
+    "joblib>=1.2.0",
+]
+visualization = [
+    "seaborn>=0.11.0",
+    "plotly>=5.0.0",
+    "imageio>=2.19.0",
+    "pillow>=9.0.0",
+]
+hpc = [
+    "mpi4py>=3.1.0",
+    "dask-mpi>=2022.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/wildfire-model"
+Documentation = "https://wildfire-model.readthedocs.io"
+Repository = "https://github.com/yourusername/wildfire-model.git"
+Issues = "https://github.com/yourusername/wildfire-model/issues"
+Changelog = "https://github.com/yourusername/wildfire-model/blob/main/CHANGELOG.md"
+
+[project.scripts]
+wildfire-preprocess = "wildfire_model.scripts.preprocess:main"
+wildfire-calibrate = "wildfire_model.scripts.calibrate:main"
+wildfire-validate = "wildfire_model.scripts.validate:main"
+wildfire-visualize = "wildfire_model.scripts.visualize:main"
+
+[tool.setuptools]
+packages = ["wildfire_model"]
+
+[tool.setuptools.package-data]
+wildfire_model = ["data/*", "config/*.yaml", "config/*.json"]
+
+[tool.setuptools_scm]
+write_to = "src/wildfire_model/_version.py"
+
+[tool.black]
+line-length = 88
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["wildfire_model"]
+known_third_party = ["numpy", "scipy", "matplotlib", "rasterio", "geopandas"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "rasterio.*",
+    "geopandas.*",
+    "scipy.*",
+    "matplotlib.*",
+    "skimage.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "performance: marks tests as performance tests",
+]
+
+[tool.coverage.run]
+source = ["src/wildfire_model"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/_version.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "test_*"]
+skips = ["B101", "B601"]

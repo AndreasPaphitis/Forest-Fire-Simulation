@@ -1,0 +1,33 @@
+{
+  "software_requirements": {
+    "python": ">=3.8",
+    "key_packages": [
+      "numpy",
+      "scipy",
+      "matplotlib",
+      "rasterio",
+      "gdal",
+      "numba"
+    ]
+  },
+  "hardware_requirements": {
+    "minimum_ram": "16GB",
+    "recommended_ram": "32GB",
+    "storage": "50GB available space",
+    "processing": "Multi-core CPU recommended"
+  },
+  "data_formats": {
+    "raster": "GeoTIFF, NumPy arrays (.npy)",
+    "vector": "Shapefile, GeoJSON",
+    "results": "JSON, CSV, PKL",
+    "figures": "PNG (300 DPI), PDF"
+  },
+  "processing_chain": [
+    "LiDAR height normalization",
+    "Vegetation structure quantification (PAD)",
+    "Terrain analysis (slope, aspect, barrancos)",
+    "Fire perimeter preprocessing",
+    "Model calibration",
+    "Validation analysis"
+  ]
+}
